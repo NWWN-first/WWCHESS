@@ -59,7 +59,8 @@ export class DopamineEngine {
     if (!didWinCombat) {
       if (activeGoblinCount >= 3) {
         const baseGain = 4 + participant.loseStreak * 2;
-        const multiplier = activeGoblinCount >= 5 ? 2 : 1;
+        const multiplier =
+          activeGoblinCount >= 7 ? 4 : activeGoblinCount >= 5 ? 2 : 1;
         const totalGain = baseGain * multiplier;
         participant.goblinVaultStacks += totalGain;
         participant.lastActionMessage = `🪙 [황금 고블린 금고] 패배 스택 +${totalGain} 축적! (현재 총 ${participant.goblinVaultStacks} 스택)`;

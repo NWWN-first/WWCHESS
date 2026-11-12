@@ -1074,6 +1074,57 @@ export class PixelGameRenderer {
     return null;
   }
 
+  /**
+   * 화면 좌표 (px, py)로부터 가장 가까운 플레이어의 보드/대기석 기물 탐색 (자석 스냅)
+   * 기본 최대 반경 maxDistance (기본 68px) 이내에서 가장 가까운 기물 반환
+   */
+  public findNearestUnitInstance(
+    px: number,
+    py: number,
+    player: Participant,
+    maxDistance: number = 68
+  ): { unit: UnitInstance; dist: number; center: { x: number; y: number } } | null {
+    let bestUnit: UnitInstance | null = null;
+    let bestDist = maxDistance;
+    let bestCenter = { x: 0, y: 0 };
+
+    // 1. 대기석 슬롯 기물 검사
+    for (let i = 0; i < player.bench.length; i++) {
+      const u = player.bench[i];
+      if (!u) continue;
+      const r = this.benchSlotRects[i];
+      if (!r) continue;
+      const cx = r.x + r.w * 0.5;
+      const cy = r.y + r.h * 0.5 - 10;
+      const dist = Math.hypot(px - cx, py - cy);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestUnit = u;
+        bestCenter = { x: cx, y: cy };
+      }
+    }
+
+    // 2. 보드 기물 검사 (아군 row 0~3은 화면 헥스 4~7)
+    for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+      for (let c = 0; c < Participant.BOARD_COLS; c++) {
+        const u = player.board[r][c];
+        if (!u) continue;
+        const hexCenter = HexGridMath.hexToScreenCenter(r + 4, c, this.hexMetrics);
+        const cx = hexCenter.x;
+        const cy = hexCenter.y - 18; // 도트 캐릭터 몸통 높이 보정
+        const dist = Math.hypot(px - cx, py - cy);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestUnit = u;
+          bestCenter = { x: cx, y: cy };
+        }
+      }
+    }
+
+    return bestUnit ? { unit: bestUnit, dist: bestDist, center: bestCenter } : null;
+  }
+
+
   public resetCombatJuiceStates(): void {
     this.unitJuiceMap.clear();
     this.slashSmears = [];
@@ -1170,7 +1221,7 @@ export class PixelGameRenderer {
     portraitCanvas: HTMLCanvasElement,
     unitId: string,
     cost: CostTier,
-    isOwnedHighlight: boolean
+    isCanUpgrade: boolean
   ): void {
     const dpr = Math.max(2, Math.floor(this.dpr));
     const logicalW = 96;
@@ -1200,12 +1251,12 @@ export class PixelGameRenderer {
     pCtx.fillStyle = bgGrad;
     pCtx.fillRect(0, 0, logicalW, logicalH);
 
-    // 2) 보유 기물인 경우 배경 황금 마법 후광 링
-    if (isOwnedHighlight) {
-      pCtx.strokeStyle = 'rgba(255, 234, 0, 0.55)';
-      pCtx.lineWidth = 2;
+    // 2) 2성/3성 합성 가능 시 부드러운 골드 후광 링
+    if (isCanUpgrade) {
+      pCtx.strokeStyle = 'rgba(255, 234, 0, 0.4)';
+      pCtx.lineWidth = 1.5;
       pCtx.beginPath();
-      pCtx.arc(logicalW * 0.5, logicalH * 0.56, 26, 0, Math.PI * 2);
+      pCtx.arc(logicalW * 0.5, logicalH * 0.56, 24, 0, Math.PI * 2);
       pCtx.stroke();
     }
 
@@ -1223,22 +1274,29 @@ export class PixelGameRenderer {
     pCtx.ellipse(logicalW * 0.5, logicalH - 7, 24, 6, 0, 0, Math.PI * 2);
     pCtx.fill();
 
-    // 5) 필드 위와 100% 동일한 28x28 도트 스프라이트를 2.65배(~74x74) 확대 클로즈업으로 렌더링
+    // 5) 필드 위와 100% 동일한 28x28 도트 스프라이트를 2.65배 확대 클로즈업으로 렌더링
     const sprite = this.getOrCreateUnitPixelSprite(
       unitId,
-      isOwnedHighlight ? 2 : 1,
+      isCanUpgrade ? 2 : 1,
       0,
       false
     );
-    const drawSize = 72; // 28px * ~2.6배 확대 클로즈업 아바타
+    const drawSize = 72;
     const drawX = Math.floor((logicalW - drawSize) * 0.5);
     const drawY = Math.floor(logicalH - drawSize + 2);
     pCtx.drawImage(sprite, drawX, drawY, drawSize, drawSize);
 
-    // 6) 상점 초상화 내부 픽셀 액자 테두리
-    pCtx.strokeStyle = isOwnedHighlight ? '#ffea00' : borderColor;
-    pCtx.lineWidth = 1.5;
+    // 6) 상점 초상화 테두리는 항상 기물 고유의 코스트 색상 유지 (코스트 식별력 100% 보장)
+    pCtx.strokeStyle = borderColor;
+    pCtx.lineWidth = 2;
     pCtx.strokeRect(1, 1, logicalW - 2, logicalH - 2);
+
+    if (isCanUpgrade) {
+      pCtx.strokeStyle = '#facc15';
+      pCtx.lineWidth = 2;
+      pCtx.strokeRect(1, 1, 16, 2);
+      pCtx.strokeRect(logicalW - 17, 1, 16, 2);
+    }
   }
 
   public ingestCombatEvents(events: CombatEvent[], units: CombatUnit[]): void {

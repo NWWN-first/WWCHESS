@@ -5,11 +5,16 @@ import {
   AUGMENT_DEFINITIONS,
   AugmentDefinition,
   AugmentTier,
+  BaseItemId,
+  CompletedItemId,
   ITEM_DEFINITIONS,
   ItemId,
   TraitId,
   UNIT_TEMPLATES,
   UnitTemplate,
+  combineBaseItems,
+  getRecipeForCompletedItem,
+  getUnitRecommendedItems,
 } from './GameData';
 import { AIPersona, Participant, UnitInstance } from './Participant';
 import { AISkillParameters, RankManager } from './RankManager';
@@ -21,6 +26,7 @@ export interface BotBrainState {
   persona: AIPersona;
   targetTrait: TraitId;
   secondaryTrait: TraitId;
+  heroTargetUnitId?: string;
   deniedUnitInstanceIds: Set<string>;
   pivotedCount: number;
   isRolldownActive: boolean;
@@ -30,6 +36,7 @@ export interface BotBrainState {
   targetGoldFloorThisRound: number;
   unitsToDenyCache: Set<string>;
 }
+
 
 const STANDARD_ORIGIN_TRAITS: TraitId[] = [
   'HOLY_EMPIRE',
@@ -393,7 +400,11 @@ export class AIBotController {
 
 
   /**
-   * 증강체 라운드(2-1, 3-2, 4-2) 진입 시 AI 봇이 자신의 페르소나와 덱에 맞는 증강체를 선택한다.
+   * 증강체 라운드(2-1, 3-2, 4-2) 진입 시 AI 봇이 자신의 페르소나와 덱 상황에 맞게 최적의 증강체를 지능적으로 선택한다.
+   * - 영웅 증강: 보유 기물/선호 시너지에 부합 시 최우선 픽 후 3성 올인 플랜 수립
+   * - 시너지 증강(문장/왕관): 주력/보조 시너지와 일치 시 8~9프리즘을 향해 최우선 선택
+   * - 리롤 덱: 이미 3성 기물이 나와 잘 풀렸다면 전투/골드 증강, 아직 안 나왔으면 리롤/영웅 증강
+   * - 고밸류 덱: 초중반 체력이 여유로우면 레벨업/돈 증강, 체력 40 이하 위기 시 즉발 전투/체력 증강
    */
   public selectAugmentForBot(
     bot: Participant,
@@ -405,45 +416,108 @@ export class AIBotController {
     const choices = DopamineEngine.rollAugmentChoices(bot, tier);
     if (choices.length === 0) return null;
 
+    const threeStarCount = this.countTotalThreeStarUnits(bot);
+    const ownedUnitIds = new Set(bot.getAllUnitLocations().map((l) => l.unit.unitId));
+
     let bestAug = choices[0];
     let bestScore = -999;
 
     for (const aug of choices) {
-      let score = 10;
-      if (
-        brain.persona === 'GOBLIN_GAMBLER' &&
-        (aug.effectKey === 'GOBLIN_CROWN' || aug.effectKey === 'DIABOLIC_FINANCE')
+      let score = 20;
+
+      // 1. 영웅 증강 (Hero Augment) 평가
+      if (aug.category === 'HERO' && aug.heroUnitId) {
+        const heroTemplate = UNIT_TEMPLATES[aug.heroUnitId];
+        const ownsHero = ownedUnitIds.has(aug.heroUnitId);
+        const matchesTrait =
+          heroTemplate &&
+          (heroTemplate.traits.includes(brain.targetTrait) ||
+            heroTemplate.traits.includes(brain.secondaryTrait));
+
+        if (ownsHero || matchesTrait) {
+          score += 70; // 보유 중이거나 시너지가 맞으면 강력하게 픽!
+        } else {
+          score -= 10;
+        }
+      }
+
+      // 2. 시너지 문장 / 왕관 증강 평가 (8~9단계 프리즘 필수 트리거)
+      if (aug.bonusTrait) {
+        if (aug.bonusTrait === brain.targetTrait) {
+          score += 85; // 주력 시너지 상징은 무조건 최우선
+        } else if (aug.bonusTrait === brain.secondaryTrait) {
+          score += 55;
+        } else {
+          score -= 20;
+        }
+      }
+
+      // 3. 페르소나 및 덱 상황별 유동적 선택
+      const isRerollAug =
+        aug.effectKey === 'GOLDEN_TICKET' ||
+        aug.effectKey === 'CLEARANCE_SALE' ||
+        aug.effectKey === 'PANDORA_BENCH' ||
+        aug.effectKey === 'FATED_DUPLICATION';
+
+      if (brain.persona === 'HYPER_ROLLER' || brain.persona === 'LOW_COST_REROLLER') {
+        if (threeStarCount >= 1) {
+          // 이미 3성이 떠서 리롤이 잘 풀린 경우 -> 돈 증강이나 전투 증강으로 전환
+          if (aug.category === 'COMBAT') score += 45;
+          if (aug.category === 'ECONOMY') score += 35;
+          if (isRerollAug) score += 15;
+        } else {
+          // 아직 3성이 안 뜸 -> 리롤 증강 집중
+          if (isRerollAug) score += 60;
+          if (aug.category === 'COMBAT') score += 20;
+        }
+      } else if (
+        brain.persona === 'FAST_NINE_GREEDY' ||
+        brain.persona === 'FAST_NINE_ECONOMIST'
       ) {
-        score += 50;
+        if (bot.hp > 40) {
+          // 체력이 넉넉함: 레벨업 및 골드/이자 증강 최우선
+          if (
+            aug.category === 'ECONOMY' ||
+            aug.effectKey === 'LEVEL_UP' ||
+            aug.effectKey === 'DIABOLIC_FINANCE' ||
+            aug.effectKey === 'HEDGE_FUND'
+          ) {
+            score += 65;
+          }
+        } else {
+          // 체력 40 이하 생존 위기: 즉발 체력이나 강력한 전투 증강으로 전환
+          if (aug.effectKey === 'TINY_TITANS') score += 75;
+          if (aug.category === 'COMBAT') score += 55;
+        }
+      } else if (brain.persona === 'GOBLIN_GAMBLER') {
+        if (
+          aug.effectKey === 'GOBLIN_CROWN' ||
+          aug.effectKey === 'DIABOLIC_FINANCE' ||
+          aug.category === 'ECONOMY'
+        ) {
+          score += 70;
+        }
+      } else {
+        // FLEX_MASTER
+        if (aug.category === 'COMBAT') score += 35;
+        if (aug.category === 'ECONOMY') score += 30;
       }
-      if (
-        brain.persona === 'HYPER_ROLLER' &&
-        (aug.effectKey === 'GOLDEN_TICKET' ||
-          aug.effectKey === 'PANDORA_BENCH' ||
-          aug.effectKey === 'FATED_DUPLICATION')
-      ) {
-        score += 45;
-      }
-      if (
-        brain.persona === 'FAST_NINE_GREEDY' &&
-        (aug.effectKey === 'DIABOLIC_FINANCE' ||
-          aug.effectKey === 'LEVEL_UP' ||
-          aug.effectKey === 'TINY_TITANS')
-      ) {
-        score += 45;
-      }
-      if (aug.bonusTrait && aug.bonusTrait === brain.targetTrait) {
-        score += 40;
-      }
+
       if (score > bestScore) {
         bestScore = score;
         bestAug = aug;
       }
     }
 
+    // 영웅 증강을 선택했다면 두뇌에 영웅 타겟 등록 (3성 올인 지시)
+    if (bestAug.category === 'HERO' && bestAug.heroUnitId) {
+      brain.heroTargetUnitId = bestAug.heroUnitId;
+    }
+
     bot.applyAugment(bestAug.id, sharedPool);
     return bestAug;
   }
+
 
   // ==========================================================================
   // 1. 정찰(Scouting) 및 덱 전환(Pivot) & 견제 대상 스캔
@@ -759,11 +833,23 @@ export class AIBotController {
     const canStillReachThreeStar =
       ownedCopies + remainingInPool + bot.duplicators >= 9;
 
+    // 0. 영웅 증강 타겟 기물 (3성 우선 수집, 풀 고갈 시 2성 유지)
+    if (brain.heroTargetUnitId === template.id) {
+      if (canStillReachThreeStar) {
+        score += 80; // 3성을 위해 최우선 구매
+      } else if (ownedCopies < 3) {
+        score += 45; // 3성은 불가하지만 2성까지는 완성
+      } else {
+        score -= 30; // 3성 불가 판명 시 추가 수집 중단
+      }
+    }
+
     // 1. 보유 개수(페어/합성 근접도) 가산점
     if (ownedCopies === 2 || ownedCopies === 5 || ownedCopies === 8) {
       score += 65; // 이번 1장 구매로 즉시 2성 또는 3성 합성!
     } else if (ownedCopies >= 6) {
       score += canStillReachThreeStar ? 48 : -20; // 풀 고갈로 3성 불가 시 수집 포기
+
     } else if (ownedCopies >= 3) {
       // 이미 2성을 보유 중일 때: 4~5코스트(풀 10개/9개)가 이미 다른 참가자에게 팔려 3성이 불가능하면 추가 매수 억제
       score += canStillReachThreeStar ? 26 : -25;
@@ -1129,30 +1215,94 @@ export class AIBotController {
       }
     }
 
-    // 6. itemBench에 있는 아이템들을 분석하여 탱커와 주력 딜러에게 자동 장착
-    this.autoEquipBotItems(bot, frontlineUnits, backlineUnits, assassinUnits);
+    // 6. itemBench에 있는 아이템들을 분석하여 탱커와 주력 딜러에게 BiS 우선 합성 및 자동 장착
+    this.autoEquipBotItems(bot, brain, frontlineUnits, backlineUnits, assassinUnits);
   }
 
   /**
-   * AI 봇의 itemBench 아이템들을 방어용/공격용으로 분류하여
-   * 방어 아이템은 최고 성급 앞열 탱커에게, 공격/마나/주문력 아이템은 최고 성급 뒷열 딜러/암살자에게 장착한다.
+   * AI 봇의 itemBench 아이템들을 분석하여:
+   * 1) 메인 캐리(영웅 증강 유닛 또는 3성 딜러 / 고코스트 딜러) 및 메인 탱커의 BiS(추천 완성 아이템 3종)를 우선 확인
+   * 2) 기본 재료 2개로 BiS 완성 아이템을 조합할 수 있다면 즉시 해당 기물에게 장착하여 합체
+   * 3) 이미 완성된 BiS 아이템이 있으면 즉시 장착
+   * 4) 남은 잉여 아이템은 탱커/딜러 풀에 최적 분배
    */
   private autoEquipBotItems(
     bot: Participant,
+    brain: BotBrainState,
     frontlineUnits: UnitInstance[],
     backlineUnits: UnitInstance[],
     assassinUnits: UnitInstance[]
   ): void {
     if (bot.itemBench.length === 0) return;
 
-    const tankCandidates = [...frontlineUnits].sort(
-      (a, b) => b.starLevel * 30 + b.cost * 10 - (a.starLevel * 30 + a.cost * 10)
-    );
+    // 메인 캐리 및 탱커 선별
+    const allBoardUnits = [...frontlineUnits, ...backlineUnits, ...assassinUnits];
+    if (allBoardUnits.length === 0) return;
+
+    // 1. 핵심 캐리 기물 (영웅 증강 타겟 > 3성 딜러 > 고코 2성 딜러)
     const carryCandidates = [...backlineUnits, ...assassinUnits, ...frontlineUnits].sort(
-      (a, b) => b.starLevel * 35 + b.cost * 14 - (a.starLevel * 35 + a.cost * 14)
+      (a, b) => {
+        const aHero = brain.heroTargetUnitId === a.unitId ? 200 : 0;
+        const bHero = brain.heroTargetUnitId === b.unitId ? 200 : 0;
+        return (
+          bHero +
+          b.starLevel * 40 +
+          b.cost * 15 -
+          (aHero + a.starLevel * 40 + a.cost * 15)
+        );
+      }
     );
 
-    // 역순 순회하여 splice 시 인덱스 밀림 방지
+    // 2. 핵심 탱커 기물
+    const tankCandidates = [...frontlineUnits].sort(
+      (a, b) => b.starLevel * 35 + b.cost * 12 - (a.starLevel * 35 + a.cost * 12)
+    );
+
+    const primaryCarry = carryCandidates[0];
+    const primaryTank = tankCandidates[0];
+
+    // BiS 합성 및 장착 헬퍼
+    const tryEquipBiSForUnit = (targetUnit: UnitInstance | undefined) => {
+      if (!targetUnit || targetUnit.items.length >= 3) return;
+      const recItems = getUnitRecommendedItems(targetUnit.unitId);
+
+      for (const targetCompleted of recItems) {
+        if (targetUnit.items.length >= 3) break;
+
+        // A. 이미 itemBench에 완성된 BiS 아이템이 있는 경우 즉시 장착
+        const readyIdx = bot.itemBench.findIndex((id) => id === targetCompleted);
+        if (readyIdx !== -1) {
+          bot.equipItemToUnit(readyIdx, targetUnit.instanceId);
+          continue;
+        }
+
+        // B. 기본 재료 2개로 해당 BiS를 제작할 수 있는지 검사
+        const recipe = getRecipeForCompletedItem(targetCompleted);
+        if (recipe) {
+          const [matA, matB] = recipe;
+          const idxA = bot.itemBench.indexOf(matA);
+          if (idxA !== -1) {
+            // matB를 찾을 때 idxA와 다른 인덱스인지 확인
+            const idxB = bot.itemBench.findIndex(
+              (id, idx) => id === matB && idx !== idxA
+            );
+            if (idxB !== -1) {
+              // 큰 인덱스부터 splice되도록 정렬
+              const firstIdx = Math.max(idxA, idxB);
+              const secondIdx = Math.min(idxA, idxB);
+              bot.equipItemToUnit(firstIdx, targetUnit.instanceId);
+              bot.equipItemToUnit(secondIdx, targetUnit.instanceId);
+            }
+          }
+        }
+      }
+    };
+
+    // 캐리와 탱커에게 BiS 우선 제작/장착 시도
+    tryEquipBiSForUnit(primaryCarry);
+    tryEquipBiSForUnit(primaryTank);
+
+    // 3. 남은 아이템 일반 분배 (방어템 -> 탱커, 공격템 -> 딜러)
     for (let i = bot.itemBench.length - 1; i >= 0; i--) {
       const itemId = bot.itemBench[i];
       const itemDef = ITEM_DEFINITIONS[itemId];
@@ -1165,8 +1315,10 @@ export class AIBotController {
           : carryCandidates;
 
       for (const targetUnit of targetPool) {
-        if (bot.equipItemToUnit(i, targetUnit.instanceId)) {
-          break;
+        if (targetUnit.items.length < 3) {
+          if (bot.equipItemToUnit(i, targetUnit.instanceId)) {
+            break;
+          }
         }
       }
     }

@@ -3,6 +3,7 @@
 import {
   AUGMENT_DEFINITIONS,
   BaseItemId,
+  CompletedItemId,
   combineBaseItems,
   CostTier,
   ITEM_DEFINITIONS,
@@ -560,6 +561,35 @@ export class Participant implements PoolParticipant {
   }
 
   /**
+   * 아이템 보관함(itemBench) 내에서 두 기본 아이템을 즉시 완성 아이템으로 미리 합성
+   */
+  public combineItemsOnBench(indexA: number, indexB: number): CompletedItemId | null {
+    if (indexA === indexB) return null;
+    if (indexA < 0 || indexA >= this.itemBench.length) return null;
+    if (indexB < 0 || indexB >= this.itemBench.length) return null;
+
+    const itemA = this.itemBench[indexA];
+    const itemB = this.itemBench[indexB];
+    const defA = ITEM_DEFINITIONS[itemA];
+    const defB = ITEM_DEFINITIONS[itemB];
+
+    if (!defA || !defB || defA.isCompleted || defB.isCompleted) {
+      return null;
+    }
+
+    const completedId = combineBaseItems(itemA as BaseItemId, itemB as BaseItemId);
+    const completedDef = ITEM_DEFINITIONS[completedId];
+
+    // indexA 슬롯을 완성 아이템으로 교체하고, indexB 슬롯은 제거
+    this.itemBench[indexA] = completedId;
+    this.itemBench.splice(indexB, 1);
+
+    this.lastActionMessage = `[대기석 합성] ${completedDef.icon} ${completedDef.name} 조합 완료!`;
+    return completedId;
+  }
+
+
+  /**
    * 7) 챔피언 복제기 사용 (Use Champion Duplicator)
    * - 대상 기물과 동일한 unitId의 1성 기물을 sharedPool.pullSpecificUnitFromPool(unitId)를 통해
    *   가져와 생성하고 즉시 tryMergeUnits를 실행한다.
@@ -718,8 +748,9 @@ export class Participant implements PoolParticipant {
 
     // 대기석 -> 빈 보드 타일로 배치 시 인구수(레벨) 한도 체크
     if (from.area === 'BENCH' && to.area === 'BOARD' && targetUnit === null) {
-      if (this.getBoardUnitCount() >= this.level) {
-        this.lastActionMessage = `배치 한도 초과! (현재 레벨 ${this.level}: 최대 ${this.level}기 배치 가능)`;
+      const maxSlots = this.getMaxTeamSlots();
+      if (this.getBoardUnitCount() >= maxSlots) {
+        this.lastActionMessage = `배치 한도 초과! (최대 ${maxSlots}기 배치 가능)`;
         return false;
       }
     }
@@ -738,6 +769,16 @@ export class Participant implements PoolParticipant {
     }
 
     return true;
+  }
+
+  /**
+   * 팀 최대 배치 가능 슬롯 수 (레벨 + 증강체 효과)
+   */
+  public getMaxTeamSlots(): number {
+    let slots = this.level;
+    if (this.augments.includes('AUG_CORONATION')) slots += 1;
+    if (this.augments.includes('AUG_CURSED_CROWN')) slots += 2;
+    return slots;
   }
 
   /**
@@ -765,6 +806,11 @@ export class Participant implements PoolParticipant {
     if (this.augments.includes('AUG_GOLDEN_TICKET') && Math.random() < 0.4) {
       this.freeRerolls += 1;
       this.lastActionMessage = '🎟️ [황금 티켓] 발동! 무료 리롤 1회를 획득했습니다!';
+    }
+    // [프리즘 티켓] 증강체 보유 시 리롤마다 55% 확률로 무료 리롤 +1 획득
+    if (this.augments.includes('AUG_PRISMATIC_TICKET') && Math.random() < 0.55) {
+      this.freeRerolls += 1;
+      this.lastActionMessage = '🎫 [프리즘 티켓] 발동! 무료 리롤 1회를 획득했습니다!';
     }
 
     return true;
@@ -816,10 +862,17 @@ export class Participant implements PoolParticipant {
   }
 
   /**
-   * 최대 이자 한도 반환 (기본 5골드, [사악한 금융] 증강체 보유 시 7골드)
+   * 최대 이자 한도 반환 (기본 5골드, [헤지펀드] 10골드, [사악한 금융/부익부] 7골드)
    */
   public getMaxInterestCap(): number {
-    return this.augments.includes('AUG_DIABOLIC_FINANCE') ? 7 : 5;
+    if (this.augments.includes('AUG_HEDGE_FUND')) return 10;
+    if (
+      this.augments.includes('AUG_DIABOLIC_FINANCE') ||
+      this.augments.includes('AUG_RICH_GET_RICHER')
+    ) {
+      return 7;
+    }
+    return 5;
   }
 
   /**
@@ -871,8 +924,22 @@ export class Participant implements PoolParticipant {
     if (aug.immediateDuplicators) {
       this.duplicators += aug.immediateDuplicators;
     }
+    if (aug.freeRerollsGranted) {
+      this.freeRerolls += aug.freeRerollsGranted;
+    }
+    if (aug.immediateXp) {
+      this.addXp(aug.immediateXp);
+    }
+    if (aug.immediateHp) {
+      this.hp = Math.min(this.maxHp, this.hp + aug.immediateHp);
+    }
     if (aug.immediateBaseItems) {
       for (const itemId of aug.immediateBaseItems) {
+        this.addItemToBench(itemId);
+      }
+    }
+    if (aug.immediateCompletedItems) {
+      for (const itemId of aug.immediateCompletedItems) {
         this.addItemToBench(itemId);
       }
     }

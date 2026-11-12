@@ -982,21 +982,17 @@ img {
   pointer-events: none;
 }
 
-.shop-card.owned-highlight {
-  border-color: #ffea00;
-  box-shadow: 0 0 12px rgba(255, 234, 0, 0.65);
+.shop-card.can-upgrade-card {
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.5);
+  animation: softUpgradeBreath 1.5s infinite ease-in-out alternate;
 }
 
-.shop-card.owned-highlight .shop-pixel-portrait {
-  animation: portraitIdleJump 0.65s infinite ease-in-out alternate;
-}
-
-@keyframes portraitIdleJump {
+@keyframes softUpgradeBreath {
   from {
-    transform: translateY(0px) scale(1);
+    filter: brightness(1.0);
   }
   to {
-    transform: translateY(-3px) scale(1.04);
+    filter: brightness(1.12);
   }
 }
 
@@ -1006,31 +1002,78 @@ img {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 2px;
+  gap: 3px;
   padding: 2px 5px;
   background: rgba(7, 10, 20, 0.88);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 10px;
   color: #ffffff;
 }
 
-.shop-cost-tag {
-  color: #facc15;
-  flex-shrink: 0;
+.cost-header-1 { background: rgba(51, 65, 85, 0.7); }
+.cost-header-2 { background: rgba(20, 83, 45, 0.7); }
+.cost-header-3 { background: rgba(30, 58, 138, 0.7); }
+.cost-header-4 { background: rgba(88, 28, 135, 0.7); }
+.cost-header-5 { background: rgba(124, 45, 18, 0.7); }
+
+.shop-unit-name {
+  font-weight: 700;
+  color: #ffffff;
   font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
+.shop-cost-pill {
+  flex-shrink: 0;
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 4px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
+
+.cost-tag-1 { background: #475569; border: 1px solid #94a3b8; color: #f1f5f9; }
+.cost-tag-2 { background: #15803d; border: 1px solid #4ade80; color: #f0fdf4; }
+.cost-tag-3 { background: #1d4ed8; border: 1px solid #60a5fa; color: #eff6ff; }
+.cost-tag-4 { background: #7e22ce; border: 1px solid #c084fc; color: #faf5ff; }
+.cost-tag-5 { background: #c2410c; border: 1px solid #fb923c; color: #fff7ed; }
 
 .shop-merge-badge {
   position: absolute;
-  top: 17px;
+  top: 19px;
   left: 3px;
   z-index: 4;
   padding: 1px 5px;
-  background: linear-gradient(90deg, #facc15, #ea580c);
+  background: linear-gradient(90deg, #10b981, #059669);
   color: #ffffff;
   font-size: 8px;
-  border-radius: 4px;
+  font-weight: 700;
+  border-radius: 3px;
+  pointer-events: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+.shop-merge-badge.gold-merge {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+
+.shop-owned-count-tag {
+  position: absolute;
+  top: 19px;
+  left: 3px;
+  z-index: 4;
+  padding: 0px 4px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #94a3b8;
+  font-size: 7.5px;
+  border-radius: 3px;
   pointer-events: none;
 }
+
 
 .shop-portrait-stage {
   position: relative;
@@ -1299,14 +1342,55 @@ img {
   position: fixed;
   top: 0;
   left: 0;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -110%);
   z-index: 60;
   pointer-events: none;
-  padding: 4px 9px;
-  background: rgba(15, 23, 42, 0.92);
-  border: 2px solid #ffea00;
-  border-radius: 999px;
+  padding: 5px 10px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1.5px solid #38bdf8;
+  border-radius: 8px;
   font-size: 11px;
   color: #fef08a;
-  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 110px;
+  max-width: 190px;
+  text-align: center;
 }
+
+.ghost-item-title {
+  font-weight: bold;
+  color: #ffffff;
+  font-size: 11px;
+}
+
+.craft-preview-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 2px;
+  padding: 3px 6px;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid rgba(253, 224, 71, 0.45);
+  border-radius: 6px;
+  width: 100%;
+}
+
+.craft-tag {
+  font-size: 8px;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.5px;
+}
+
+.craft-desc {
+  font-size: 8.5px;
+  color: #cbd5e1;
+  line-height: 1.25;
+  white-space: normal;
+}
+

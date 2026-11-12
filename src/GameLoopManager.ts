@@ -111,7 +111,9 @@ export class GameLoopManager {
 
   /**
    * 증강체 선택 페이즈 상태 (카드 3장 + 카드별 1회 리롤 가능 여부)
+   * 2-1, 3-2, 4-2 라운드에 적용될 [T1, T2, T3] 등급 (게임 시작 시 무작위 추첨하여 8인 전원 동일 적용)
    */
+  public gameAugmentTiers: [AugmentTier, AugmentTier, AugmentTier] = ['SILVER', 'GOLD', 'PRISMATIC'];
   public currentAugmentTier: AugmentTier | null = null;
   public playerAugmentChoices: AugmentDefinition[] = [];
   public augmentCardRerolled: [boolean, boolean, boolean] = [false, false, false];
@@ -200,6 +202,22 @@ export class GameLoopManager {
     this.rankSettlementResult = null;
     this.activeFinisherLaser = null;
 
+    // 판마다 무작위 증강 등급 조합 추첨 (모든 플레이어 동일 등급 적용)
+    const augmentTierCombos: [AugmentTier, AugmentTier, AugmentTier][] = [
+      ['SILVER', 'GOLD', 'PRISMATIC'],
+      ['GOLD', 'GOLD', 'GOLD'],
+      ['SILVER', 'GOLD', 'GOLD'],
+      ['GOLD', 'SILVER', 'GOLD'],
+      ['GOLD', 'GOLD', 'PRISMATIC'],
+      ['PRISMATIC', 'GOLD', 'GOLD'],
+      ['SILVER', 'SILVER', 'GOLD'],
+      ['PRISMATIC', 'GOLD', 'PRISMATIC'],
+      ['PRISMATIC', 'PRISMATIC', 'PRISMATIC'],
+    ];
+    this.gameAugmentTiers =
+      augmentTierCombos[Math.floor(Math.random() * augmentTierCombos.length)];
+
+
     // 8인 전원 초기 골드(10G), 레벨 1, 시작 1코스트 기물 1기 지급 및 첫 상점 추첨
     for (const p of this.participants) {
       p.gold = 10;
@@ -281,9 +299,10 @@ export class GameLoopManager {
     const label = this.getRoundLabel();
 
     // 1) 2-1, 3-2, 4-2 라운드 시작 시: 증강체 선택 페이즈(AUGMENT_PHASE) 발동
+    // 판마다 무작위로 추첨된 [T1, T2, T3] 등급에 따라 모든 참가자가 동일 등급 증강 카드를 수신!
     if (label === '2-1' || label === '3-2' || label === '4-2') {
-      const tier: AugmentTier =
-        label === '2-1' ? 'SILVER' : label === '3-2' ? 'GOLD' : 'PRISMATIC';
+      const idx = label === '2-1' ? 0 : label === '3-2' ? 1 : 2;
+      const tier: AugmentTier = this.gameAugmentTiers[idx];
       this.triggerAugmentPhase(tier);
       return;
     }
