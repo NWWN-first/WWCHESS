@@ -806,6 +806,8 @@ class FantasyAutoBattlerApp {
     const payload = this.dragPayload;
     const tapCb = this.tapCallback;
     const avatarTarget = this.pendingAvatarMove;
+    const activeHoveredHex = this.hoveredHex;
+    const activeHoveredBenchIndex = this.hoveredBenchIndex;
 
     this.activePointerId = null;
     this.isDragging = false;
@@ -831,7 +833,13 @@ class FantasyAutoBattlerApp {
     }
 
     if (wasDragging && payload) {
-      this.completeDropAtPoint(payload, e.clientX, e.clientY);
+      this.completeDropAtPoint(
+        payload,
+        e.clientX,
+        e.clientY,
+        activeHoveredHex,
+        activeHoveredBenchIndex
+      );
     }
   }
 
@@ -977,7 +985,9 @@ class FantasyAutoBattlerApp {
   private completeDropAtPoint(
     payload: DragPayload,
     clientX: number,
-    clientY: number
+    clientY: number,
+    hoveredHexSnap?: { row: number; col: number } | null,
+    hoveredBenchSnap?: number | null
   ): void {
     const player = this.game.player;
     const domTarget = document.elementFromPoint(clientX, clientY);
@@ -1027,12 +1037,20 @@ class FantasyAutoBattlerApp {
       let targetCol: number | null = null;
 
       if (this.is3DViewMode) {
-        const hit3D = this.threeRenderer.screenPointTo3DTarget(clientX, clientY);
-        if (hit3D?.kind === 'BENCH') {
-          benchIdx = hit3D.index;
-        } else if (hit3D?.kind === 'HEX' && hit3D.row >= 4) {
-          targetRow = hit3D.row - 4;
-          targetCol = hit3D.col;
+        // [초정밀 배치 보장] 손가락을 떼는 순간, 직전까지 시각적으로 하이라이트/상승해 있던 타일을 최우선 적용
+        if (hoveredBenchSnap !== undefined && hoveredBenchSnap !== null) {
+          benchIdx = hoveredBenchSnap;
+        } else if (hoveredHexSnap && hoveredHexSnap.row >= 4) {
+          targetRow = hoveredHexSnap.row - 4;
+          targetCol = hoveredHexSnap.col;
+        } else {
+          const hit3D = this.threeRenderer.screenPointTo3DTarget(clientX, clientY);
+          if (hit3D?.kind === 'BENCH') {
+            benchIdx = hit3D.index;
+          } else if (hit3D?.kind === 'HEX' && hit3D.row >= 4) {
+            targetRow = hit3D.row - 4;
+            targetCol = hit3D.col;
+          }
         }
       } else {
         benchIdx = this.pixelRenderer.screenPointToBenchIndex(px, py);
@@ -1113,28 +1131,45 @@ class FantasyAutoBattlerApp {
       }
     }
 
-    // 2) 기물 탐색 (자석 스냅: 터치 지점 반경 70px 이내의 가장 가까운 기물 자동 인식)
+    // 2) 기물 탐색 (자석 스냅: 3D 모드 타일 및 터치 지점 반경 70px 이내 가장 가까운 기물 자동 인식)
     let targetInstanceId: string | undefined;
     let targetCenter = { x: px, y: py };
 
-    const nearest = this.pixelRenderer.findNearestUnitInstance(px, py, player, 70);
-    if (nearest) {
-      targetInstanceId = nearest.unit.instanceId;
-      targetCenter = nearest.center;
-    } else {
-      // 보조 백업: 대기석 슬롯 또는 육각형 타일 직접 판정
-      const benchIdx = this.pixelRenderer.screenPointToBenchIndex(px, py);
-      if (benchIdx !== null) {
-        targetInstanceId = player.bench[benchIdx]?.instanceId;
+    if (this.is3DViewMode) {
+      if (hoveredBenchSnap !== undefined && hoveredBenchSnap !== null) {
+        targetInstanceId = player.bench[hoveredBenchSnap]?.instanceId;
+      } else if (hoveredHexSnap && hoveredHexSnap.row >= 4) {
+        targetInstanceId = player.board[hoveredHexSnap.row - 4]?.[hoveredHexSnap.col]?.instanceId;
       } else {
-        const hitHex = HexGridMath.screenPointToHex(
-          px,
-          py,
-          this.pixelRenderer.hexMetrics
-        );
-        if (hitHex && hitHex.row >= 4) {
-          targetInstanceId =
-            player.board[hitHex.row - 4]?.[hitHex.col]?.instanceId;
+        const hit3D = this.threeRenderer.screenPointTo3DTarget(clientX, clientY);
+        if (hit3D?.kind === 'BENCH') {
+          targetInstanceId = player.bench[hit3D.index]?.instanceId;
+        } else if (hit3D?.kind === 'HEX' && hit3D.row >= 4) {
+          targetInstanceId = player.board[hit3D.row - 4]?.[hit3D.col]?.instanceId;
+        }
+      }
+    }
+
+    if (!targetInstanceId) {
+      const nearest = this.pixelRenderer.findNearestUnitInstance(px, py, player, 70);
+      if (nearest) {
+        targetInstanceId = nearest.unit.instanceId;
+        targetCenter = nearest.center;
+      } else {
+        // 보조 백업: 대기석 슬롯 또는 육각형 타일 직접 판정
+        const benchIdx = this.pixelRenderer.screenPointToBenchIndex(px, py);
+        if (benchIdx !== null) {
+          targetInstanceId = player.bench[benchIdx]?.instanceId;
+        } else {
+          const hitHex = HexGridMath.screenPointToHex(
+            px,
+            py,
+            this.pixelRenderer.hexMetrics
+          );
+          if (hitHex && hitHex.row >= 4) {
+            targetInstanceId =
+              player.board[hitHex.row - 4]?.[hitHex.col]?.instanceId;
+          }
         }
       }
     }

@@ -143,9 +143,9 @@ export class ThreeJsGameRenderer {
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.scene = new THREE.Scene();
-    // 묵직한 중세 다크 판타지 밤하늘 & 결투장 배경색 (사이버 네온 완전 탈피)
-    this.scene.background = new THREE.Color(0x0c0f18);
-    this.scene.fog = new THREE.FogExp2(0x0c0f18, 0.024);
+    // 찬란하고 밝은 야외 산악 판타지 성채 결투장 (어두운 암흑/홀로그램 완전 탈피)
+    this.scene.background = new THREE.Color(0x60a5fa);
+    this.scene.fog = new THREE.FogExp2(0x93c5fd, 0.012);
 
     // 1. TFT 쿼터뷰 3D 카메라 설정
     const aspect = (window.innerWidth || 800) / (window.innerHeight || 600);
@@ -153,7 +153,7 @@ export class ThreeJsGameRenderer {
     this.camera.position.set(0, 15.5, 18.0);
     this.camera.lookAt(0, 0, 2.2);
 
-    // 2. WebGL 렌더러 (완전 불투명 렌더링으로 2D 화면과 철저히 분리)
+    // 2. WebGL 렌더러
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
       antialias: true,
@@ -165,16 +165,16 @@ export class ThreeJsGameRenderer {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // 3. 중세 판타지 분위기 조명 (디지털 네온 배제, 중세 달빛 + 따뜻한 횃불 조명)
-    const ambientLight = new THREE.AmbientLight(0xfff5eb, 0.95);
+    // 3. 화사하고 맑은 대낮 판타지 태양광 & 앰비언트 라이트 (경기장이 환하게 비치도록 대폭 보강)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.95);
     this.scene.add(ambientLight);
 
-    this.hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1f2438, 1.4);
+    this.hemiLight = new THREE.HemisphereLight(0xe0f2fe, 0x4d7c0f, 1.8);
     this.scene.add(this.hemiLight);
 
-    // 주광선 (차가운 달빛 느낌)
-    this.dirLight = new THREE.DirectionalLight(0xffedd5, 2.6);
-    this.dirLight.position.set(8, 22, 12);
+    // 찬란한 황금빛 태양 직사광
+    this.dirLight = new THREE.DirectionalLight(0xfffbeb, 3.6);
+    this.dirLight.position.set(10, 24, 14);
     this.dirLight.castShadow = true;
     this.dirLight.shadow.mapSize.width = 1024;
     this.dirLight.shadow.mapSize.height = 1024;
@@ -302,7 +302,7 @@ export class ThreeJsGameRenderer {
   private buildMedievalStoneArena(): void {
     const tileGeo = new THREE.CylinderGeometry(
       this.hexRadius,
-      this.hexRadius * 0.95,
+      this.hexRadius * 0.96,
       0.38,
       6
     );
@@ -310,18 +310,18 @@ export class ThreeJsGameRenderer {
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 7; c++) {
         const isAway = r < 4;
-        // 고대 석판 텍스처 컬러 (내 진영: 다크 슬레이트 블루 스톤 / 적 진영: 다크 옵시디언 스톤)
+        // 밝고 고급스러운 중세 성채 석조 바닥재 (플레이어: 산뜻한 은백색/아이보리 대리석 타일, 적: 온화한 샌드스톤 사암 타일)
         const stoneColor = isAway
           ? (r + c) % 2 === 0
-            ? 0x221a24
-            : 0x1c151e
+            ? 0xd8caa8
+            : 0xcdbe9b
           : (r + c) % 2 === 0
-          ? 0x242938
-          : 0x1a202c;
+          ? 0xe2e8f0
+          : 0xcbd5e1;
 
         const mat = new THREE.MeshStandardMaterial({
           color: stoneColor,
-          roughness: 0.88,
+          roughness: 0.62,
           metalness: 0.12,
           flatShading: true,
         });
@@ -344,18 +344,6 @@ export class ThreeJsGameRenderer {
         this.hexTileMeshes.set(key, mesh);
         this.tileOriginalY.set(mesh, 0);
         this.boardGroup.add(mesh);
-
-        // 윗면에 은은한 음각 석조 룬 라인 (사이버 네온이 아닌, 자연스러운 어두운 암석 각인선)
-        const grooveGeo = new THREE.RingGeometry(this.hexRadius * 0.75, this.hexRadius * 0.78, 6);
-        const grooveMat = new THREE.MeshStandardMaterial({
-          color: isAway ? 0x140e18 : 0x111622,
-          roughness: 0.95,
-        });
-        const groove = new THREE.Mesh(grooveGeo, grooveMat);
-        groove.rotation.x = -Math.PI / 2;
-        groove.rotation.z = Math.PI / 6;
-        groove.position.set(pos.x, 0.191, pos.z);
-        this.boardGroup.add(groove);
       }
     }
   }
@@ -367,9 +355,9 @@ export class ThreeJsGameRenderer {
     const slotGeo = new THREE.BoxGeometry(1.68, 0.36, 1.68);
     const benchBaseGeo = new THREE.BoxGeometry(17.6, 0.3, 2.4);
     const baseMat = new THREE.MeshStandardMaterial({
-      color: 0x121722,
-      roughness: 0.9,
-      metalness: 0.15,
+      color: 0x64748b, // 고급스러운 슬레이트 석조 베이스
+      roughness: 0.75,
+      metalness: 0.1,
       flatShading: true,
     });
     const baseMesh = new THREE.Mesh(benchBaseGeo, baseMat);
@@ -378,10 +366,11 @@ export class ThreeJsGameRenderer {
     this.benchGroup.add(baseMesh);
 
     for (let i = 0; i < 9; i++) {
+      const slotColor = i % 2 === 0 ? 0x94a3b8 : 0x8294aa;
       const slotMat = new THREE.MeshStandardMaterial({
-        color: i % 2 === 0 ? 0x1e2738 : 0x181f2c,
-        roughness: 0.85,
-        metalness: 0.2,
+        color: slotColor,
+        roughness: 0.65,
+        metalness: 0.15,
         flatShading: true,
       });
 
@@ -392,7 +381,7 @@ export class ThreeJsGameRenderer {
       slot.userData = {
         type: 'BENCH',
         index: i,
-        baseColor: slotMat.color.getHex(),
+        baseColor: slotColor,
         baseY: 0.08,
       };
 
@@ -403,80 +392,169 @@ export class ThreeJsGameRenderer {
   }
 
   /**
-   * 중세 콜로세움 배경 & 타오르는 판타지 횃불 화로 (Torches & Braziers)
+   * 중세 성채 야외 결투장 (초원 대지, 석조 테라스, 흉벽, 왕국 깃발 & 타오르는 횃불)
    */
   private buildColosseumSurroundingsAndTorches(): void {
-    // 웅장한 콜로세움 원형 석조 대지
-    const groundGeo = new THREE.CylinderGeometry(24, 26, 1.5, 32);
-    const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x0a0c14,
-      roughness: 0.95,
+    // 1. 넓게 펼쳐진 푸른 초원 대지 (야외 중세 성채 정원)
+    const meadowGeo = new THREE.CylinderGeometry(55, 60, 2.0, 36);
+    const meadowMat = new THREE.MeshStandardMaterial({
+      color: 0x4d7c0f, // 생동감 넘치는 중세 성채 잔디
+      roughness: 0.92,
       metalness: 0.05,
     });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.position.set(0, -0.9, 1.5);
-    ground.receiveShadow = true;
-    this.environmentGroup.add(ground);
+    const meadow = new THREE.Mesh(meadowGeo, meadowMat);
+    meadow.position.set(0, -1.8, 1.5);
+    meadow.receiveShadow = true;
+    this.environmentGroup.add(meadow);
 
-    // 전장 모서리 4곳에 배치된 중세 석조 횃불 기둥 (Stone Braziers with Flickering Fire)
-    const torchPositions = [
-      [-11.5, 0, -8.0],
-      [11.5, 0, -8.0],
-      [-12.0, 0, 8.5],
-      [12.0, 0, 8.5],
+    // 2. 웅장한 중앙 석조 성채 결투 단상 (Raised Castle Stone Terrace)
+    const terraceGeo = new THREE.CylinderGeometry(23, 24.5, 1.4, 32);
+    const terraceMat = new THREE.MeshStandardMaterial({
+      color: 0x78716c, // 따뜻한 석조 성벽 질감
+      roughness: 0.8,
+      metalness: 0.1,
+    });
+    const terrace = new THREE.Mesh(terraceGeo, terraceMat);
+    terrace.position.set(0, -0.75, 1.5);
+    terrace.receiveShadow = true;
+    this.environmentGroup.add(terrace);
+
+    // 3. 성채 테라스 외곽 석조 흉벽 (Crenelated Castle Battlements)
+    const battlementCount = 14;
+    const battlementRadius = 22.8;
+    const battlementGeo = new THREE.BoxGeometry(2.4, 1.2, 0.9);
+    const battlementMat = new THREE.MeshStandardMaterial({
+      color: 0x57534e,
+      roughness: 0.85,
+      flatShading: true,
+    });
+    for (let i = 0; i < battlementCount; i++) {
+      const angle = (i / battlementCount) * Math.PI * 2;
+      // 플레이어 정면 뷰(남쪽)는 시야 확보를 위해 흉벽을 두지 않음
+      if (angle > Math.PI * 0.35 && angle < Math.PI * 0.65) continue;
+      const bx = Math.sin(angle) * battlementRadius;
+      const bz = Math.cos(angle) * battlementRadius + 1.5;
+      const block = new THREE.Mesh(battlementGeo, battlementMat);
+      block.position.set(bx, 0.3, bz);
+      block.rotation.y = angle;
+      block.castShadow = true;
+      block.receiveShadow = true;
+      this.environmentGroup.add(block);
+    }
+
+    // 4. 전장 모서리 4곳의 고대 석조 횃불 기둥 & 왕국 깃발 (Royal Banners)
+    const pillarConfigs = [
+      { pos: [-11.8, 0, -8.5], isAway: true },
+      { pos: [11.8, 0, -8.5], isAway: true },
+      { pos: [-12.2, 0, 8.5], isAway: false },
+      { pos: [12.2, 0, 8.5], isAway: false },
     ];
 
-    torchPositions.forEach((pos, idx) => {
+    pillarConfigs.forEach((cfg, idx) => {
       const pillarGroup = new THREE.Group();
-      pillarGroup.position.set(pos[0], pos[1], pos[2]);
+      pillarGroup.position.set(cfg.pos[0], cfg.pos[1], cfg.pos[2]);
 
       // 석조 기둥 베이스
-      const pillarGeo = new THREE.CylinderGeometry(0.55, 0.75, 3.2, 8);
+      const pillarGeo = new THREE.CylinderGeometry(0.65, 0.85, 3.6, 8);
       const pillarMat = new THREE.MeshStandardMaterial({
-        color: 0x222634,
-        roughness: 0.85,
+        color: 0x78716c,
+        roughness: 0.8,
         flatShading: true,
       });
       const pillar = new THREE.Mesh(pillarGeo, pillarMat);
-      pillar.position.y = 1.6;
+      pillar.position.y = 1.8;
       pillar.castShadow = true;
       pillarGroup.add(pillar);
 
+      // 상단 황금 장식구 (Gold Finial)
+      const finialGeo = new THREE.SphereGeometry(0.35, 12, 12);
+      const finialMat = new THREE.MeshStandardMaterial({
+        color: 0xf59e0b,
+        metalness: 0.8,
+        roughness: 0.25,
+      });
+      const finial = new THREE.Mesh(finialGeo, finialMat);
+      finial.position.y = 3.8;
+      pillarGroup.add(finial);
+
       // 횃불 화로 보울 (Brazier Bowl)
-      const bowlGeo = new THREE.CylinderGeometry(0.85, 0.45, 0.5, 8);
+      const bowlGeo = new THREE.CylinderGeometry(0.9, 0.5, 0.5, 8);
       const bowlMat = new THREE.MeshStandardMaterial({
-        color: 0x3d3025,
-        metalness: 0.7,
-        roughness: 0.35,
+        color: 0x44403c,
+        metalness: 0.6,
+        roughness: 0.4,
       });
       const bowl = new THREE.Mesh(bowlGeo, bowlMat);
-      bowl.position.y = 3.3;
+      bowl.position.y = 3.4;
       pillarGroup.add(bowl);
 
       // 타오르는 화염 덩어리
-      const flameGeo = new THREE.DodecahedronGeometry(0.35, 0);
+      const flameGeo = new THREE.DodecahedronGeometry(0.4, 0);
       const flameMat = new THREE.MeshStandardMaterial({
-        color: 0xff6600,
-        emissive: 0xff4400,
-        emissiveIntensity: 1.8,
-        roughness: 0.3,
+        color: 0xff7700,
+        emissive: 0xff5500,
+        emissiveIntensity: 2.2,
+        roughness: 0.2,
       });
       const flame = new THREE.Mesh(flameGeo, flameMat);
-      flame.position.y = 3.65;
+      flame.position.y = 3.85;
       pillarGroup.add(flame);
 
+      // 왕국 깃발 (Banner: 내 진영 로열 블루, 적 진영 크림슨 레드)
+      const bannerGeo = new THREE.PlaneGeometry(1.2, 2.2);
+      const bannerMat = new THREE.MeshStandardMaterial({
+        color: cfg.isAway ? 0xb91c1c : 0x1d4ed8,
+        roughness: 0.7,
+        side: THREE.DoubleSide,
+      });
+      const banner = new THREE.Mesh(bannerGeo, bannerMat);
+      banner.position.set(0, 1.6, cfg.isAway ? 0.9 : -0.9);
+      banner.rotation.y = cfg.isAway ? 0 : Math.PI;
+      pillarGroup.add(banner);
+
       // 따뜻한 주황빛 포인트 라이트 (Flickering Flame Light)
-      const fireLight = new THREE.PointLight(0xff7711, 2.4, 18);
-      fireLight.position.set(0, 3.8, 0);
+      const fireLight = new THREE.PointLight(0xff8822, 2.8, 20);
+      fireLight.position.set(0, 4.0, 0);
       pillarGroup.add(fireLight);
 
       this.torchLights.push({
         light: fireLight,
-        baseIntensity: 2.4,
+        baseIntensity: 2.8,
         phase: idx * 1.5,
       });
 
       this.environmentGroup.add(pillarGroup);
+    });
+
+    // 5. 배경 외곽 자연 요소 (중세 상록수 몇 그루 배치로 풍성한 야외 전장 분위기 조성)
+    const treePositions = [
+      [-26, 0, -18],
+      [-22, 0, -24],
+      [24, 0, -20],
+      [28, 0, -14],
+      [-28, 0, 10],
+      [28, 0, 12],
+    ];
+    const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 2.5, 6);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x543d2b, roughness: 0.9 });
+    const foliageGeo = new THREE.ConeGeometry(2.2, 5.0, 6);
+    const foliageMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.8 });
+
+    treePositions.forEach((tp) => {
+      const treeGroup = new THREE.Group();
+      treeGroup.position.set(tp[0], -0.8, tp[2]);
+
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.y = 1.25;
+      trunk.castShadow = true;
+      treeGroup.add(trunk);
+
+      const foliage = new THREE.Mesh(foliageGeo, foliageMat);
+      foliage.position.y = 4.2;
+      foliage.castShadow = true;
+      treeGroup.add(foliage);
+
+      this.environmentGroup.add(treeGroup);
     });
   }
 
@@ -515,6 +593,7 @@ export class ThreeJsGameRenderer {
       ...Array.from(this.benchTileMeshes.values()),
     ];
 
+    // 1차: 타일 직접 레이캐스팅 교차 검사
     const intersects = this.raycaster.intersectObjects(allMeshes, false);
     if (intersects.length > 0) {
       const hit = intersects[0].object;
@@ -523,6 +602,36 @@ export class ThreeJsGameRenderer {
       }
       if (hit.userData.type === 'BENCH') {
         return { kind: 'BENCH', index: hit.userData.index };
+      }
+    }
+
+    // 2차: 지면 평면(y=0) 교차점 기반 초정밀 근접 자석 스냅 (손가락 면적 오차 100% 보정)
+    const groundPoint = new THREE.Vector3();
+    if (this.raycaster.ray.intersectPlane(this.groundPlane, groundPoint)) {
+      // A. 대기석 슬롯 근접 검사 (Z 좌표 7.5 이상)
+      if (Math.abs(groundPoint.z - this.benchZ) < 1.6) {
+        const rawIdx = Math.round((groundPoint.x / 1.85) + 4);
+        const clampedIdx = Math.max(0, Math.min(8, rawIdx));
+        return { kind: 'BENCH', index: clampedIdx };
+      }
+
+      // B. 전장 헥사곤 타일 근접 검사 (가장 가까운 헥스 중심 탐색)
+      let closestDist = Infinity;
+      let closestHex: { row: number; col: number } | null = null;
+
+      for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 7; c++) {
+          const pos = this.hexToWorldPos(r, c);
+          const d = Math.hypot(groundPoint.x - pos.x, groundPoint.z - pos.z);
+          if (d < closestDist) {
+            closestDist = d;
+            closestHex = { row: r, col: c };
+          }
+        }
+      }
+
+      if (closestHex && closestDist < this.hexRadius * 1.55) {
+        return { kind: 'HEX', row: closestHex.row, col: closestHex.col };
       }
     }
     return null;
