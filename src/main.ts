@@ -86,6 +86,9 @@ class FantasyAutoBattlerApp {
   // 플레이어가 터치(Tap)하여 선택한 기물 인스턴스 ID (선택/드래그 중일 때만 말풍선 이름표 표시)
   private selectedUnitInstanceId: string | null = null;
 
+  // 빈 땅 탭 완료 시에만 아바타를 이동하기 위한 후보 좌표
+  private pendingAvatarMove: { px: number; py: number } | null = null;
+
   // 메인 로비 화면 vs 인게임 세션 진행 여부
   private isInGameSession: boolean = false;
 
@@ -234,6 +237,21 @@ class FantasyAutoBattlerApp {
     document
       .getElementById('gameover-lobby-btn')
       ?.addEventListener('pointerup', () => this.returnToLobbyScreen());
+
+    // 증강체 모달 최소화 (필드 확인) & 복원
+    document
+      .getElementById('minimize-augment-btn')
+      ?.addEventListener('pointerup', () => {
+        document.getElementById('augment-modal')?.classList.add('hidden');
+        document.getElementById('restore-augment-bar')?.classList.remove('hidden');
+      });
+
+    document
+      .getElementById('restore-augment-btn')
+      ?.addEventListener('pointerup', () => {
+        document.getElementById('restore-augment-bar')?.classList.add('hidden');
+        document.getElementById('augment-modal')?.classList.remove('hidden');
+      });
 
     // 환경 설정 옵션 토글 이벤트
     document.querySelectorAll('#settings-speed-options .setting-opt-btn').forEach((btn) => {
@@ -408,7 +426,10 @@ class FantasyAutoBattlerApp {
       const hitHex = HexGridMath.screenPointToHex(
         px,
         py,
-        this.pixelRenderer.hexMetrics
+        this.pixelRenderer.hexMetrics,
+        8,
+        7,
+        1.5
       );
       if (hitHex) {
         const cu = this.game.playerCombatEngine.units.find(
@@ -460,7 +481,10 @@ class FantasyAutoBattlerApp {
     const hitHex = HexGridMath.screenPointToHex(
       px,
       py,
-      this.pixelRenderer.hexMetrics
+      this.pixelRenderer.hexMetrics,
+      8,
+      7,
+      1.5
     );
     if (hitHex && hitHex.row >= 4) {
       const boardRow = hitHex.row - 4;
@@ -491,14 +515,71 @@ class FantasyAutoBattlerApp {
       }
     }
 
-    // 4. 빈 곳 터치 시: 선택 해제 및 내 지휘관 아바타를 터치한 위치로 즉시 이동!
+    // 3-B. 자석(Magnetic) 기물 감지: 손가락 터치가 중심에서 약간 빗나갔더라도 48px 이내에 기물이 있으면 즉시 픽업
+    if (
+      this.game.phase === 'PREPARATION_PHASE' &&
+      viewed.id === this.game.player.id
+    ) {
+      const nearest = this.pixelRenderer.findNearestUnitInstance(
+        px,
+        py,
+        viewed,
+        48
+      );
+      if (nearest) {
+        const targetUnit = nearest.unit;
+        this.selectedUnitInstanceId = targetUnit.instanceId;
+
+        const bIdx = viewed.bench.findIndex(
+          (u) => u && u.instanceId === targetUnit.instanceId
+        );
+        if (bIdx !== -1) {
+          this.startPointerInteraction(
+            e,
+            {
+              kind: 'UNIT',
+              instanceId: targetUnit.instanceId,
+              unit: targetUnit,
+              fromArea: 'BENCH',
+              fromIndex: bIdx,
+            },
+            () => {
+              this.showUnitDetailTooltip(targetUnit);
+            }
+          );
+          return;
+        }
+
+        for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+          for (let c = 0; c < Participant.BOARD_COLS; c++) {
+            if (viewed.board[r][c]?.instanceId === targetUnit.instanceId) {
+              this.startPointerInteraction(
+                e,
+                {
+                  kind: 'UNIT',
+                  instanceId: targetUnit.instanceId,
+                  unit: targetUnit,
+                  fromArea: 'BOARD',
+                  fromRow: r,
+                  fromCol: c,
+                },
+                () => {
+                  this.showUnitDetailTooltip(targetUnit);
+                }
+              );
+              return;
+            }
+          }
+        }
+      }
+    }
+
+    // 4. 빈 곳 터치 시: 선택 해제 및 탭 완료(handlePointerUp) 시 이동하도록 후보 좌표만 저장
     this.selectedUnitInstanceId = null;
     document.getElementById('tap-tooltip-bar')?.classList.add('hidden');
 
     if (viewed.id === this.game.player.id) {
-      this.pixelRenderer.movePlayerAvatarTo(px, py);
-      // 터치 지점에 반짝이는 마법 핑 이펙트 스폰
-      this.pixelRenderer.spawnPixelSparks(px, py, '#38bdf8', 12);
+      this.pendingAvatarMove = { px, py };
     }
   }
 
@@ -516,6 +597,7 @@ class FantasyAutoBattlerApp {
     this.isDragging = false;
     this.dragPayload = payload;
     this.tapCallback = onShortTap;
+    this.pendingAvatarMove = null;
   }
 
   private handlePointerMove(e: PointerEvent): void {
@@ -527,6 +609,7 @@ class FantasyAutoBattlerApp {
     const dist = Math.hypot(dx, dy);
 
     if (!this.isDragging && dist > 8 && this.dragPayload) {
+      this.pendingAvatarMove = null;
       if (
         this.game.phase === 'PREPARATION_PHASE' &&
         this.game.viewedParticipantId === this.game.player.id
@@ -534,11 +617,7 @@ class FantasyAutoBattlerApp {
         this.isDragging = true;
         if (this.dragPayload.kind === 'UNIT') {
           this.selectedUnitInstanceId = this.dragPayload.instanceId;
-          if (this.isShopManuallyCollapsed) {
-            this.isShopManuallyCollapsed = false;
-            this.pixelRenderer.recomputeLayoutMetrics(true);
-            this.renderShopAndControls();
-          }
+          // 주의: 상점을 수동으로 접어둔 상태라면, 배치 시야를 가리지 않도록 강제로 펼치지 않음!
           this.showSellDropzoneOverlay(this.dragPayload.unit);
         }
         this.showDragGhost(e.clientX, e.clientY);
@@ -553,7 +632,7 @@ class FantasyAutoBattlerApp {
       this.hoveredBenchIndex = this.pixelRenderer.screenPointToBenchIndex(px, py);
       this.hoveredHex =
         this.hoveredBenchIndex === null
-          ? HexGridMath.screenPointToHex(px, py, this.pixelRenderer.hexMetrics)
+          ? HexGridMath.screenPointToHex(px, py, this.pixelRenderer.hexMetrics, 8, 7, 1.4)
           : null;
     }
   }
@@ -565,11 +644,13 @@ class FantasyAutoBattlerApp {
     const wasDragging = this.isDragging;
     const payload = this.dragPayload;
     const tapCb = this.tapCallback;
+    const avatarTarget = this.pendingAvatarMove;
 
     this.activePointerId = null;
     this.isDragging = false;
     this.dragPayload = null;
     this.tapCallback = null;
+    this.pendingAvatarMove = null;
     this.hoveredHex = null;
     this.hoveredBenchIndex = null;
 
@@ -578,6 +659,13 @@ class FantasyAutoBattlerApp {
 
     if (!wasDragging && elapsed < 360 && tapCb) {
       tapCb();
+      return;
+    }
+
+    // 드래그가 아니었고 기물을 탭한 것도 아니라면 빈 땅 탭 이동 실행!
+    if (!wasDragging && avatarTarget && this.game.viewedParticipantId === this.game.player.id) {
+      this.pixelRenderer.movePlayerAvatarTo(avatarTarget.px, avatarTarget.py);
+      this.pixelRenderer.spawnPixelSparks(avatarTarget.px, avatarTarget.py, '#38bdf8', 12);
       return;
     }
 
@@ -737,11 +825,15 @@ class FantasyAutoBattlerApp {
     const py = pt.y;
 
     if (payload.kind === 'UNIT') {
-      if (
+      const isShopExpanded = this.isShopCurrentlyExpanded();
+      const isSellingArea =
+        domTarget?.closest('#sell-dropzone-overlay') ||
         domTarget?.closest('#shop-cards-wrapper') ||
-        domTarget?.closest('#bottom-shop-bar') ||
-        py >= this.pixelRenderer.viewportHeight - 92
-      ) {
+        (isShopExpanded &&
+          (domTarget?.closest('#bottom-shop-bar') ||
+            py >= this.pixelRenderer.viewportHeight - 92));
+
+      if (isSellingArea) {
         const earned = player.sellUnit(payload.instanceId, this.game.sharedPool);
         if (earned > 0) {
           this.selectedUnitInstanceId = null;
@@ -776,11 +868,20 @@ class FantasyAutoBattlerApp {
         return;
       }
 
-      const hitHex = HexGridMath.screenPointToHex(
+      let hitHex = HexGridMath.screenPointToHex(
         px,
         py,
-        this.pixelRenderer.hexMetrics
+        this.pixelRenderer.hexMetrics,
+        8,
+        7,
+        1.5
       );
+      if (!hitHex || hitHex.row < 4) {
+        const m = this.pixelRenderer.hexMetrics;
+        if (py >= m.originY + 3.0 * m.rowStepY && py <= m.boardBottomY + 25) {
+          hitHex = HexGridMath.screenPointToHex(px, py, m, 8, 7, 2.2);
+        }
+      }
       if (hitHex && hitHex.row >= 4) {
         const boardRow = hitHex.row - 4;
         const boardCol = hitHex.col;
@@ -1407,9 +1508,16 @@ class FantasyAutoBattlerApp {
         )
         .join('');
 
+      const nameTokens = template.name.trim().split(' ');
+      const coreName = nameTokens[nameTokens.length - 1];
+      const prefix = nameTokens.length > 1 ? nameTokens.slice(0, -1).join(' ') : '';
+
       card.innerHTML = `
         <div class="shop-card-top cost-header-${template.cost}">
-          <span class="shop-unit-name">${template.name}</span>
+          <div class="shop-unit-name-box" title="${template.name}">
+            ${prefix ? `<span class="shop-unit-prefix">${prefix}</span>` : ''}
+            <span class="shop-unit-name">${coreName}</span>
+          </div>
           <span class="shop-cost-pill cost-tag-${template.cost}">🪙${template.cost}G</span>
         </div>
         ${mergeHintBadge}
@@ -1453,18 +1561,29 @@ class FantasyAutoBattlerApp {
   private renderPhaseModals(): void {
     const augModal = document.getElementById('augment-modal');
     const augRow = document.getElementById('augment-cards-row');
+    const restoreAugBar = document.getElementById('restore-augment-bar');
+
     if (augModal && augRow) {
       if (this.game.phase === 'AUGMENT_PHASE') {
-        augModal.classList.remove('hidden');
+        if (!restoreAugBar || restoreAugBar.classList.contains('hidden')) {
+          augModal.classList.remove('hidden');
+        }
         augRow.innerHTML = '';
 
         this.game.playerAugmentChoices.forEach((aug, idx) => {
           const card = document.createElement('div');
           card.className = `augment-card tier-${aug.tier}`;
           const canReroll = !this.game.augmentCardRerolled[idx as 0 | 1 | 2];
+          const tierLabel =
+            aug.tier === 'PRISMATIC'
+              ? '💎 프리즘 증강체'
+              : aug.tier === 'GOLD'
+              ? '🥇 골드 증강체'
+              : '🥈 실버 증강체';
 
           card.innerHTML = `
             <div>
+              <div class="aug-tier-ribbon">${tierLabel}</div>
               <div class="aug-card-icon">${aug.icon}</div>
               <div class="aug-card-title">${aug.name}</div>
               <div class="aug-card-desc">${aug.description}</div>
@@ -1480,6 +1599,7 @@ class FantasyAutoBattlerApp {
           card
             .querySelector('.select-aug-btn')
             ?.addEventListener('pointerup', () => {
+              restoreAugBar?.classList.add('hidden');
               this.game.selectPlayerAugment(idx);
             });
           card
@@ -1492,6 +1612,7 @@ class FantasyAutoBattlerApp {
         });
       } else {
         augModal.classList.add('hidden');
+        restoreAugBar?.classList.add('hidden');
       }
     }
 

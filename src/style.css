@@ -1002,11 +1002,11 @@ img {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 3px;
-  padding: 2px 5px;
+  gap: 2px;
+  padding: 2px 4px;
   background: rgba(7, 10, 20, 0.88);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  font-size: 10px;
+  min-height: 28px;
   color: #ffffff;
 }
 
@@ -1016,13 +1016,32 @@ img {
 .cost-header-4 { background: rgba(88, 28, 135, 0.7); }
 .cost-header-5 { background: rgba(124, 45, 18, 0.7); }
 
-.shop-unit-name {
-  font-weight: 700;
-  color: #ffffff;
-  font-size: 10px;
+.shop-unit-name-box {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  line-height: 1.05;
+}
+
+.shop-unit-prefix {
+  font-size: 7.5px;
+  color: #94a3b8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: -0.2px;
+}
+
+.shop-unit-name {
+  font-weight: 800;
+  color: #ffffff;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.3px;
 }
 
 .shop-cost-pill {
@@ -1174,7 +1193,7 @@ img {
 .modal-backdrop {
   position: absolute;
   inset: 0;
-  z-index: 40;
+  z-index: 5000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1223,21 +1242,119 @@ img {
 }
 
 .augment-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   padding: 10px;
-  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-  border: 2px solid #64748b;
   border-radius: 10px;
   cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.augment-card.tier-GOLD {
-  border-color: #facc15;
+.augment-card:hover {
+  transform: translateY(-2px);
 }
+
+/* 실버 티어 증강체 */
+.augment-card.tier-SILVER {
+  background: linear-gradient(180deg, #334155 0%, #1e293b 60%, #0f172a 100%);
+  border: 2px solid #94a3b8;
+  box-shadow: 0 4px 14px rgba(148, 163, 184, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.augment-card.tier-SILVER .aug-tier-ribbon {
+  background: linear-gradient(90deg, #475569, #94a3b8);
+  color: #f8fafc;
+  border: 1px solid #cbd5e1;
+}
+
+/* 골드 티어 증강체 */
+.augment-card.tier-GOLD {
+  background: linear-gradient(180deg, #451a03 0%, #1e1b4b 60%, #0f172a 100%);
+  border: 2px solid #facc15;
+  box-shadow: 0 6px 20px rgba(234, 179, 8, 0.4), inset 0 1px 0 rgba(254, 240, 138, 0.4);
+}
+.augment-card.tier-GOLD .aug-tier-ribbon {
+  background: linear-gradient(90deg, #b45309, #f59e0b);
+  color: #fef08a;
+  border: 1px solid #fde047;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.augment-card.tier-GOLD .aug-card-title {
+  color: #fde047;
+  text-shadow: 0 0 8px rgba(250, 204, 21, 0.5);
+}
+
+/* 프리즘 티어 증강체 */
 .augment-card.tier-PRISMATIC {
-  border-color: #38bdf8;
+  background: linear-gradient(180deg, #2e1065 0%, #0f172a 60%, #022c22 100%);
+  border: 2.5px solid #38bdf8;
+  box-shadow: 0 8px 24px rgba(56, 189, 248, 0.5), 0 0 16px rgba(168, 85, 247, 0.4), inset 0 1px 0 rgba(224, 242, 254, 0.6);
+  animation: prismaticBorderPulse 3s infinite alternate ease-in-out;
+}
+.augment-card.tier-PRISMATIC .aug-tier-ribbon {
+  background: linear-gradient(90deg, #7c3aed, #06b6d4, #ec4899);
+  color: #ffffff;
+  border: 1px solid #e0f2fe;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  font-weight: 900;
+}
+.augment-card.tier-PRISMATIC .aug-card-title {
+  color: #38bdf8;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+}
+
+@keyframes prismaticBorderPulse {
+  0% { border-color: #38bdf8; box-shadow: 0 8px 24px rgba(56, 189, 248, 0.5), 0 0 16px rgba(168, 85, 247, 0.4); }
+  50% { border-color: #c084fc; box-shadow: 0 8px 24px rgba(192, 132, 252, 0.5), 0 0 16px rgba(236, 72, 153, 0.4); }
+  100% { border-color: #34d399; box-shadow: 0 8px 24px rgba(52, 211, 153, 0.5), 0 0 16px rgba(56, 189, 248, 0.4); }
+}
+
+.aug-tier-ribbon {
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
+}
+
+.restore-augment-bar {
+  position: absolute;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.restore-augment-pill {
+  padding: 8px 20px;
+  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #9333ea 100%);
+  border: 2px solid #fde047;
+  border-radius: 9999px;
+  color: #ffffff;
+  font-family: 'Jua', sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.6), 0 0 12px rgba(253, 224, 71, 0.5);
+  animation: pulseRestoreGlow 1.5s infinite alternate ease-in-out;
+}
+
+@keyframes pulseRestoreGlow {
+  from {
+    transform: scale(1);
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.6), 0 0 12px rgba(253, 224, 71, 0.5);
+  }
+  to {
+    transform: scale(1.04);
+    box-shadow: 0 6px 22px rgba(59, 130, 246, 0.8), 0 0 18px rgba(253, 224, 71, 0.8);
+  }
 }
 
 .aug-card-icon {

@@ -281,14 +281,15 @@ export class HexGridMath {
     py: number,
     metrics: HexBoardViewportMetrics,
     maxRows: number = HexGridMath.ROWS,
-    maxCols: number = HexGridMath.COLS
+    maxCols: number = HexGridMath.COLS,
+    toleranceMultiplier: number = 1.4
   ): HexCoord | null {
     let bestRow = -1;
     let bestCol = -1;
     let bestNormDistSq = Infinity;
 
-    const hitRadiusX = metrics.hexRadius * 1.05;
-    const hitRadiusY = metrics.hexRadius * metrics.perspectiveRatio * 1.08;
+    const hitRadiusX = metrics.hexRadius * toleranceMultiplier;
+    const hitRadiusY = metrics.hexRadius * metrics.perspectiveRatio * (toleranceMultiplier * 1.05);
 
     for (let r = 0; r < maxRows; r++) {
       for (let c = 0; c < maxCols; c++) {

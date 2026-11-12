@@ -1,7 +1,15 @@
 // src/PixelGameRenderer.ts
 
 import { getCreepMonsterTemplate, isCreepMonsterUnitId } from './CreepMonsterData';
-import { CostTier, ITEM_DEFINITIONS, ItemId, StarLevel } from './GameData';
+import {
+  CostTier,
+  ITEM_DEFINITIONS,
+  ItemId,
+  StarLevel,
+  TRAIT_DEFINITIONS,
+  TraitId,
+  UNIT_TEMPLATES,
+} from './GameData';
 import { AvatarFinisherLaserPayload } from './GameLoopManager';
 import { HexBoardViewportMetrics, HexCoord, HexGridMath } from './HexGridMath';
 import { Participant, UnitInstance } from './Participant';
@@ -1018,8 +1026,8 @@ export class PixelGameRenderer {
 
     const topHudPx = 38;
     const bottomReservedPx = isShopExpanded ? Math.min(108, Math.floor(h * 0.28)) : 16;
-    const leftDockPx = 68;
-    const rightDockPx = 78;
+    const leftDockPx = w < 680 ? 46 : 68;
+    const rightDockPx = w < 680 ? 50 : 78;
 
     const arenaLeft = leftDockPx;
     const arenaTop = topHudPx;
@@ -1062,12 +1070,19 @@ export class PixelGameRenderer {
 
 
   /**
-   * 화면 포인터 좌표 (px, py)가 하단 1x9 대기석 슬롯(0~8) 중 어디에 속하는지 반환
+   * 화면 포인터 좌표 (px, py)가 하단 1x9 대기석 슬롯(0~8) 중 어디에 속하는지 반환 (터치 보정 패딩 포함)
    */
   public screenPointToBenchIndex(px: number, py: number): number | null {
+    const padX = 6;
+    const padY = 16;
     for (let i = 0; i < this.benchSlotRects.length; i++) {
       const r = this.benchSlotRects[i];
-      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
+      if (
+        px >= r.x - padX &&
+        px <= r.x + r.w + padX &&
+        py >= r.y - padY &&
+        py <= r.y + r.h + padY
+      ) {
         return i;
       }
     }
@@ -2193,6 +2208,30 @@ export class PixelGameRenderer {
     ctx.textAlign = 'center';
     ctx.fillText(`대기석 ${benchCount}/9`, tagX + tagW * 0.5, tagY + 10);
 
+    // 선택된 기물이 있는 경우 해당 기물의 시너지(traits)를 추출하여 공유 기물 강조
+    let selectedTraits: TraitId[] = [];
+    if (selectedInstanceId) {
+      let selU: UnitInstance | null = null;
+      for (const row of participant.board) {
+        for (const u of row) {
+          if (u && u.instanceId === selectedInstanceId) {
+            selU = u;
+            break;
+          }
+        }
+        if (selU) break;
+      }
+      if (!selU) {
+        selU =
+          participant.bench.find(
+            (u) => u && u.instanceId === selectedInstanceId
+          ) || null;
+      }
+      if (selU) {
+        selectedTraits = UNIT_TEMPLATES[selU.unitId]?.traits || [];
+      }
+    }
+
     // 3) 9개 개별 영웅 대기 페데스탈(Pedestal) 슬롯 렌더링
     for (let i = 0; i < this.benchSlotRects.length; i++) {
       const slot = this.benchSlotRects[i];
@@ -2254,6 +2293,12 @@ export class PixelGameRenderer {
         const tileCenterX = slot.x + slot.w * 0.5;
         const tileCenterY = slot.y + slot.h * 0.56;
         const isSelected = unit.instanceId === selectedInstanceId;
+        const isSynergyMatch =
+          !isSelected &&
+          selectedTraits.length > 0 &&
+          (UNIT_TEMPLATES[unit.unitId]?.traits || []).some((t) =>
+            selectedTraits.includes(t)
+          );
         this.drawUnitCompleteOnCanvas(ctx, {
           unitId: unit.unitId,
           name: unit.name,
@@ -2277,6 +2322,7 @@ export class PixelGameRenderer {
           isSelectedOrDragged: isSelected,
           compactBenchMode: true,
           benchSlotWidth: slot.w,
+          isSynergyHighlighted: isSynergyMatch,
         });
       }
     }
@@ -2299,6 +2345,29 @@ export class PixelGameRenderer {
       screenY: number;
     }> = [];
 
+    let selectedTraits: TraitId[] = [];
+    if (selectedInstanceId) {
+      let selU: UnitInstance | null = null;
+      for (const row of participant.board) {
+        for (const u of row) {
+          if (u && u.instanceId === selectedInstanceId) {
+            selU = u;
+            break;
+          }
+        }
+        if (selU) break;
+      }
+      if (!selU) {
+        selU =
+          participant.bench.find(
+            (u) => u && u.instanceId === selectedInstanceId
+          ) || null;
+      }
+      if (selU) {
+        selectedTraits = UNIT_TEMPLATES[selU.unitId]?.traits || [];
+      }
+    }
+
     for (let r = 0; r < Participant.BOARD_ROWS; r++) {
       for (let c = 0; c < Participant.BOARD_COLS; c++) {
         const unit = participant.board[r][c];
@@ -2318,6 +2387,13 @@ export class PixelGameRenderer {
 
     for (const entry of renderList) {
       const { unit, screenX, screenY } = entry;
+      const isSelected = unit.instanceId === selectedInstanceId;
+      const isSynergyMatch =
+        !isSelected &&
+        selectedTraits.length > 0 &&
+        (UNIT_TEMPLATES[unit.unitId]?.traits || []).some((t) =>
+          selectedTraits.includes(t)
+        );
       this.drawUnitCompleteOnCanvas(ctx, {
         unitId: unit.unitId,
         name: unit.name,
@@ -2338,8 +2414,9 @@ export class PixelGameRenderer {
         squashRatioY: 1,
         isStunned: false,
         isReviving: false,
-        isSelectedOrDragged: unit.instanceId === selectedInstanceId,
+        isSelectedOrDragged: isSelected,
         compactBenchMode: false,
+        isSynergyHighlighted: isSynergyMatch,
       });
     }
   }
@@ -2529,16 +2606,17 @@ export class PixelGameRenderer {
       isSelectedOrDragged: boolean;
       compactBenchMode: boolean;
       benchSlotWidth?: number;
+      isSynergyHighlighted?: boolean;
     }
   ): void {
     const m = this.hexMetrics;
 
-    // 6. 캐릭터 스케일: 기본 1성 캐릭터의 렌더링 크기를 hexWidth * 0.9 (2성은 1.15배, 3성은 1.4배)
+    // 6. 캐릭터 스케일: 전장에서 영웅답게 크고 시원하게 보이도록 1.15배 확대 (2성은 1.25배, 3성은 1.5배)
     const starScale =
-      u.starLevel === 3 ? 1.4 : u.starLevel === 2 ? 1.15 : 1.0;
+      u.starLevel === 3 ? 1.5 : u.starLevel === 2 ? 1.25 : 1.05;
     const base1StarSize = u.compactBenchMode
-      ? (u.benchSlotWidth ?? 36) * 0.86
-      : m.hexWidth * 0.9;
+      ? (u.benchSlotWidth ?? 36) * 0.95
+      : m.hexWidth * 1.15;
 
     const spriteDrawW = Math.round(base1StarSize * starScale * u.squashRatioX);
     const spriteDrawH = Math.round(base1StarSize * starScale * u.squashRatioY);
@@ -2567,23 +2645,38 @@ export class PixelGameRenderer {
     }
 
     // 2) 발바닥 기준점(feetAnchorX, feetAnchorY)에 타원형 반투명 그림자(Drop Shadow)
-    const shadowRx = Math.max(10, spriteDrawW * 0.34);
-    const shadowRy = Math.max(4, shadowRx * 0.38);
+    const shadowRx = Math.max(12, spriteDrawW * 0.34);
+    const shadowRy = Math.max(5, shadowRx * 0.38);
     ctx.beginPath();
     ctx.ellipse(feetAnchorX, feetAnchorY, shadowRx, shadowRy, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.56)';
     ctx.fill();
 
-    // 3) 선택된 기물 발밑 하이라이트 링
+    // 3) 선택된 기물 발밑 황금 하이라이트 링 & 동일 시너지 공유 기물 시안빛 공명 링
     if (u.isSelectedOrDragged) {
       ctx.strokeStyle = '#ffea00';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.ellipse(
         feetAnchorX,
         feetAnchorY,
         shadowRx * 1.25,
         shadowRy * 1.25,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.stroke();
+    } else if (u.isSynergyHighlighted) {
+      const pulse = 0.55 + 0.45 * Math.sin(this.globalAnimClockMs * 0.009);
+      ctx.strokeStyle = `rgba(56, 189, 248, ${pulse})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(
+        feetAnchorX,
+        feetAnchorY,
+        shadowRx * 1.35,
+        shadowRy * 1.35,
         0,
         0,
         Math.PI * 2
@@ -2901,13 +2994,41 @@ export class PixelGameRenderer {
       });
     }
 
-    // 7) 예외 처리: 플레이어가 해당 기물을 터치(Tap)하여 선택했거나 드래그 중일 때만 기물 말풍선으로 이름 표시
+    // 6-8) 시너지 미니 뱃지 (체력바 우측 끝에 기물이 가진 시너지 아이콘들을 상시 표시)
+    const unitTpl = UNIT_TEMPLATES[u.unitId];
+    if (unitTpl && unitTpl.traits && unitTpl.traits.length > 0 && !u.compactBenchMode) {
+      const traits = unitTpl.traits;
+      const traitSlotW = traits.length * 11 + 4;
+      const traitSlotH = totalFrameH + 2;
+      const traitX = barX + barWidth + 3;
+      const traitY = barY - 1;
+
+      ctx.fillStyle = 'rgba(10, 14, 23, 0.94)';
+      this.fillBeveledRect(ctx, traitX, traitY, traitSlotW, traitSlotH, 2.5);
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 1;
+      this.strokeBeveledRect(ctx, traitX, traitY, traitSlotW, traitSlotH, 2.5);
+
+      traits.forEach((tid, idx) => {
+        const tdef = TRAIT_DEFINITIONS[tid];
+        if (!tdef) return;
+        ctx.font = '8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(tdef.icon, traitX + 6 + idx * 11, traitY + Math.round(traitSlotH * 0.74));
+      });
+    }
+
+    // 7) 예외 처리: 플레이어가 해당 기물을 터치(Tap)하여 선택했거나 드래그 중일 때 기물 말풍선으로 이름 및 시너지 상세 표시
     if (u.isSelectedOrDragged) {
+      let traitTags = '';
+      if (unitTpl && unitTpl.traits) {
+        traitTags = ' ' + unitTpl.traits.map(t => `${TRAIT_DEFINITIONS[t]?.icon || ''}${TRAIT_DEFINITIONS[t]?.name.slice(0, 2) || ''}`).join(' ');
+      }
       this.drawSelectedUnitNameBubble(
         ctx,
         feetAnchorX,
         barY - (u.items.length > 0 ? 18 : 6),
-        `${u.name} ${starsStr}`,
+        `${u.name} ${starsStr}${traitTags}`,
         costColor
       );
     }
