@@ -1,0 +1,213 @@
+// src/SynergyEngine.ts
+
+import {
+  TRAIT_DEFINITIONS,
+  TraitDefinition,
+  TraitEffectTier,
+  TraitId,
+  UNIT_TEMPLATES,
+} from './GameData';
+import { Participant, UnitInstance } from './Participant';
+
+export type SynergyStyleTier = 'NONE' | 'BRONZE' | 'SILVER' | 'GOLD' | 'PRISMATIC';
+
+export interface ActiveSynergyState {
+  traitId: TraitId;
+  definition: TraitDefinition;
+  count: number;
+  activeThreshold: number | null;
+  nextThreshold: number | null;
+  styleTier: SynergyStyleTier;
+  activeEffect: TraitEffectTier | null;
+}
+
+const STYLE_PRIORITY: Record<SynergyStyleTier, number> = {
+  PRISMATIC: 4,
+  GOLD: 3,
+  SILVER: 2,
+  BRONZE: 1,
+  NONE: 0,
+};
+
+export class SynergyEngine {
+  /**
+   * participant.board 위에 배치된 기물들의 고유 unitId만 추출(Set)하여
+   * 각 기물의 traits 카운트를 합산하고, participant.bonusTraits(증강체 추가 시너지)를 더해
+   * 각 시너지의 현재 카운트, 활성화된 등급(NONE, BRONZE, SILVER, GOLD, PRISMATIC),
+   * 그리고 적용될 수치 데이터(activeEffect)를 반환한다.
+   */
+  public static calculateActiveSynergies(participant: Participant): ActiveSynergyState[] {
+    const traitCounts = new Map<TraitId, number>();
+    const uniqueBoardUnitIds = new Set<string>();
+
+    // 1. 보드 위 고유(Unique) 기물 추출 및 시너지 카운트 합산
+    for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+      for (let c = 0; c < Participant.BOARD_COLS; c++) {
+        const unit = participant.board[r][c];
+        if (!unit || unit.currentHp <= 0) continue;
+        if (uniqueBoardUnitIds.has(unit.unitId)) continue;
+
+        uniqueBoardUnitIds.add(unit.unitId);
+        const template = UNIT_TEMPLATES[unit.unitId];
+        const traits = template ? template.traits : unit.traits;
+
+        for (const traitId of traits) {
+          traitCounts.set(traitId, (traitCounts.get(traitId) ?? 0) + 1);
+        }
+      }
+    }
+
+    // 2. 증강체(문장/왕관)로 획득한 bonusTraits 합산
+    for (const [traitId, bonusCount] of participant.bonusTraits.entries()) {
+      if (bonusCount > 0) {
+        traitCounts.set(traitId, (traitCounts.get(traitId) ?? 0) + bonusCount);
+      }
+    }
+
+    // 3. 각 시너지별 활성화 단계(BRONZE / SILVER / GOLD / PRISMATIC) 및 효과 계산
+    const results: ActiveSynergyState[] = [];
+
+    for (const [traitId, count] of traitCounts.entries()) {
+      if (count <= 0) continue;
+      const definition = TRAIT_DEFINITIONS[traitId];
+      if (!definition) continue;
+
+      const state = SynergyEngine.buildSynergyState(definition, count);
+      results.push(state);
+    }
+
+    // 4. 정렬: 활성화된 등급 높은 순 -> 활성 여부 -> 현재 카운트 높은 순
+    results.sort((a, b) => {
+      const prioDiff = STYLE_PRIORITY[b.styleTier] - STYLE_PRIORITY[a.styleTier];
+      if (prioDiff !== 0) return prioDiff;
+      return b.count - a.count;
+    });
+
+    return results;
+  }
+
+  /**
+   * 특정 시너지 정의와 카운트를 받아 등급(NONE~PRISMATIC) 및 효과 객체를 생성한다.
+   */
+  public static buildSynergyState(
+    definition: TraitDefinition,
+    count: number
+  ): ActiveSynergyState {
+    const { thresholds, effects } = definition;
+    let activeIndex = -1;
+
+    for (let i = 0; i < thresholds.length; i++) {
+      if (count >= thresholds[i]) {
+        activeIndex = i;
+      }
+    }
+
+    const activeThreshold = activeIndex >= 0 ? thresholds[activeIndex] : null;
+    const nextThreshold =
+      activeIndex + 1 < thresholds.length ? thresholds[activeIndex + 1] : null;
+    const activeEffect: TraitEffectTier | null =
+      activeIndex >= 0 ? effects[activeIndex] ?? null : null;
+
+    const styleTier = SynergyEngine.resolveStyleTier(
+      definition.id,
+      thresholds,
+      activeIndex
+    );
+
+    return {
+      traitId: definition.id,
+      definition,
+      count,
+      activeThreshold,
+      nextThreshold,
+      styleTier,
+      activeEffect,
+    };
+  }
+
+  /**
+   * 시너지 임계값 단계에 따른 시각적 등급(NONE, BRONZE, SILVER, GOLD, PRISMATIC) 판정
+   */
+  private static resolveStyleTier(
+    traitId: TraitId,
+    thresholds: number[],
+    activeIndex: number
+  ): SynergyStyleTier {
+    if (activeIndex < 0) return 'NONE';
+
+    // 황금 고블린(3/5)의 경우 3단계는 GOLD, 5단계는 PRISMATIC
+    if (traitId === 'GOLDEN_GOBLIN') {
+      return activeIndex === 0 ? 'GOLD' : 'PRISMATIC';
+    }
+
+    const totalTiers = thresholds.length;
+    if (totalTiers === 2) {
+      // [2, 4] 또는 [2, 3] 시너지: 1단계 BRONZE, 2단계 GOLD
+      return activeIndex === 0 ? 'BRONZE' : 'GOLD';
+    }
+
+    if (totalTiers === 3) {
+      // [2, 4, 6] 또는 [2, 3, 4] 시너지: 1단계 BRONZE, 2단계 GOLD, 최종단계 PRISMATIC (6단 이상) 또는 GOLD
+      if (activeIndex === 0) return 'BRONZE';
+      if (activeIndex === 1) return 'SILVER';
+      return thresholds[activeIndex] >= 6 || traitId === 'DRAGONKIN'
+        ? 'PRISMATIC'
+        : 'GOLD';
+    }
+
+    return 'GOLD';
+  }
+
+  /**
+   * 빠른 조회를 위해 TraitId -> ActiveSynergyState 맵을 반환한다.
+   */
+  public static getActiveSynergyMap(
+    participant: Participant
+  ): Map<TraitId, ActiveSynergyState> {
+    const list = SynergyEngine.calculateActiveSynergies(participant);
+    const map = new Map<TraitId, ActiveSynergyState>();
+    for (const item of list) {
+      map.set(item.traitId, item);
+    }
+    return map;
+  }
+
+  /**
+   * 임의의 기물 조합이 만들어내는 시너지 점수를 수치화한다 (AI 봇 최적 조합 평가용).
+   */
+  public static evaluateCandidateUnitsSynergyScore(
+    units: UnitInstance[],
+    bonusTraits?: Map<TraitId, number>
+  ): number {
+    const counts = new Map<TraitId, number>();
+    const uniqueIds = new Set<string>();
+
+    for (const u of units) {
+      if (uniqueIds.has(u.unitId)) continue;
+      uniqueIds.add(u.unitId);
+      for (const t of u.traits) {
+        counts.set(t, (counts.get(t) ?? 0) + 1);
+      }
+    }
+
+    if (bonusTraits) {
+      for (const [t, b] of bonusTraits.entries()) {
+        counts.set(t, (counts.get(t) ?? 0) + b);
+      }
+    }
+
+    let score = 0;
+    for (const [traitId, count] of counts.entries()) {
+      const def = TRAIT_DEFINITIONS[traitId];
+      if (!def) continue;
+      const state = SynergyEngine.buildSynergyState(def, count);
+      if (state.styleTier === 'PRISMATIC') score += 48;
+      else if (state.styleTier === 'GOLD') score += 28;
+      else if (state.styleTier === 'SILVER') score += 16;
+      else if (state.styleTier === 'BRONZE') score += 9;
+      else if (count > 0) score += count * 1.5;
+    }
+
+    return score;
+  }
+}
