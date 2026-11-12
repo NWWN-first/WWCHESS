@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">WWCHESS Fantasy AutoBattler</string>
+    <string name="title_activity_main">WWCHESS Fantasy AutoBattler</string>
+    <string name="package_name">com.wwchess.fantasyautobattler</string>
+    <string name="custom_url_scheme">com.wwchess.fantasyautobattler</string>
+</resources>
