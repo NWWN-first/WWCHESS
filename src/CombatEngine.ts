@@ -155,6 +155,50 @@ export class CombatEngine implements SkillCombatContext {
   }
 
   /**
+   * 유닛의 고유 역할군/시너지/체형 특성에 따른 1칸 보행 소요 시간(ms)을 산출한다.
+   * - 암살자/고블린 경보병: 360~400ms (재빠르고 날렵한 발걸음)
+   * - 광전사/비룡 기병/대천사: 450~470ms (기동형 돌격)
+   * - 순찰자/마법사/일반 보병: 500~540ms (표준 보행)
+   * - 중장갑 선봉대/거대 나무 정령/마군주: 580~650ms (묵직하고 위압감 있는 중갑 행군)
+   */
+  private computeCharacteristicMoveIntervalMs(source: UnitInstance): number {
+    const unitCustomMap: Record<string, number> = {
+      u1_gob: 360, // 고블린 소매치기: 가장 가볍고 재빠름
+      u3_kazu: 380, // 환영 자객 카즈: 닌자 질주
+      u1_zix: 390, // 그림자 단검 카직: 날렵한 암살자
+      u2_vayne: 430, // 은화살 사냥꾼 베인: 경장 추격자
+      u2_fenrir: 440, // 광전사 펜리르: 야수 질주 (광기 발동 시 310ms로 폭주)
+      u3_drake: 450, // 화염 기병 드레이크: 비룡 기병
+      u5_michael: 460, // 대천사 미카엘: 날개 강림 비행
+      u5_ignis: 470, // 고대 화염용 이그니스: 거룡 비행
+      u1_pip: 480, // 숲의 요정 핍: 경쾌한 발걸음
+      u4_sylph: 490, // 바람의 신궁 실피: 바람 걸음
+      u1_elise: 500, // 성전사 수습생 엘리스
+      u2_boom: 500, // 폭탄광 붐
+      u2_lyra: 510, // 달빛 무녀 라이라
+      u3_malakor: 510, // 영혼 수확자 말라코르
+      u1_vex: 520, // 비전 학도 벡스
+      u5_goldtooth: 530, // 황금 고블린 왕 골드투스
+      u4_velkora: 540, // 대현자 벨코라
+      u1_garen: 580, // 신성 수호병 가렌: 중갑 보병
+      u1_bone: 600, // 해골 방패병 본즈: 중장갑 방패병
+      u3_leona: 610, // 태양의 성기사 레오나: 중갑 대방패
+      u4_astaroth: 630, // 심연의 군주 아스타로스: 거대 마군주
+      u2_thorn: 650, // 가시 덩굴 수호자 쏜: 거대 고목 정령 (가장 묵직함)
+    };
+
+    if (unitCustomMap[source.unitId] !== undefined) {
+      return unitCustomMap[source.unitId];
+    }
+
+    if (source.traits.includes('SHADOW_ASSASSIN')) return 380;
+    if (source.traits.includes('BERSERKER')) return 450;
+    if (source.traits.includes('VANGUARD')) return 600;
+    if (source.traits.includes('RANGER')) return 490;
+    return 520;
+  }
+
+  /**
    * 원본 UnitInstance를 오염시키지 않도록 깊은 복사하고 시너지/아이템/증강체 초기 버프를 적용한다.
    */
   private createDeepClonedCombatUnit(
@@ -165,6 +209,11 @@ export class CombatEngine implements SkillCombatContext {
     owner: Participant,
     synergyMap: Map<TraitId, ActiveSynergyState>
   ): CombatUnit {
+    const baseMoveIntervalMs = this.computeCharacteristicMoveIntervalMs(source);
+    // 개전 직후 기물마다 자연스러운 출발 차이를 두어 기계적인 동시 이동을 방지
+    const initialMoveStaggerMs =
+      100 + ((row * 37 + col * 53) % 140) + (source.traits.includes('VANGUARD') ? 60 : 0);
+
     const cu: CombatUnit = {
       instanceId: `${team}_${source.instanceId}`,
       unitId: source.unitId,
@@ -201,6 +250,8 @@ export class CombatEngine implements SkillCombatContext {
       stunTimerMs: 0,
       manaLockTimerMs: 0,
       attackCooldownMs: Math.round(1000 / Math.max(0.2, source.atkSpeed)),
+      baseMoveIntervalMs,
+      moveCooldownMs: initialMoveStaggerMs,
       basicAttackCount: 0,
       titansStacks: 0,
       berserkTriggered: false,
@@ -214,6 +265,7 @@ export class CombatEngine implements SkillCombatContext {
       ownerGold: owner.gold,
       totalDamageDealt: 0,
     };
+
 
     // 아이템 고유 패시브(무한의 대검 스킬 치명타) 반영
     for (const itemId of cu.items) {
@@ -640,12 +692,15 @@ export class CombatEngine implements SkillCombatContext {
 
       if (unit.currentHp <= 0) continue;
 
-      // 마나 락 및 공격 쿨타임 감소
+      // 마나 락, 공격 쿨타임 및 이동 쿨타임 감소
       if (unit.manaLockTimerMs > 0) {
         unit.manaLockTimerMs = Math.max(0, unit.manaLockTimerMs - deltaMs);
       }
       if (unit.attackCooldownMs > 0) {
         unit.attackCooldownMs = Math.max(0, unit.attackCooldownMs - deltaMs);
+      }
+      if (unit.moveCooldownMs > 0) {
+        unit.moveCooldownMs = Math.max(0, unit.moveCooldownMs - deltaMs);
       }
 
       // 기절(Stun) 상태 확인
@@ -667,8 +722,11 @@ export class CombatEngine implements SkillCombatContext {
         target.col
       );
 
-      // 사거리 밖에 있으면 타일 예약제 A* 길찾기로 1칸 이동
+      // 사거리 밖에 있으면 유닛 고유 보행 주기(moveCooldownMs)가 돌아왔을 때만 1칸 이동
       if (dist > unit.range) {
+        if (unit.moveCooldownMs > 0) {
+          continue;
+        }
         const nextTile = this.findNextStepWithReservation(
           unit,
           target,
@@ -680,6 +738,11 @@ export class CombatEngine implements SkillCombatContext {
           const fromCol = unit.col;
           unit.row = nextTile.row;
           unit.col = nextTile.col;
+          const stepIntervalMs = unit.berserkTriggered
+            ? Math.max(260, Math.round(unit.baseMoveIntervalMs * 0.72))
+            : unit.baseMoveIntervalMs;
+          unit.moveCooldownMs = stepIntervalMs;
+
           this.emitEvent({
             type: 'MOVE',
             tick: this.currentTick,
@@ -690,10 +753,12 @@ export class CombatEngine implements SkillCombatContext {
             fromCol,
             toRow: unit.row,
             toCol: unit.col,
+            durationMs: stepIntervalMs,
           });
         }
         continue;
       }
+
 
       // 사거리 내에 타겟이 있을 때:
       // A) 마나가 가득 찼다면 즉시 스킬 시전!

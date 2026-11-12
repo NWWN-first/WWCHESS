@@ -40,6 +40,7 @@ export interface CombatEvent {
   damageType?: CombatDamageType;
   isCrit?: boolean;
   goldAmount?: number;
+  durationMs?: number;
   message?: string;
 }
 
@@ -86,8 +87,11 @@ export interface CombatUnit {
   stunTimerMs: number;
   manaLockTimerMs: number;
   attackCooldownMs: number;
+  baseMoveIntervalMs: number;
+  moveCooldownMs: number;
 
   basicAttackCount: number;
+
   titansStacks: number;
   berserkTriggered: boolean;
   bloodthirsterTriggered: boolean;

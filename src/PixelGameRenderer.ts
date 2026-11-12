@@ -328,6 +328,8 @@ interface UnitVisualJuiceState {
   moveToRow: number;
   moveToCol: number;
   moveProgress: number;
+  moveDurationMs: number;
+  isLeapMove: boolean;
 
   lungeDirX: number;
   lungeDirY: number;
@@ -341,6 +343,7 @@ interface UnitVisualJuiceState {
 
   facingX: 1 | -1;
 }
+
 
 interface SlashSmearFX {
   x: number;
@@ -941,6 +944,8 @@ export class PixelGameRenderer {
         moveToRow: row,
         moveToCol: col,
         moveProgress: 1,
+        moveDurationMs: 480,
+        isLeapMove: false,
         lungeDirX: 0,
         lungeDirY: 0,
         lungeTimerMs: 0,
@@ -955,6 +960,7 @@ export class PixelGameRenderer {
     }
     return st;
   }
+
 
   // ==========================================================================
   // 메인 프레임 렌더링 루프
@@ -1498,17 +1504,33 @@ export class PixelGameRenderer {
         st.moveToRow = cu.row;
         st.moveToCol = cu.col;
         st.moveProgress = 0;
+        st.moveDurationMs = cu.baseMoveIntervalMs || 480;
+        st.isLeapMove = false;
       }
 
+      let strideArcOffsetY = 0;
       if (st.moveProgress < 1) {
-        st.moveProgress = Math.min(1, st.moveProgress + dtMs / 55);
+        const animDuration = Math.max(240, (st.moveDurationMs || 480) * 0.92);
+        st.moveProgress = Math.min(1, st.moveProgress + dtMs / animDuration);
         st.renderRow =
           st.moveFromRow + (st.moveToRow - st.moveFromRow) * st.moveProgress;
         st.renderCol =
           st.moveFromCol + (st.moveToCol - st.moveFromCol) * st.moveProgress;
+
+        if (st.isLeapMove) {
+          // 암살자 은신 도약 시 공중 포물선 점프 궤적
+          strideArcOffsetY = -Math.sin(st.moveProgress * Math.PI) * 32;
+        } else {
+          // 기물 고유 보행 리듬(중갑 탱커의 묵직한 걸음 vs 암살자/고블린의 경쾌한 스텝)
+          const isHeavyTank = cu.traits.includes('VANGUARD');
+          const hopHeight = isHeavyTank ? 2.5 : 4.5;
+          strideArcOffsetY =
+            -Math.abs(Math.sin(st.moveProgress * Math.PI * 2)) * hopHeight;
+        }
       } else {
         st.renderRow = cu.row;
         st.renderCol = cu.col;
+        st.isLeapMove = false;
       }
 
       const basePos = HexGridMath.lerpHexScreenPoint(
@@ -1549,13 +1571,15 @@ export class PixelGameRenderer {
       renderList.push({
         cu,
         screenX: basePos.x + lungeOffsetX + st.knockbackOffsetX,
-        screenY: basePos.y + lungeOffsetY + st.knockbackOffsetY,
+        screenY:
+          basePos.y + lungeOffsetY + st.knockbackOffsetY + strideArcOffsetY,
         facingX: st.facingX,
         hitFlash: st.hitFlashTimerMs > 0,
         squashX,
         squashY,
       });
     }
+
 
     // 6. Y-Sorting (원근 깊이 정렬): units.sort((a, b) => a.screenY - b.screenY)
     renderList.sort((a, b) => a.screenY - b.screenY);
