@@ -18,18 +18,21 @@
       rel="stylesheet"
     />
     <title>WWCHESS - 헥사곤 도트 판타지 오토배틀러</title>
-    <script type="module" crossorigin src="./assets/index-DRe7gvBy.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-B5R_Yoa5.css">
+    <script type="module" crossorigin src="./assets/index-ChDVWwkt.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-AqoQyvZW.css">
   </head>
   <body>
     <div id="app" class="app-root">
       <!-- 100vw x 100vh 전체화면 픽셀 아트 + 판타지 결투장 + 육각형 전장 & 석조 대기석 단일 게임 캔버스 -->
       <canvas id="fx-canvas" class="game-viewport-canvas"></canvas>
 
-      <!-- 전장 위 드랍된 전리품 구슬(Loot Orbs) 오버레이 레이어 -->
+      <!-- 정비 시간 5초 이하 긴박 붉은 맥동 비네팅 오버레이 -->
+      <div id="urgent-vignette-overlay" class="urgent-vignette-overlay hidden"></div>
+
+      <!-- 전장 위 드랍된 ? / ! 미스터리 보물상자(Loot Orbs) 오버레이 레이어 -->
       <div id="loot-orb-layer" class="loot-orb-layer"></div>
 
-      <!-- 상단 플로팅 게임 HUD (Top Corner Emblems + 상시 노출 배속 컨트롤) -->
+      <!-- 상단 플로팅 게임 HUD (Top Corner Emblems + 실시간 정비 타이머 + 상시 노출 배속 컨트롤) -->
       <header id="top-hud" class="top-hud">
         <div class="hud-left">
           <div id="rank-badge-btn" class="gem-pill rank-emblem" role="button" tabindex="0">
@@ -42,13 +45,20 @@
             <span id="phase-label" class="phase-ribbon">정비</span>
           </div>
 
+          <div id="prep-timer-pill" class="gem-pill prep-timer-pill">
+            <span id="prep-timer-text" class="prep-timer-text">⏱️30s</span>
+            <div class="prep-timer-bar">
+              <div id="prep-timer-fill" class="prep-timer-fill" style="width: 100%"></div>
+            </div>
+          </div>
+
           <div id="deploy-counter" class="gem-pill deploy-emblem">
             ⚔️ 1/1
           </div>
         </div>
 
         <!-- 중앙 라운드 알림 전광판 -->
-        <div class="hud-center">
+        <div class="hud-center" id="hud-center-banner">
           <div id="banner-ticker" class="banner-ticker">
             헥사곤 아레나에 오신 것을 환영합니다!
           </div>
