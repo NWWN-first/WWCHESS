@@ -431,26 +431,33 @@ export class PixelGameRenderer {
   // 현재 프레임의 육각형 보드 메트릭스 & 하단 1x9 대기석 슬롯 히트박스
   public hexMetrics!: HexBoardViewportMetrics;
   public benchSlotRects: Array<{ x: number; y: number; w: number; h: number }> = [];
+  public isShopExpanded: boolean = true;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.ctx.imageSmoothingEnabled = false;
-    this.resizeViewport(window.innerWidth || 800, window.innerHeight || 600, window.devicePixelRatio || 1);
+    this.resizeViewport(
+      window.innerWidth || 800,
+      window.innerHeight || 600,
+      window.devicePixelRatio || 1,
+      true
+    );
   }
 
   /**
-   * 3. 고해상도 모바일 레티나(DPR) 대응 및 4. HUD Safe-Area 제외 가용 전장 영역(Available Arena Box) 역산
-   * - Top HUD: 48px
-   * - Bottom Shop Dock: 150px
-   * - Bench Row: 64px
-   * - 좌측 시너지 독: 70px
-   * - 우측 8인 순위표: 80px
+   * 고해상도 모바일 레티나(DPR) 대응 및 가로모드 뷰포트 갱신
    */
-  public resizeViewport(cssWidth: number, cssHeight: number, devicePixelRatio: number = 1): void {
+  public resizeViewport(
+    cssWidth: number,
+    cssHeight: number,
+    devicePixelRatio: number = 1,
+    isShopExpanded: boolean = this.isShopExpanded
+  ): void {
     this.viewportWidth = Math.max(320, Math.floor(cssWidth));
-    this.viewportHeight = Math.max(240, Math.floor(cssHeight));
+    this.viewportHeight = Math.max(220, Math.floor(cssHeight));
     this.dpr = Math.max(1, Math.min(3, devicePixelRatio || 1));
+    this.isShopExpanded = isShopExpanded;
 
     this.canvas.width = Math.floor(this.viewportWidth * this.dpr);
     this.canvas.height = Math.floor(this.viewportHeight * this.dpr);
@@ -460,31 +467,30 @@ export class PixelGameRenderer {
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.ctx.imageSmoothingEnabled = false;
 
-    this.recomputeLayoutMetrics();
+    this.recomputeLayoutMetrics(this.isShopExpanded);
   }
 
   /**
-   * 4. HUD Safe-Area 제외 가용 전장 영역(arenaWidth, arenaHeight, centerX, centerY) 역산 및
-   * 5. 8x7 육각형(Odd-R Pointy-top) 최적 반지름(R) 및 2.5D 원근 비율(0.78) 적용
+   * 가로모드(Landscape) 맞춤형 전장 + 대기석(1x9) 수직 일체형 스케일러:
+   * - 상점이 열려 있을 때는 슬림 상점 드로어(94px + 토글바 18px)를 차감하고,
+   *   상점이 접혔거나 전투 중일 때는 하단 여백(14px)만 차감하여 전장을 최대 크기로 확대한다.
+   * - 1x9 대기석은 반드시 8행 육각형 전장(row=7) 바로 아래(`benchTopY`)에 배치되어
+   *   어떤 스마트폰 해상도에서도 전장을 단 1px도 가리지 않는다.
    */
-  public recomputeLayoutMetrics(): void {
+  public recomputeLayoutMetrics(isShopExpanded: boolean = this.isShopExpanded): void {
+    this.isShopExpanded = isShopExpanded;
     const w = this.viewportWidth;
     const h = this.viewportHeight;
 
-    // 명세 고정 HUD Safe-Area 픽셀 차감
-    const topHudPx = 48;
-    const bottomShopDockPx = 150;
-    const benchRowPx = 64;
-    const leftDockPx = 70;
-    const rightDockPx = 80;
+    const topHudPx = 38;
+    const bottomReservedPx = isShopExpanded ? Math.min(108, Math.floor(h * 0.28)) : 16;
+    const leftDockPx = 68;
+    const rightDockPx = 78;
 
     const arenaLeft = leftDockPx;
     const arenaTop = topHudPx;
-    const arenaWidth = Math.max(180, w - leftDockPx - rightDockPx);
-    const arenaHeight = Math.max(
-      140,
-      h - topHudPx - bottomShopDockPx - benchRowPx
-    );
+    const arenaWidth = Math.max(200, w - leftDockPx - rightDockPx);
+    const arenaHeight = Math.max(120, h - topHudPx - bottomReservedPx);
 
     this.hexMetrics = HexGridMath.computeBoardMetrics(
       arenaLeft,
@@ -495,18 +501,19 @@ export class PixelGameRenderer {
       7
     );
 
-    // 대기석(Bench Row: 64px) 슬롯 9칸을 arenaLeft ~ (w - rightDockPx) 내부 하단(bottomShopDockPx 바로 위)에 엄격히 분리 배치
-    const benchRowTop = h - bottomShopDockPx - benchRowPx;
+    // 대기석(1x9) 슬롯을 7행(아군 마지막 줄) 바로 아래(`this.hexMetrics.benchTopY`)의 석조 단상 위에 정렬
     const maxBenchTotalW = Math.min(
-      arenaWidth * 0.96,
-      this.hexMetrics.hexWidth * 7.5
+      arenaWidth * 0.94,
+      this.hexMetrics.hexWidth * 7.45
     );
-    const slotGap = 4;
-    const slotW = Math.max(24, Math.floor((maxBenchTotalW - slotGap * 8) / 9));
-    const slotH = Math.min(benchRowPx - 8, Math.max(36, Math.floor(slotW * 0.92)));
+    const slotGap = Math.max(3, Math.round(this.hexMetrics.hexRadius * 0.14));
+    const slotW = Math.max(22, Math.floor((maxBenchTotalW - slotGap * 8) / 9));
+    const slotH = this.hexMetrics.benchHeight;
     const actualBenchTotalW = slotW * 9 + slotGap * 8;
-    const benchStartX = Math.floor(arenaLeft + (arenaWidth - actualBenchTotalW) * 0.5);
-    const benchY = Math.floor(benchRowTop + (benchRowPx - slotH) * 0.5);
+    const benchStartX = Math.floor(
+      this.hexMetrics.centerX - actualBenchTotalW * 0.5
+    );
+    const benchY = Math.floor(this.hexMetrics.benchTopY);
 
     this.benchSlotRects = [];
     for (let i = 0; i < 9; i++) {
@@ -518,6 +525,7 @@ export class PixelGameRenderer {
       });
     }
   }
+
 
   /**
    * 화면 포인터 좌표 (px, py)가 하단 1x9 대기석 슬롯(0~8) 중 어디에 속하는지 반환
@@ -1044,29 +1052,119 @@ export class PixelGameRenderer {
     w: number,
     h: number
   ): void {
+    const m = this.hexMetrics;
+
+    // 1) 심연의 마법 공간 배경 그라데이션
     const grad = ctx.createRadialGradient(
-      this.hexMetrics.centerX,
-      this.hexMetrics.centerY,
+      m.centerX,
+      m.centerY,
       20,
-      this.hexMetrics.centerX,
-      this.hexMetrics.centerY,
-      Math.max(w, h) * 0.72
+      m.centerX,
+      m.centerY,
+      Math.max(w, h) * 0.78
     );
-    grad.addColorStop(0, '#1a2036');
-    grad.addColorStop(0.55, '#0f1322');
-    grad.addColorStop(1, '#070911');
+    grad.addColorStop(0, '#1e2742');
+    grad.addColorStop(0.55, '#0c1222');
+    grad.addColorStop(1, '#05070e');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.016)';
-    const brickW = 32;
-    const brickH = 16;
-    for (let y = 0; y < h; y += brickH) {
-      const offset = ((y / brickH) % 2) * (brickW / 2);
-      for (let x = -brickW; x < w; x += brickW) {
-        ctx.fillRect(x + offset, y, brickW - 2, brickH - 2);
-      }
+    // 2) 공중 부양 고대 결투장 석판(Floating Arena Sanctuary Slab)
+    const boardSpanW = m.hexWidth * 7.65;
+    const slabLeft = Math.floor(m.centerX - boardSpanW * 0.5 - 12);
+    const slabRight = Math.ceil(m.centerX + boardSpanW * 0.5 + 12);
+    const slabW = slabRight - slabLeft;
+    const slabTop = Math.floor(m.boardTopY - 12);
+    const slabBottom = Math.ceil(m.benchTopY + m.benchHeight + 12);
+    const slabH = slabBottom - slabTop;
+
+    // 석판 하단 절벽 3D 두께 그림자
+    ctx.fillStyle = '#060913';
+    this.fillBeveledRect(ctx, slabLeft - 3, slabTop + 8, slabW + 6, slabH + 6, 12);
+
+    ctx.fillStyle = '#11182b';
+    this.fillBeveledRect(ctx, slabLeft, slabTop, slabW, slabH, 10);
+
+    // 석판 황금/룬 외곽 테두리
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(212, 175, 55, 0.45)';
+    this.strokeBeveledRect(ctx, slabLeft, slabTop, slabW, slabH, 10);
+
+    // 3) 적군(상단 0~3행)과 아군(하단 4~7행) 경계선 마법 균열 라인
+    const midY = m.originY + 3.5 * m.rowStepY;
+    const lineGrad = ctx.createLinearGradient(slabLeft + 14, midY, slabRight - 14, midY);
+    lineGrad.addColorStop(0, 'rgba(244, 63, 94, 0)');
+    lineGrad.addColorStop(0.25, 'rgba(244, 63, 94, 0.55)');
+    lineGrad.addColorStop(0.5, 'rgba(250, 204, 21, 0.85)');
+    lineGrad.addColorStop(0.75, 'rgba(56, 189, 248, 0.55)');
+    lineGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+    ctx.strokeStyle = lineGrad;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(slabLeft + 16, midY);
+    ctx.lineTo(slabRight - 16, midY);
+    ctx.stroke();
+
+    // 4) 결투장 4대 모서리 도트 횃불 화로(Animated Pixel Braziers)
+    const flicker = Math.sin(this.globalAnimClockMs * 0.015) * 2;
+    const corners = [
+      { x: slabLeft + 10, y: slabTop + 10, color: '#f43f5e' },
+      { x: slabRight - 10, y: slabTop + 10, color: '#f43f5e' },
+      { x: slabLeft + 10, y: slabBottom - 10, color: '#38bdf8' },
+      { x: slabRight - 10, y: slabBottom - 10, color: '#38bdf8' },
+    ];
+    for (const c of corners) {
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(c.x - 5, c.y - 3, 10, 7);
+      ctx.fillStyle = c.color;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y - 4, 4.5 + flicker * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(c.x - 2, c.y - 6 - Math.round(flicker * 0.5), 4, 4);
     }
+  }
+
+  private fillBeveledRect(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    bevel: number
+  ): void {
+    ctx.beginPath();
+    ctx.moveTo(x + bevel, y);
+    ctx.lineTo(x + w - bevel, y);
+    ctx.lineTo(x + w, y + bevel);
+    ctx.lineTo(x + w, y + h - bevel);
+    ctx.lineTo(x + w - bevel, y + h);
+    ctx.lineTo(x + bevel, y + h);
+    ctx.lineTo(x, y + h - bevel);
+    ctx.lineTo(x, y + bevel);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  private strokeBeveledRect(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    bevel: number
+  ): void {
+    ctx.beginPath();
+    ctx.moveTo(x + bevel, y);
+    ctx.lineTo(x + w - bevel, y);
+    ctx.lineTo(x + w, y + bevel);
+    ctx.lineTo(x + w, y + h - bevel);
+    ctx.lineTo(x + w - bevel, y + h);
+    ctx.lineTo(x + bevel, y + h);
+    ctx.lineTo(x, y + h - bevel);
+    ctx.lineTo(x, y + bevel);
+    ctx.closePath();
+    ctx.stroke();
   }
 
   /**
@@ -1080,8 +1178,8 @@ export class PixelGameRenderer {
     isDraggingUnit: boolean
   ): void {
     const m = this.hexMetrics;
-    const bevelDepth = 4; // 명세: 각 타일 하단 모서리에 4px 두께의 어두운 석재 입체 단면(3D Bevel Edge)
-    const innerRadius = Math.max(8, m.hexRadius - m.gapPx); // 명세: 타일 사이 gap = 2px 간격
+    const bevelDepth = 4;
+    const innerRadius = Math.max(7, m.hexRadius - m.gapPx);
 
     for (let r = 0; r < HexGridMath.ROWS; r++) {
       const isEnemyRow = r < 4;
@@ -1129,23 +1227,23 @@ export class PixelGameRenderer {
         } else if (isEnemyRow) {
           ctx.fillStyle = (r + c) % 2 === 0 ? '#271726' : '#20121f';
         } else {
-          ctx.fillStyle = (r + c) % 2 === 0 ? '#18263c' : '#142033';
+          ctx.fillStyle = (r + c) % 2 === 0 ? '#1a2a44' : '#152238';
         }
         ctx.fill();
 
         // 3) 육각형 룬 테두리
-        ctx.lineWidth = isHoveredAllySlot ? 2.5 : 1.5;
+        ctx.lineWidth = isHoveredAllySlot ? 2.5 : 1.4;
         if (isHoveredAllySlot) {
           ctx.strokeStyle = '#ffea00';
         } else if (isEnemyRow) {
-          ctx.strokeStyle = 'rgba(220, 60, 90, 0.5)';
+          ctx.strokeStyle = 'rgba(220, 60, 90, 0.48)';
         } else if (isDraggingUnit && !inCombat) {
-          ctx.strokeStyle = 'rgba(76, 201, 240, 0.82)';
+          ctx.strokeStyle = 'rgba(76, 201, 240, 0.85)';
         } else {
           ctx.strokeStyle =
             r === 4
-              ? 'rgba(244, 196, 48, 0.58)'
-              : 'rgba(64, 196, 255, 0.44)';
+              ? 'rgba(244, 196, 48, 0.62)'
+              : 'rgba(64, 196, 255, 0.45)';
         }
         ctx.stroke();
 
@@ -1153,7 +1251,7 @@ export class PixelGameRenderer {
         const runePts = HexGridMath.getHexPolygonVertices(
           center.x,
           center.y,
-          innerRadius * 0.7,
+          innerRadius * 0.68,
           m.perspectiveRatio
         );
         ctx.beginPath();
@@ -1172,7 +1270,8 @@ export class PixelGameRenderer {
   }
 
   /**
-   * 하단 1x9 대기석(Bench Row) 슬롯 및 기물 렌더링 (상시 이름 라벨 제거, 선택/드래그 시에만 말풍선 표시)
+   * 아군 7행 바로 아래에 연결된 '석조 대기석 단상(1x9 Bench Sanctuary)' 및 기물 렌더링
+   * - 정체불명의 빈 사각형처럼 보이지 않도록 석조 단상 프레임과 좌측 상단 [대기석] 각인, 슬롯 번호(1~9)를 함께 렌더링
    */
   private drawBenchSlotsAndUnits(
     ctx: CanvasRenderingContext2D,
@@ -1182,39 +1281,97 @@ export class PixelGameRenderer {
     selectedInstanceId: string | null,
     hasPandoraBench: boolean
   ): void {
+    if (this.benchSlotRects.length === 0) return;
+
+    const firstSlot = this.benchSlotRects[0];
+    const lastSlot = this.benchSlotRects[this.benchSlotRects.length - 1];
+    const dockX = firstSlot.x - 8;
+    const dockY = firstSlot.y - 4;
+    const dockW = lastSlot.x + lastSlot.w - firstSlot.x + 16;
+    const dockH = firstSlot.h + 10;
+
+    // 1) 대기석 전체를 하나로 묶어주는 고대 석조 단상 베이스
+    ctx.fillStyle = '#070a14';
+    this.fillBeveledRect(ctx, dockX, dockY + 3, dockW, dockH, 6);
+    ctx.fillStyle = '#141d33';
+    this.fillBeveledRect(ctx, dockX, dockY, dockW, dockH, 6);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(212, 175, 55, 0.65)';
+    this.strokeBeveledRect(ctx, dockX, dockY, dockW, dockH, 6);
+
+    // 2) 좌측 '대기석' 황금 명패 태그
+    const benchCount = participant.bench.filter((u) => u !== null).length;
+    const tagW = 48;
+    const tagH = 14;
+    const tagX = dockX + 6;
+    const tagY = dockY - 9;
+    ctx.fillStyle = '#1e293b';
+    this.fillBeveledRect(ctx, tagX, tagY, tagW, tagH, 4);
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 1;
+    this.strokeBeveledRect(ctx, tagX, tagY, tagW, tagH, 4);
+    ctx.font = '900 9px "Jua", sans-serif';
+    ctx.fillStyle = '#fef08a';
+    ctx.textAlign = 'center';
+    ctx.fillText(`대기석 ${benchCount}/9`, tagX + tagW * 0.5, tagY + 10);
+
+    // 3) 9개 개별 영웅 대기 페데스탈(Pedestal) 슬롯 렌더링
     for (let i = 0; i < this.benchSlotRects.length; i++) {
       const slot = this.benchSlotRects[i];
       const isPandoraSlot = hasPandoraBench && i >= 6;
       const isHovered = hoveredBenchIndex === i;
 
-      // 4px 하단 석재 입체 단면
+      // 하단 3px 입체 단면
       ctx.fillStyle = '#080b14';
-      ctx.fillRect(slot.x, slot.y + 4, slot.w, slot.h);
+      this.fillBeveledRect(ctx, slot.x, slot.y + 3, slot.w, slot.h, 4);
 
-      // 상단 슬롯 표면
+      // 슬롯 석판 표면
       ctx.fillStyle = isHovered
         ? '#2b456b'
         : isPandoraSlot
         ? '#291a3e'
-        : '#151e30';
-      ctx.fillRect(slot.x, slot.y, slot.w, slot.h);
+        : '#1a263e';
+      this.fillBeveledRect(ctx, slot.x, slot.y, slot.w, slot.h, 4);
 
-      ctx.lineWidth = isHovered ? 2 : 1.5;
+      ctx.lineWidth = isHovered ? 2 : 1.2;
       ctx.strokeStyle = isHovered
         ? '#ffea00'
         : isPandoraSlot
         ? '#c77dff'
-        : '#3b4d71';
-      ctx.strokeRect(slot.x, slot.y, slot.w, slot.h);
+        : 'rgba(100, 145, 205, 0.55)';
+      this.strokeBeveledRect(ctx, slot.x, slot.y, slot.w, slot.h, 4);
 
-      if (isPandoraSlot) {
-        ctx.fillStyle = 'rgba(199, 125, 255, 0.32)';
-        ctx.font = 'bold 9px monospace';
-        ctx.textAlign = 'right';
-        ctx.fillText('🎲', slot.x + slot.w - 2, slot.y + 10);
+      // 빈 슬롯에는 은은한 룬 받침 원과 슬롯 번호 표시
+      const unit = participant.bench[i];
+      if (!unit) {
+        ctx.strokeStyle = isPandoraSlot
+          ? 'rgba(199, 125, 255, 0.25)'
+          : 'rgba(148, 163, 184, 0.18)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(
+          slot.x + slot.w * 0.5,
+          slot.y + slot.h * 0.62,
+          slot.w * 0.3,
+          slot.h * 0.18,
+          0,
+          0,
+          Math.PI * 2
+        );
+        ctx.stroke();
+
+        ctx.fillStyle = isPandoraSlot
+          ? 'rgba(233, 213, 255, 0.45)'
+          : 'rgba(148, 163, 184, 0.28)';
+        ctx.font = 'bold 8px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(
+          isPandoraSlot ? '🎲' : `${i + 1}`,
+          slot.x + slot.w * 0.5,
+          slot.y + slot.h * 0.68
+        );
       }
 
-      const unit = participant.bench[i];
       if (unit && unit.instanceId !== draggedInstanceId) {
         const tileCenterX = slot.x + slot.w * 0.5;
         const tileCenterY = slot.y + slot.h * 0.56;
@@ -1246,6 +1403,7 @@ export class PixelGameRenderer {
       }
     }
   }
+
 
   /**
    * 정비 페이즈(PREPARATION_PHASE): 보드(4x7) 기물들을 Y-Sorting(screenY 오름차순)으로 정렬하여 렌더링

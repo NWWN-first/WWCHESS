@@ -1,15 +1,13 @@
 // src/HexGridMath.ts
 
 /**
- * 뾰족한 끝이 위로 가는 육각형(Pointy-top Odd-R Offset Hex Grid) 수학 및 2.5D 원근(Perspective Squash = 0.78) 좌표 변환 모듈.
+ * 뾰족한 끝이 위로 가는 육각형(Pointy-top Odd-R Offset Hex Grid) 수학 및
+ * 가로모드(Landscape) 전장 + 대기석(1x9) 통합 스케일러 모듈.
  *
  * - 행(row): 0 ~ 7 (총 8행: 상단 0~3행은 적군 AWAY, 하단 4~7행은 아군 HOME)
  * - 열(col): 0 ~ 6 (총 7열)
  * - Odd-R 규칙: 홀수 행(row % 2 === 1)의 타일들은 짝수 행보다 가로(x) 방향으로 반 칸(+hexWidth / 2) 오른쪽으로 밀려서 벌집 모양으로 맞물린다.
- * - 2.5D 원근 비율(perspectiveRatio = 0.78):
- *   const maxRByWidth = (arenaWidth * 0.92) / (7.5 * Math.sqrt(3));
- *   const maxRByHeight = (arenaHeight * 0.92) / (12.5 * 0.78);
- *   const hexRadius = Math.floor(Math.min(maxRByWidth, maxRByHeight));
+ * - 2.5D 원근 비율(perspectiveRatio = 0.78) 및 하단 1x9 석조 대기석 단상과 절대 겹치지 않는 수직 통합 메트릭스 산출.
  */
 
 export interface HexCoord {
@@ -43,6 +41,10 @@ export interface HexBoardViewportMetrics {
   hexWidth: number; // Math.sqrt(3) * hexRadius
   hexHeight: number; // 2 * hexRadius * perspectiveRatio
   rowStepY: number; // 1.5 * hexRadius * perspectiveRatio
+  boardTopY: number; // row=0 타일 상단 꼭짓점 Y
+  boardBottomY: number; // row=7 타일 하단 꼭짓점(+베벨) Y
+  benchTopY: number; // 1x9 대기석 단상 시작 Y (boardBottomY 아래 고정 간격)
+  benchHeight: number; // 1x9 대기석 슬롯 높이
 }
 
 /**
@@ -154,9 +156,9 @@ export class HexGridMath {
   }
 
   /**
-   * 6) HUD Safe-Area 제외 가용 전장 영역(arenaLeft, arenaTop, arenaWidth, arenaHeight) 안에
-   *    8행 x 7열 Pointy-top Odd-R 육각형 그리드가 여백 92% 비율과 2.5D 원근 비율(0.78)로
-   *    정확히 중앙에 들어오도록 메트릭스를 산출한다.
+   * 6) 가용 전장 영역(arenaLeft, arenaTop, arenaWidth, arenaHeight) 안에
+   *    8행 x 7열 육각형 그리드 + 하단 1x9 대기석 단상(Bench Row)이
+   *    단 1px의 겹침도 없이 수직 일체형으로 들어가도록 메트릭스를 산출한다.
    */
   public static computeBoardMetrics(
     arenaLeft: number,
@@ -169,27 +171,42 @@ export class HexGridMath {
     const perspectiveRatio = HexGridMath.PERSPECTIVE_RATIO; // 0.78
     const gapPx = HexGridMath.TILE_GAP_PX; // 2px
 
-    // 명세 공식:
-    // const maxRByWidth = (arenaWidth * 0.92) / (7.5 * Math.sqrt(3));
-    // const maxRByHeight = (arenaHeight * 0.92) / (12.5 * 0.78);
-    // const hexRadius = Math.floor(Math.min(maxRByWidth, maxRByHeight));
-    const maxRByWidth = (arenaWidth * 0.92) / (7.5 * Math.sqrt(3));
-    const maxRByHeight = (arenaHeight * 0.92) / (12.5 * 0.78);
-    const hexRadius = Math.max(12, Math.floor(Math.min(maxRByWidth, maxRByHeight)));
+    // 가로 기준 최대 반지름 (7.5열 폭 + 결투장 석판 테두리 여백)
+    const maxRByWidth = (arenaWidth * 0.88) / (7.6 * Math.sqrt(3));
+    // 세로 기준 최대 반지름:
+    // 8행 육각형 보드(12.5 * 0.78 = 9.75R) + 상단 캐릭터 머리 여백(0.75R) + 하단 대기석 단상 및 간격(2.15R) = 총 12.65R
+    const maxRByHeight = (arenaHeight * 0.94) / 12.65;
+    const hexRadius = Math.max(
+      9,
+      Math.floor(Math.min(maxRByWidth, maxRByHeight))
+    );
 
     const hexWidth = HexGridMath.SQRT3 * hexRadius;
     const hexHeight = 2 * hexRadius * perspectiveRatio;
     const rowStepY = 1.5 * hexRadius * perspectiveRatio;
 
-    const centerX = arenaLeft + arenaWidth * 0.5;
-    const centerY = arenaTop + arenaHeight * 0.5;
-
-    // 8행 x 7열 타일 중심점들의 전체 폭과 높이 (홀수 행 +0.5 * hexWidth 포함)
     const spanCentersX = (cols - 1) * hexWidth + hexWidth * 0.5;
     const spanCentersY = (rows - 1) * rowStepY;
 
+    // 상단 스프라이트/체력바 여백 + 8행 보드 + 대기석 단상 전체 높이를 구해 arenaHeight 정중앙에 배치
+    const topHeadroom = hexRadius * 1.45;
+    const bottomTileExtent = hexRadius * perspectiveRatio + 5;
+    const benchGap = Math.max(6, Math.round(hexRadius * 0.34));
+    const benchHeight = Math.max(24, Math.round(hexRadius * 1.48));
+    const totalEnsembleHeight =
+      topHeadroom + spanCentersY + bottomTileExtent + benchGap + benchHeight;
+
+    const ensembleTop =
+      arenaTop + Math.max(2, (arenaHeight - totalEnsembleHeight) * 0.5);
+
+    const centerX = arenaLeft + arenaWidth * 0.5;
     const originX = centerX - spanCentersX * 0.5;
-    const originY = centerY - spanCentersY * 0.5;
+    const originY = ensembleTop + topHeadroom;
+    const centerY = originY + spanCentersY * 0.5;
+
+    const boardTopY = originY - hexRadius * perspectiveRatio;
+    const boardBottomY = originY + spanCentersY + bottomTileExtent;
+    const benchTopY = boardBottomY + benchGap;
 
     return {
       arenaLeft,
@@ -206,73 +223,81 @@ export class HexGridMath {
       hexWidth,
       hexHeight,
       rowStepY,
+      boardTopY,
+      boardBottomY,
+      benchTopY,
+      benchHeight,
     };
   }
 
   /**
-   * 7) 육각형 (row, col) -> 화면 논리 픽셀(CSS Pixel) 중심점 (x, y) 변환
-   * - 홀수 행(row % 2 === 1)은 짝수 행보다 +hexWidth / 2 만큼 오른쪽으로 오프셋
-   * - 세로 간격은 rowStepY (1.5 * hexRadius * 0.78)
+   * 7) 육각형 타일 (row, col)의 2.5D 원근 적용 화면 픽셀 중심점 (x, y) 반환
+   *    (실수형 보간 row/col도 지원하여 6방향 이동 시 부드러운 대각선 보간이 가능함)
    */
   public static hexToScreenCenter(
     row: number,
     col: number,
     metrics: HexBoardViewportMetrics
   ): ScreenPoint {
-    const isOddRow = Math.abs(row % 2) === 1;
-    const x =
-      metrics.originX +
-      col * metrics.hexWidth +
-      (isOddRow ? metrics.hexWidth * 0.5 : 0);
+    const rFloor = Math.floor(row);
+    const rFrac = row - rFloor;
+    const oddShiftFloor = (Math.abs(rFloor) % 2 === 1 ? 0.5 : 0) * metrics.hexWidth;
+    const oddShiftCeil =
+      (Math.abs(rFloor + 1) % 2 === 1 ? 0.5 : 0) * metrics.hexWidth;
+    const interpolatedShift =
+      oddShiftFloor + (oddShiftCeil - oddShiftFloor) * rFrac;
+
+    const x = metrics.originX + col * metrics.hexWidth + interpolatedShift;
     const y = metrics.originY + row * metrics.rowStepY;
     return { x, y };
   }
 
   /**
-   * 8) 실수(보간된) 육각형 행/열 또는 두 육각형 타일 간 보간 좌표 계산
+   * 8) 특정 중심점 (cx, cy)을 기준으로 2.5D 원근(perspectiveRatio = 0.78)이 적용된
+   *    Pointy-top 육각형의 6개 꼭짓점 좌표 배열 반환
    */
-  public static lerpHexScreenPoint(
-    fromRow: number,
-    fromCol: number,
-    toRow: number,
-    toCol: number,
-    t: number,
-    metrics: HexBoardViewportMetrics
-  ): ScreenPoint {
-    const p1 = HexGridMath.hexToScreenCenter(fromRow, fromCol, metrics);
-    const p2 = HexGridMath.hexToScreenCenter(toRow, toCol, metrics);
-    return {
-      x: p1.x + (p2.x - p1.x) * t,
-      y: p1.y + (p2.y - p1.y) * t,
-    };
+  public static getHexPolygonVertices(
+    cx: number,
+    cy: number,
+    radius: number,
+    perspectiveRatio: number = HexGridMath.PERSPECTIVE_RATIO
+  ): ScreenPoint[] {
+    const pts: ScreenPoint[] = [];
+    for (let i = 0; i < 6; i++) {
+      const angleRad = ((60 * i - 30) * Math.PI) / 180;
+      pts.push({
+        x: cx + radius * Math.cos(angleRad),
+        y: cy + radius * Math.sin(angleRad) * perspectiveRatio,
+      });
+    }
+    return pts;
   }
 
   /**
-   * 9) 화면 터치/포인터 좌표 (px, py)에서 가장 가까운 육각형 타일 (row, col)을 찾아 반환한다.
-   *    2.5D 원근 비율(perspectiveRatio = 0.78)을 역보정하여 정확한 타원형 육각형 히트박스를 판정한다.
+   * 9) 화면 포인터 좌표 (px, py)로부터 가장 가까운 유효 육각형 타일 (row, col) 역산 (2.5D 원근 보정 히트 테스트)
    */
   public static screenPointToHex(
     px: number,
     py: number,
     metrics: HexBoardViewportMetrics,
-    rows: number = HexGridMath.ROWS,
-    cols: number = HexGridMath.COLS
+    maxRows: number = HexGridMath.ROWS,
+    maxCols: number = HexGridMath.COLS
   ): HexCoord | null {
     let bestRow = -1;
     let bestCol = -1;
     let bestNormDistSq = Infinity;
-    const maxHitDist = metrics.hexRadius * 1.15;
-    const maxHitDistSq = maxHitDist * maxHitDist;
 
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
+    const hitRadiusX = metrics.hexRadius * 1.05;
+    const hitRadiusY = metrics.hexRadius * metrics.perspectiveRatio * 1.08;
+
+    for (let r = 0; r < maxRows; r++) {
+      for (let c = 0; c < maxCols; c++) {
         const center = HexGridMath.hexToScreenCenter(r, c, metrics);
-        const dx = px - center.x;
-        // 2.5D 세로 압축(0.78)을 역보정하여 등방성 거리 비교
-        const dy = (py - center.y) / metrics.perspectiveRatio;
-        const distSq = dx * dx + dy * dy;
-        if (distSq < bestNormDistSq && distSq <= maxHitDistSq) {
-          bestNormDistSq = distSq;
+        const nx = (px - center.x) / hitRadiusX;
+        const ny = (py - center.y) / hitRadiusY;
+        const normDistSq = nx * nx + ny * ny;
+        if (normDistSq <= 1.0 && normDistSq < bestNormDistSq) {
+          bestNormDistSq = normDistSq;
           bestRow = r;
           bestCol = c;
         }
@@ -286,23 +311,23 @@ export class HexGridMath {
   }
 
   /**
-   * 10) Pointy-top 육각형의 6개 꼭짓점 좌표 배열 반환
-   *     가로 반지름 radiusX = radius, 세로 반지름 radiusY = radius * verticalScale (기본 0.78)
+   * 10) 두 육각형 타일 (fromRow, fromCol) -> (toRow, toCol) 사이의 6방향 직선 보간 픽셀 좌표 반환
    */
-  public static getHexPolygonVertices(
-    cx: number,
-    cy: number,
-    radius: number,
-    verticalScale: number = HexGridMath.PERSPECTIVE_RATIO
-  ): ScreenPoint[] {
-    const pts: ScreenPoint[] = [];
-    for (let i = 0; i < 6; i++) {
-      const angleRad = ((60 * i - 30) * Math.PI) / 180;
-      pts.push({
-        x: cx + radius * Math.cos(angleRad),
-        y: cy + radius * Math.sin(angleRad) * verticalScale,
-      });
-    }
-    return pts;
+  public static lerpHexScreenPoint(
+    fromRow: number,
+    fromCol: number,
+    toRow: number,
+    toCol: number,
+    t: number,
+    metrics: HexBoardViewportMetrics
+  ): ScreenPoint {
+    const clampedT = Math.max(0, Math.min(1, t));
+    const p1 = HexGridMath.hexToScreenCenter(fromRow, fromCol, metrics);
+    const p2 = HexGridMath.hexToScreenCenter(toRow, toCol, metrics);
+    return {
+      x: p1.x + (p2.x - p1.x) * clampedT,
+      y: p1.y + (p2.y - p1.y) * clampedT,
+    };
   }
 }
+

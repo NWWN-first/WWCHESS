@@ -1,0 +1,9 @@
+{
+  "name": "WWCHESS - 헥사곤 도트 판타지 오토배틀러",
+  "short_name": "WWCHESS",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#070911",
+  "theme_color": "#070911"
+}
