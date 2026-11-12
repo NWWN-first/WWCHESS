@@ -1,4 +1,4 @@
-/* src/style.css - Full-Screen Native Mobile Game HUD & Pixel Art Viewport */
+/* src/style.css - Responsive Full-Screen Native Mobile Game HUD & Shop Pixel Portraits */
 
 :root {
   --cost-1: #94a3b8;
@@ -104,20 +104,20 @@ img {
 }
 
 /* ==========================================================================
-   2. 상단 네이티브 모바일 게임 HUD (Top HUD - 메탈릭 골드 베젤 & 보석 질감)
+   2. 상단 네이티브 모바일 게임 HUD (Top HUD: 정확히 48px)
    ========================================================================== */
 .top-hud {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 44px;
+  height: 48px;
   z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 10px;
-  background: linear-gradient(180deg, rgba(8, 11, 22, 0.92) 0%, rgba(12, 17, 34, 0.55) 85%, transparent 100%);
+  background: linear-gradient(180deg, rgba(8, 11, 22, 0.94) 0%, rgba(12, 17, 34, 0.65) 85%, transparent 100%);
   pointer-events: none;
 }
 
@@ -226,18 +226,18 @@ img {
 }
 
 /* ==========================================================================
-   3. 좌측 플로팅 시너지 독 (Floating Synergy Dock - 육각형 반투명 블러 뱃지)
+   3. 좌측 플로팅 시너지 독 (좌측 Safe-Area: 70px, 상단 48px ~ 하단 150px)
    ========================================================================== */
 .left-floating-dock {
   position: absolute;
   top: 48px;
-  left: 8px;
-  bottom: 126px;
-  width: 68px;
+  left: 4px;
+  bottom: 150px;
+  width: 64px;
   z-index: 8;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   pointer-events: none;
 }
 
@@ -274,7 +274,7 @@ img {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
+  padding: 4px 7px;
   background: rgba(15, 23, 42, 0.68);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
@@ -362,14 +362,14 @@ img {
 }
 
 /* ==========================================================================
-   4. 우측 8인 로비 미니 탭 (Collapsible Player List & Scouting Switch)
+   4. 우측 8인 로비 미니 탭 (우측 Safe-Area: 80px, 상단 48px ~ 하단 150px)
    ========================================================================== */
 .right-player-dock {
   position: absolute;
   top: 48px;
-  right: 6px;
-  bottom: 126px;
-  width: 86px;
+  right: 4px;
+  bottom: 150px;
+  width: 74px;
   z-index: 8;
   display: flex;
   flex-direction: column;
@@ -439,11 +439,11 @@ img {
 }
 
 /* ==========================================================================
-   5. 정찰 배너 & 판도라 안내 & 단기 터치 툴팁 팝업
+   5. 정찰 배너 & 판도라 안내 & 단기 터치(Inspector HUD) 툴팁 팝업
    ========================================================================== */
 .scouting-banner {
   position: absolute;
-  top: 46px;
+  top: 50px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 12;
@@ -470,8 +470,8 @@ img {
 
 .pandora-floating-tag {
   position: absolute;
-  bottom: 126px;
-  right: 98px;
+  bottom: 152px;
+  right: 84px;
   z-index: 7;
   padding: 2px 8px;
   background: rgba(88, 28, 135, 0.85);
@@ -484,7 +484,7 @@ img {
 
 .tap-tooltip-bar {
   position: absolute;
-  top: 48px;
+  top: 50px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 25;
@@ -511,29 +511,29 @@ img {
 }
 
 /* ==========================================================================
-   6. 하단 상점 드로어 (Bottom Shop Dock - 룬석 버튼 + 5장 도트 일러스트 카드)
+   6. 하단 상점 드로어 (Bottom Shop Dock: 정확히 150px 높이, 2.5~3x 클로즈업 도트 아바타 카드)
    ========================================================================== */
 .bottom-shop-dock {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 120px;
+  height: 150px;
   z-index: 10;
   display: flex;
   align-items: stretch;
   gap: 8px;
   padding: 6px 10px;
-  background: linear-gradient(180deg, rgba(13, 18, 34, 0.94) 0%, #070a14 100%);
-  box-shadow: 0 -3px 16px rgba(0, 0, 0, 0.85), inset 0 2px 0 rgba(212, 175, 55, 0.45);
+  background: linear-gradient(180deg, rgba(13, 18, 34, 0.96) 0%, #070a14 100%);
+  box-shadow: 0 -3px 16px rgba(0, 0, 0, 0.88), inset 0 2px 0 rgba(212, 175, 55, 0.55);
 }
 
 .dock-left-controls {
-  width: 158px;
+  width: 156px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 4px;
+  gap: 5px;
 }
 
 .econ-status-strip {
@@ -549,7 +549,7 @@ img {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 2px 4px;
+  padding: 3px 4px;
   background: #111827;
   clip-path: polygon(5px 0%, calc(100% - 5px) 0%, 100% 50%, calc(100% - 5px) 100%, 5px 100%, 0% 50%);
 }
@@ -623,7 +623,7 @@ img {
   color: #fef08a;
 }
 
-/* 중앙 5장 챔피언 도트 카드 슬롯 */
+/* 중앙 5장 챔피언 도트 클로즈업 카드 슬롯 */
 .dock-center-cards {
   position: relative;
   flex: 1;
@@ -652,7 +652,7 @@ img {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 4px 6px;
+  padding: 3px 5px;
   background: linear-gradient(180deg, #172036 0%, #0b101e 100%);
   clip-path: polygon(8px 0%, calc(100% - 8px) 0%, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0% calc(100% - 8px), 0% 8px);
   cursor: pointer;
@@ -690,8 +690,14 @@ img {
   box-shadow: inset 0 0 0 2px var(--cost-5);
 }
 
+/* 보유 중인 기물이 상점에 등장했을 때: 카드 황금빛 반짝임 + 도트 캐릭터 제자리 점프(Idle 바운스) */
 .shop-card.owned-highlight {
-  animation: goldShimmer 1.1s infinite alternate;
+  box-shadow: inset 0 0 0 2.5px #ffea00, 0 0 12px rgba(255, 234, 0, 0.55);
+  animation: goldShimmer 0.9s infinite alternate;
+}
+
+.shop-card.owned-highlight .shop-pixel-portrait {
+  animation: portraitIdleJump 0.55s infinite ease-in-out alternate;
 }
 
 @keyframes goldShimmer {
@@ -699,7 +705,16 @@ img {
     filter: brightness(1);
   }
   to {
-    filter: brightness(1.28);
+    filter: brightness(1.24);
+  }
+}
+
+@keyframes portraitIdleJump {
+  from {
+    transform: translateY(1px) scale(1);
+  }
+  to {
+    transform: translateY(-5px) scale(1.06);
   }
 }
 
@@ -707,48 +722,70 @@ img {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 900;
   color: #ffffff;
   z-index: 2;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .shop-cost-tag {
   color: #fde047;
   font-weight: 900;
+  flex-shrink: 0;
 }
 
-.shop-card-portrait-row {
+/* 상점 카드 중앙 2.5~3배 확대 클로즈업 도트 아바타 스테이지 */
+.shop-portrait-stage {
+  position: relative;
+  flex: 1;
+  min-height: 68px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  z-index: 2;
+  justify-content: center;
+  overflow: hidden;
+  margin: 1px 0;
 }
 
 .shop-pixel-portrait {
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
+  width: 96px;
+  height: 74px;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
   image-rendering: pixelated;
+  display: block;
 }
 
-.shop-card-traits {
-  font-size: 9px;
-  font-weight: 700;
-  color: #cbd5e1;
-  line-height: 1.2;
+.shop-trait-Overlay-strip {
+  position: absolute;
+  left: 3px;
+  bottom: 2px;
+  display: flex;
+  gap: 2px;
+  z-index: 3;
+}
+
+.shop-trait-pill {
+  padding: 1px 4px;
+  background: rgba(7, 10, 20, 0.84);
+  color: #e2e8f0;
+  font-size: 8px;
+  font-weight: 800;
 }
 
 .shop-merge-badge {
   position: absolute;
-  top: 20px;
-  right: 4px;
+  top: 17px;
+  right: 3px;
   padding: 1px 5px;
-  background: rgba(234, 179, 8, 0.92);
+  background: linear-gradient(90deg, #ffea00, #f59e0b);
   color: #000;
   font-size: 8px;
   font-weight: 900;
-  z-index: 3;
+  z-index: 4;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
 }
 
 .shop-pool-footer {
@@ -907,7 +944,6 @@ img {
   background: linear-gradient(180deg, #334155, #1e293b);
 }
 
-/* 공유 풀 인스펙터 테이블 */
 .inspector-table-scroll {
   flex: 1;
   overflow-y: auto;
@@ -956,7 +992,6 @@ img {
   margin-top: 10px;
 }
 
-/* 드래그 고스트 */
 .drag-ghost {
   position: fixed;
   z-index: 60;

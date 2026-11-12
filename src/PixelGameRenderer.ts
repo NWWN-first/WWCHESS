@@ -6,7 +6,7 @@ import { Participant, UnitInstance } from './Participant';
 import { CombatEvent, CombatUnit } from './SkillRegistry';
 
 /**
- * 20종 판타지 챔피언 전용 24x24 ~ 32x32 도트 스프라이트 아키타입 및 컬러 팔레트
+ * 20종 판타지 챔피언 전용 28x28 도트 스프라이트 아키타입 및 컬러 팔레트
  */
 export type WeaponKind =
   | 'GREATSWORD'
@@ -50,7 +50,7 @@ export interface UnitPixelArtSpec {
   wings: WingKind;
 }
 
-const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
+export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
   // 1코스트 (5종)
   u1_garen: {
     primaryArmor: '#2b579a',
@@ -302,38 +302,46 @@ const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
   },
 };
 
+const WEAPON_BADGE_ICONS: Record<WeaponKind, string> = {
+  GREATSWORD: '🗡️',
+  SWORD_SHIELD: '🛡️',
+  DUAL_DAGGERS: '⚔️',
+  BOW: '🏹',
+  ARCANE_STAFF: '🔮',
+  NATURE_STAFF: '🌿',
+  SCYTHE: '💀',
+  DRAGON_CLAW: '🐉',
+  SPEAR: '🔱',
+  CANNON_BAG: '💣',
+  HOLY_BLADE: '✨',
+  ARCHMAGE_ORB: '⚡',
+};
+
 /**
  * 실시간 전투 타격감(Combat Juice) 애니메이션 상태
  */
 interface UnitVisualJuiceState {
-  // 이동 보간
   renderRow: number;
   renderCol: number;
   moveFromRow: number;
   moveFromCol: number;
   moveToRow: number;
   moveToCol: number;
-  moveProgress: number; // 0.0 ~ 1.0
+  moveProgress: number;
 
-  // 6방향 공격 돌진(Hex Lunge)
   lungeDirX: number;
   lungeDirY: number;
   lungeTimerMs: number;
   lungeDurationMs: number;
 
-  // 피격 점멸(White Hit-Flash 80ms) & 넉백/찌그러짐(Squash & Stretch)
   hitFlashTimerMs: number;
   knockbackOffsetX: number;
   knockbackOffsetY: number;
   squashTimerMs: number;
 
-  // 바라보는 좌우 방향 (1 = 우측, -1 = 좌측)
   facingX: 1 | -1;
 }
 
-/**
- * 초승달 모양 픽셀 검기(Slash Smear) 이펙트
- */
 interface SlashSmearFX {
   x: number;
   y: number;
@@ -345,9 +353,6 @@ interface SlashSmearFX {
   maxLifeMs: number;
 }
 
-/**
- * 원거리 화살/마법탄 도트 투사체(Pixel Projectile)
- */
 interface ProjectileFX {
   x1: number;
   y1: number;
@@ -360,9 +365,6 @@ interface ProjectileFX {
   maxLifeMs: number;
 }
 
-/**
- * 픽셀 피격 파편(Hit Sparks) 및 3성 마법진 상승 입자
- */
 interface PixelSparkFX {
   x: number;
   y: number;
@@ -375,9 +377,6 @@ interface PixelSparkFX {
   maxLifeMs: number;
 }
 
-/**
- * 중력 포물선 아케이드 팝업 데미지 폰트
- */
 interface ArcadeDamagePopFX {
   x: number;
   y: number;
@@ -394,7 +393,7 @@ interface ArcadeDamagePopFX {
 }
 
 const COST_BORDER_COLORS: Record<CostTier, string> = {
-  1: '#8d99ae',
+  1: '#94a3b8',
   2: '#2ec4b6',
   3: '#3a86ff',
   4: '#b5179e',
@@ -405,7 +404,12 @@ export class PixelGameRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
 
-  // 오프스크린 도트 스프라이트 캐시 (unitId_star_frame_flashKey -> HTMLCanvasElement)
+  // 논리적 뷰포트 크기 (CSS Pixel 기준) 및 레티나 DPR 배율
+  public viewportWidth: number = 800;
+  public viewportHeight: number = 600;
+  public dpr: number = 1;
+
+  // 오프스크린 도트 스프라이트 캐시
   private spriteCache: Map<string, HTMLCanvasElement> = new Map();
 
   // 유닛별 전투 모션/타격감 상태
@@ -421,10 +425,7 @@ export class PixelGameRenderer {
   private hitStopRemainingMs: number = 0;
   private shakeRemainingMs: number = 0;
   private shakeIntensity: number = 0;
-
-  // 5코 3성 천지개벽 황금 번개 기둥 타이머
   private cataclysmFlashMs: number = 0;
-
   private globalAnimClockMs: number = 0;
 
   // 현재 프레임의 육각형 보드 메트릭스 & 하단 1x9 대기석 슬롯 히트박스
@@ -435,51 +436,77 @@ export class PixelGameRenderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.ctx.imageSmoothingEnabled = false;
+    this.resizeViewport(window.innerWidth || 800, window.innerHeight || 600, window.devicePixelRatio || 1);
+  }
+
+  /**
+   * 3. 고해상도 모바일 레티나(DPR) 대응 및 4. HUD Safe-Area 제외 가용 전장 영역(Available Arena Box) 역산
+   * - Top HUD: 48px
+   * - Bottom Shop Dock: 150px
+   * - Bench Row: 64px
+   * - 좌측 시너지 독: 70px
+   * - 우측 8인 순위표: 80px
+   */
+  public resizeViewport(cssWidth: number, cssHeight: number, devicePixelRatio: number = 1): void {
+    this.viewportWidth = Math.max(320, Math.floor(cssWidth));
+    this.viewportHeight = Math.max(240, Math.floor(cssHeight));
+    this.dpr = Math.max(1, Math.min(3, devicePixelRatio || 1));
+
+    this.canvas.width = Math.floor(this.viewportWidth * this.dpr);
+    this.canvas.height = Math.floor(this.viewportHeight * this.dpr);
+    this.canvas.style.width = `${this.viewportWidth}px`;
+    this.canvas.style.height = `${this.viewportHeight}px`;
+
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.ctx.imageSmoothingEnabled = false;
+
     this.recomputeLayoutMetrics();
   }
 
   /**
-   * 캔버스 크기 변경 시 육각형 전장(8x7) 및 하단 1x9 대기석 슬롯 좌표를 재계산한다.
+   * 4. HUD Safe-Area 제외 가용 전장 영역(arenaWidth, arenaHeight, centerX, centerY) 역산 및
+   * 5. 8x7 육각형(Odd-R Pointy-top) 최적 반지름(R) 및 2.5D 원근 비율(0.78) 적용
    */
   public recomputeLayoutMetrics(): void {
-    const w = this.canvas.width || 800;
-    const h = this.canvas.height || 600;
+    const w = this.viewportWidth;
+    const h = this.viewportHeight;
 
-    // 상단 HUD(48px)와 하단 상점 드로어(124px), 그리고 대기석(58px)을 제외한 중앙 영역에 8x7 육각형 전장 배치
-    const topHudMargin = Math.max(46, Math.round(h * 0.08));
-    const bottomDockMargin = Math.max(122, Math.round(h * 0.21));
-    const benchHeight = Math.max(50, Math.min(68, Math.round(h * 0.1)));
+    // 명세 고정 HUD Safe-Area 픽셀 차감
+    const topHudPx = 48;
+    const bottomShopDockPx = 150;
+    const benchRowPx = 64;
+    const leftDockPx = 70;
+    const rightDockPx = 80;
 
-    const leftMargin = Math.max(66, Math.round(w * 0.09));
-    const rightMargin = Math.max(82, Math.round(w * 0.11));
-
-    const boardAreaLeft = leftMargin;
-    const boardAreaTop = topHudMargin + 6;
-    const boardAreaWidth = Math.max(220, w - leftMargin - rightMargin);
-    const boardAreaHeight = Math.max(
-      180,
-      h - topHudMargin - bottomDockMargin - benchHeight - 16
+    const arenaLeft = leftDockPx;
+    const arenaTop = topHudPx;
+    const arenaWidth = Math.max(180, w - leftDockPx - rightDockPx);
+    const arenaHeight = Math.max(
+      140,
+      h - topHudPx - bottomShopDockPx - benchRowPx
     );
 
     this.hexMetrics = HexGridMath.computeBoardMetrics(
-      boardAreaLeft,
-      boardAreaTop,
-      boardAreaWidth,
-      boardAreaHeight,
+      arenaLeft,
+      arenaTop,
+      arenaWidth,
+      arenaHeight,
       8,
       7
     );
 
-    // 하단 1x9 대기석(Bench) 일렬 슬롯 계산 (육각형 전장 바로 아래 중앙 정렬)
-    const benchTotalWidth = Math.min(
-      boardAreaWidth * 0.98,
-      this.hexMetrics.hexWidth * 7.6
+    // 대기석(Bench Row: 64px) 슬롯 9칸을 arenaLeft ~ (w - rightDockPx) 내부 하단(bottomShopDockPx 바로 위)에 엄격히 분리 배치
+    const benchRowTop = h - bottomShopDockPx - benchRowPx;
+    const maxBenchTotalW = Math.min(
+      arenaWidth * 0.96,
+      this.hexMetrics.hexWidth * 7.5
     );
-    const slotGap = 5;
-    const slotW = Math.floor((benchTotalWidth - slotGap * 8) / 9);
-    const slotH = Math.min(benchHeight - 6, slotW + 6);
-    const benchStartX = Math.round((w - (slotW * 9 + slotGap * 8)) * 0.5);
-    const benchY = Math.round(boardAreaTop + boardAreaHeight + 4);
+    const slotGap = 4;
+    const slotW = Math.max(24, Math.floor((maxBenchTotalW - slotGap * 8) / 9));
+    const slotH = Math.min(benchRowPx - 8, Math.max(36, Math.floor(slotW * 0.92)));
+    const actualBenchTotalW = slotW * 9 + slotGap * 8;
+    const benchStartX = Math.floor(arenaLeft + (arenaWidth - actualBenchTotalW) * 0.5);
+    const benchY = Math.floor(benchRowTop + (benchRowPx - slotH) * 0.5);
 
     this.benchSlotRects = [];
     for (let i = 0; i < 9; i++) {
@@ -505,9 +532,6 @@ export class PixelGameRenderer {
     return null;
   }
 
-  /**
-   * 새 전투 또는 라운드 전환 시 유닛 모션 상태 초기화
-   */
   public resetCombatJuiceStates(): void {
     this.unitJuiceMap.clear();
     this.slashSmears = [];
@@ -515,9 +539,6 @@ export class PixelGameRenderer {
     this.hitStopRemainingMs = 0;
   }
 
-  /**
-   * 외부(상점 구매, 구슬 오픈, 3성 합성 등)에서 픽셀 파티클 폭발 생성
-   */
   public spawnPixelSparks(
     x: number,
     y: number,
@@ -541,9 +562,6 @@ export class PixelGameRenderer {
     }
   }
 
-  /**
-   * 외부에서 아케이드 포물선 팝업 텍스트 추가
-   */
   public spawnArcadePopupText(
     x: number,
     y: number,
@@ -567,10 +585,11 @@ export class PixelGameRenderer {
     });
   }
 
-  /**
-   * 카메라 흔들림(Screen Shake) 및 역경직(Hit-Stop) 수동 트리거
-   */
-  public triggerImpactShake(intensity: number = 7, durationMs: number = 220, hitStopMs: number = 45): void {
+  public triggerImpactShake(
+    intensity: number = 7,
+    durationMs: number = 220,
+    hitStopMs: number = 45
+  ): void {
     this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
     this.shakeRemainingMs = Math.max(this.shakeRemainingMs, durationMs);
     if (hitStopMs > 0) {
@@ -579,13 +598,85 @@ export class PixelGameRenderer {
   }
 
   /**
-   * CombatEngine에서 발생한 틱 이벤트들을 받아
-   * 1) 6방향 공격 돌진(Hex Lunge) & 초승달 검기(Slash Smear) / 원거리 도트 투사체
-   * 2) 피격 점멸(White Hit-Flash 80ms) & 넉백/찌그러짐(Squash & Stretch)
-   * 3) 치명타/고코스트 광역 스킬 적중 시 45ms 역경직(Hit-Stop) & 화면 타격 흔들림(Screen Shake)
-   * 4) 픽셀 피격 파편(Hit Sparks) & 포물선 팝업 데미지 폰트
-   * 로 변환한다.
+   * 1. 상점 카드(Shop Portrait)에 실제 필드 위 도트 캐릭터를 2.5~3배 확대 클로즈업 아바타로 렌더링
+   * - 배경에는 해당 기물의 메인 시너지/코스트 테마 색상 그라데이션 + 도트 무기 아이콘을 깔아줌
+   * - 필드 위 기물과 100% 동일한 28x28 도트 캐릭터를 2.8배(약 78x78) 확대하여 칼같이 렌더링
    */
+  public renderShopCardPortrait(
+    portraitCanvas: HTMLCanvasElement,
+    unitId: string,
+    cost: CostTier,
+    isOwnedHighlight: boolean
+  ): void {
+    const dpr = Math.max(2, Math.floor(this.dpr));
+    const logicalW = 96;
+    const logicalH = 74;
+    portraitCanvas.width = logicalW * dpr;
+    portraitCanvas.height = logicalH * dpr;
+
+    const pCtx = portraitCanvas.getContext('2d')!;
+    pCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pCtx.imageSmoothingEnabled = false;
+
+    const spec = UNIT_PIXEL_SPECS[unitId] ?? UNIT_PIXEL_SPECS.u1_garen;
+    const borderColor = COST_BORDER_COLORS[cost];
+
+    // 1) 시너지/코스트 테마 배경 라디얼 그라데이션
+    const bgGrad = pCtx.createRadialGradient(
+      logicalW * 0.5,
+      logicalH * 0.58,
+      6,
+      logicalW * 0.5,
+      logicalH * 0.55,
+      logicalW * 0.65
+    );
+    bgGrad.addColorStop(0, spec.primaryArmor);
+    bgGrad.addColorStop(0.55, '#131b2e');
+    bgGrad.addColorStop(1, '#080b14');
+    pCtx.fillStyle = bgGrad;
+    pCtx.fillRect(0, 0, logicalW, logicalH);
+
+    // 2) 보유 기물인 경우 배경 황금 마법 후광 링
+    if (isOwnedHighlight) {
+      pCtx.strokeStyle = 'rgba(255, 234, 0, 0.55)';
+      pCtx.lineWidth = 2;
+      pCtx.beginPath();
+      pCtx.arc(logicalW * 0.5, logicalH * 0.56, 26, 0, Math.PI * 2);
+      pCtx.stroke();
+    }
+
+    // 3) 우측 상단 워터마크 도트 무기 아이콘
+    const weaponIcon = WEAPON_BADGE_ICONS[spec.weapon] ?? '⚔️';
+    pCtx.font = '13px sans-serif';
+    pCtx.textAlign = 'right';
+    pCtx.globalAlpha = 0.78;
+    pCtx.fillText(weaponIcon, logicalW - 5, 16);
+    pCtx.globalAlpha = 1.0;
+
+    // 4) 발밑 타원형 그림자 패드
+    pCtx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    pCtx.beginPath();
+    pCtx.ellipse(logicalW * 0.5, logicalH - 7, 24, 6, 0, 0, Math.PI * 2);
+    pCtx.fill();
+
+    // 5) 필드 위와 100% 동일한 28x28 도트 스프라이트를 2.65배(~74x74) 확대 클로즈업으로 렌더링
+    const sprite = this.getOrCreateUnitPixelSprite(
+      unitId,
+      isOwnedHighlight ? 2 : 1,
+      0,
+      false
+    );
+    const drawSize = 72; // 28px * ~2.6배 확대 클로즈업 아바타
+    const drawX = Math.floor((logicalW - drawSize) * 0.5);
+    const drawY = Math.floor(logicalH - drawSize + 2);
+    pCtx.drawImage(sprite, drawX, drawY, drawSize, drawSize);
+
+    // 6) 상점 초상화 내부 픽셀 액자 테두리
+    pCtx.strokeStyle = isOwnedHighlight ? '#ffea00' : borderColor;
+    pCtx.lineWidth = 1.5;
+    pCtx.strokeRect(1, 1, logicalW - 2, logicalH - 2);
+  }
+
   public ingestCombatEvents(events: CombatEvent[], units: CombatUnit[]): void {
     const unitById = new Map<string, CombatUnit>();
     for (const u of units) {
@@ -633,9 +724,9 @@ export class PixelGameRenderer {
       } else if (ev.type === 'FIVE_COST_3STAR_CATACLYSM') {
         this.cataclysmFlashMs = 900;
         this.triggerImpactShake(14, 550, 75);
-        const cx = this.canvas.width * 0.5;
-        const cy = this.canvas.height * 0.42;
-        this.spawnArcadePopupText(cx, cy, '⚡ 99,999! 5코 3성 절대 권능! ⚡', '#ffea00', 24);
+        const cx = this.viewportWidth * 0.5;
+        const cy = this.viewportHeight * 0.42;
+        this.spawnArcadePopupText(cx, cy, '⚡ 99,999! 5코 3성 절대 권능! ⚡', '#ffea00', 22);
         this.spawnPixelSparks(cx, cy, '#ffea00', 65);
       } else if (
         (ev.type === 'BASIC_ATTACK' || ev.type === 'SKILL_CAST') &&
@@ -671,7 +762,6 @@ export class PixelGameRenderer {
           state.facingX = dx >= 0 ? 1 : -1;
         }
 
-        // 6방향 공격 돌진(Hex Lunge) 설정
         state.lungeDirX = nx;
         state.lungeDirY = ny;
         state.lungeDurationMs = ev.type === 'SKILL_CAST' ? 210 : 150;
@@ -681,7 +771,6 @@ export class PixelGameRenderer {
         const spec = UNIT_PIXEL_SPECS[ev.unitId ?? 'u1_garen'] ?? UNIT_PIXEL_SPECS.u1_garen;
 
         if (isMelee) {
-          // 근접 기물: 타겟 방향 초승달 픽셀 검기(Slash Smear) 생성
           const smearX = pFrom.x + nx * (this.hexMetrics.hexRadius * 0.65);
           const smearY = pFrom.y + ny * (this.hexMetrics.hexRadius * 0.65);
           this.slashSmears.push({
@@ -697,7 +786,6 @@ export class PixelGameRenderer {
             maxLifeMs: ev.type === 'SKILL_CAST' ? 220 : 145,
           });
         } else {
-          // 원거리 기물: 화살/마법탄 도트 투사체 발사
           const projKind =
             spec.weapon === 'BOW'
               ? 'ARROW'
@@ -719,7 +807,6 @@ export class PixelGameRenderer {
           });
         }
 
-        // 고코스트 스킬 시전 시 역경직(45ms) + 화면 쉐이크
         if (ev.type === 'SKILL_CAST' && attacker && attacker.cost >= 3) {
           this.triggerImpactShake(attacker.cost >= 4 ? 8 : 5, 190, 45);
         }
@@ -735,14 +822,13 @@ export class PixelGameRenderer {
           this.hexMetrics
         );
 
-        // 피격 유닛의 80ms White Hit-Flash 및 넉백/찌그러짐(Squash & Stretch) 적용
         if (ev.targetId) {
           const targetState = this.getOrInitUnitJuice(
             ev.targetId,
             ev.toRow,
             ev.toCol
           );
-          targetState.hitFlashTimerMs = 80; // 명세: 80ms 동안 스프라이트 전체가 새하얗게 번쩍
+          targetState.hitFlashTimerMs = 80;
           targetState.squashTimerMs = 150;
 
           if (ev.fromRow !== undefined && ev.fromCol !== undefined) {
@@ -762,7 +848,6 @@ export class PixelGameRenderer {
           }
         }
 
-        // 치명타 또는 초대형 피해 시 45ms 역경직(Hit-Stop) & 카메라 쉐이크
         const isCataclysm = ev.amount >= 9999;
         if (ev.isCrit || isCataclysm || ev.amount >= 380) {
           this.triggerImpactShake(
@@ -772,7 +857,6 @@ export class PixelGameRenderer {
           );
         }
 
-        // 픽셀 피격 파편(Hit Sparks) 방출
         const sparkColor = isCataclysm
           ? '#ffea00'
           : ev.damageType === 'TRUE'
@@ -789,7 +873,6 @@ export class PixelGameRenderer {
           ev.isCrit || isCataclysm ? 16 : 8
         );
 
-        // 포물선 중력 데미지 폰트 생성
         const vx = (Math.random() - 0.5) * 95;
         const vy = isCataclysm ? -190 : ev.isCrit ? -155 : -120;
         this.damagePops.push({
@@ -879,16 +962,17 @@ export class PixelGameRenderer {
       hoveredBenchIndex: number | null;
       isDraggingUnit: boolean;
       draggedInstanceId: string | null;
+      selectedInstanceId: string | null;
       hasPandoraBench: boolean;
     }
   ): void {
     const ctx = this.ctx;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.imageSmoothingEnabled = false;
 
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const w = this.viewportWidth;
+    const h = this.viewportHeight;
 
-    // 1. 역경직(Hit-Stop 45ms) 처리: 역경직 중에는 유닛 모션/파티클 시간을 동결시켜 묵직한 타격감을 부여
     let effectiveDt = dtMs;
     if (this.hitStopRemainingMs > 0) {
       this.hitStopRemainingMs = Math.max(0, this.hitStopRemainingMs - dtMs);
@@ -897,7 +981,6 @@ export class PixelGameRenderer {
       this.globalAnimClockMs += dtMs;
     }
 
-    // 2. 카메라 쉐이크 오프셋 계산
     let shakeX = 0;
     let shakeY = 0;
     if (this.shakeRemainingMs > 0) {
@@ -910,12 +993,12 @@ export class PixelGameRenderer {
     ctx.save();
     ctx.clearRect(0, 0, w, h);
 
-    // 3. 다크 판타지 던전 배경 석판 & 횃불 앰비언트 라이트 렌더링
+    // 1. 다크 판타지 던전 배경 석판 렌더링
     this.drawDungeonArenaBackground(ctx, w, h);
 
     ctx.translate(shakeX, shakeY);
 
-    // 4. 8x7 입체 육각형(Pointy-top Odd-R Hex) 판타지 석재/룬 타일 전장 렌더링
+    // 2. 8x7 2.5D 육각형(Pointy-top Odd-R Hex, perspectiveRatio=0.78, gap=2px, 4px 3D Bevel Edge) 렌더링
     this.drawHexagonalBattlefieldGrid(
       ctx,
       params.inCombat,
@@ -923,35 +1006,38 @@ export class PixelGameRenderer {
       params.isDraggingUnit
     );
 
-    // 5. 하단 1x9 대기석(Bench) 도트 석재 슬롯 및 기물 렌더링
+    // 3. 하단 1x9 대기석(Bench Row: 64px) 슬롯 및 기물 렌더링
     this.drawBenchSlotsAndUnits(
       ctx,
       params.viewedParticipant,
       params.hoveredBenchIndex,
       params.draggedInstanceId,
+      params.selectedInstanceId,
       params.hasPandoraBench
     );
 
-    // 6. 육각형 전장 위 기물들 렌더링 (Y좌표 기준 깊이 정렬로 입체감 보장)
+    // 4. 육각형 전장 위 기물들 렌더링 (Y-Sorting: screenY 오름차순 정렬)
     if (params.inCombat) {
-      this.updateAndDrawCombatUnits(ctx, effectiveDt, params.combatUnits);
+      this.updateAndDrawCombatUnits(
+        ctx,
+        effectiveDt,
+        params.combatUnits,
+        params.selectedInstanceId
+      );
     } else {
       this.drawPreparationBoardUnits(
         ctx,
         params.viewedParticipant,
-        params.draggedInstanceId
+        params.draggedInstanceId,
+        params.selectedInstanceId
       );
     }
 
-    // 7. 전투 타격 이펙트(초승달 검기, 도트 투사체, 피격 스파크, 5코 3성 번개, 포물선 데미지 폰트) 렌더링
+    // 5. 전투 타격 이펙트 렌더링
     this.updateAndDrawCombatVFX(ctx, effectiveDt);
 
     ctx.restore();
   }
-
-  // ==========================================================================
-  // A. 다크 판타지 던전 배경 & 입체 육각형(Hex) 석재 타일 렌더링
-  // ==========================================================================
 
   private drawDungeonArenaBackground(
     ctx: CanvasRenderingContext2D,
@@ -959,21 +1045,20 @@ export class PixelGameRenderer {
     h: number
   ): void {
     const grad = ctx.createRadialGradient(
-      w * 0.5,
-      h * 0.44,
-      30,
-      w * 0.5,
-      h * 0.44,
+      this.hexMetrics.centerX,
+      this.hexMetrics.centerY,
+      20,
+      this.hexMetrics.centerX,
+      this.hexMetrics.centerY,
       Math.max(w, h) * 0.72
     );
-    grad.addColorStop(0, '#1a1f33');
+    grad.addColorStop(0, '#1a2036');
     grad.addColorStop(0.55, '#0f1322');
     grad.addColorStop(1, '#070911');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    // 배경 픽셀 성벽 벽돌 패턴
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.018)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.016)';
     const brickW = 32;
     const brickH = 16;
     for (let y = 0; y < h; y += brickH) {
@@ -985,7 +1070,8 @@ export class PixelGameRenderer {
   }
 
   /**
-   * 8행 x 7열 Pointy-top Odd-R 육각형 전장 타일을 입체 베벨(상단 면 + 하단 석재 두께 그림자)로 렌더링
+   * 5. 8x7 육각형(Odd-R Pointy-top) 2.5D 원근 비율(perspectiveRatio = 0.78),
+   *    타일 간 간격(gap = 2px), 하단 모서리 4px 두께 석재 입체 단면(3D Bevel Edge) 렌더링
    */
   private drawHexagonalBattlefieldGrid(
     ctx: CanvasRenderingContext2D,
@@ -994,8 +1080,8 @@ export class PixelGameRenderer {
     isDraggingUnit: boolean
   ): void {
     const m = this.hexMetrics;
-    const bevelDepth = Math.max(4, Math.round(m.hexRadius * 0.22));
-    const innerRadius = m.hexRadius * 0.93;
+    const bevelDepth = 4; // 명세: 각 타일 하단 모서리에 4px 두께의 어두운 석재 입체 단면(3D Bevel Edge)
+    const innerRadius = Math.max(8, m.hexRadius - m.gapPx); // 명세: 타일 사이 gap = 2px 간격
 
     for (let r = 0; r < HexGridMath.ROWS; r++) {
       const isEnemyRow = r < 4;
@@ -1008,11 +1094,12 @@ export class PixelGameRenderer {
           hoveredHex.col === c &&
           !isEnemyRow;
 
-        // 1) 하단 입체 석재 두께(3D Bevel Side) 렌더링
+        // 1) 하단 4px 두께의 어두운 석재 입체 단면(3D Bevel Edge)
         const bottomPts = HexGridMath.getHexPolygonVertices(
           center.x,
           center.y + bevelDepth,
-          innerRadius
+          innerRadius,
+          m.perspectiveRatio
         );
         ctx.beginPath();
         ctx.moveTo(bottomPts[0].x, bottomPts[0].y);
@@ -1020,14 +1107,15 @@ export class PixelGameRenderer {
           ctx.lineTo(bottomPts[i].x, bottomPts[i].y);
         }
         ctx.closePath();
-        ctx.fillStyle = isEnemyRow ? '#190d16' : '#0d1929';
+        ctx.fillStyle = isEnemyRow ? '#120810' : '#08111e';
         ctx.fill();
 
-        // 2) 상단 육각형 석판 표면 렌더링
+        // 2) 상단 2.5D 육각형 석판 표면 (perspectiveRatio = 0.78 적용)
         const topPts = HexGridMath.getHexPolygonVertices(
           center.x,
           center.y,
-          innerRadius
+          innerRadius,
+          m.perspectiveRatio
         );
         ctx.beginPath();
         ctx.moveTo(topPts[0].x, topPts[0].y);
@@ -1039,25 +1127,25 @@ export class PixelGameRenderer {
         if (isHoveredAllySlot) {
           ctx.fillStyle = '#2d4b6e';
         } else if (isEnemyRow) {
-          ctx.fillStyle = (r + c) % 2 === 0 ? '#271726' : '#211320';
+          ctx.fillStyle = (r + c) % 2 === 0 ? '#271726' : '#20121f';
         } else {
           ctx.fillStyle = (r + c) % 2 === 0 ? '#18263c' : '#142033';
         }
         ctx.fill();
 
-        // 3) 육각형 룬 테두리 (적군 4줄: 암적색 룬, 아군 4줄: 청록/황금 룬, 드래그 중 밝게 하이라이트)
+        // 3) 육각형 룬 테두리
         ctx.lineWidth = isHoveredAllySlot ? 2.5 : 1.5;
         if (isHoveredAllySlot) {
           ctx.strokeStyle = '#ffea00';
         } else if (isEnemyRow) {
-          ctx.strokeStyle = 'rgba(220, 60, 90, 0.48)';
+          ctx.strokeStyle = 'rgba(220, 60, 90, 0.5)';
         } else if (isDraggingUnit && !inCombat) {
-          ctx.strokeStyle = 'rgba(76, 201, 240, 0.78)';
+          ctx.strokeStyle = 'rgba(76, 201, 240, 0.82)';
         } else {
           ctx.strokeStyle =
             r === 4
-              ? 'rgba(244, 196, 48, 0.55)'
-              : 'rgba(64, 196, 255, 0.42)';
+              ? 'rgba(244, 196, 48, 0.58)'
+              : 'rgba(64, 196, 255, 0.44)';
         }
         ctx.stroke();
 
@@ -1065,7 +1153,8 @@ export class PixelGameRenderer {
         const runePts = HexGridMath.getHexPolygonVertices(
           center.x,
           center.y,
-          innerRadius * 0.72
+          innerRadius * 0.7,
+          m.perspectiveRatio
         );
         ctx.beginPath();
         ctx.moveTo(runePts[0].x, runePts[0].y);
@@ -1083,13 +1172,14 @@ export class PixelGameRenderer {
   }
 
   /**
-   * 하단 1x9 대기석(Bench) 석재 슬롯 및 대기 중인 도트 기물 렌더링
+   * 하단 1x9 대기석(Bench Row) 슬롯 및 기물 렌더링 (상시 이름 라벨 제거, 선택/드래그 시에만 말풍선 표시)
    */
   private drawBenchSlotsAndUnits(
     ctx: CanvasRenderingContext2D,
     participant: Participant,
     hoveredBenchIndex: number | null,
     draggedInstanceId: string | null,
+    selectedInstanceId: string | null,
     hasPandoraBench: boolean
   ): void {
     for (let i = 0; i < this.benchSlotRects.length; i++) {
@@ -1097,8 +1187,8 @@ export class PixelGameRenderer {
       const isPandoraSlot = hasPandoraBench && i >= 6;
       const isHovered = hoveredBenchIndex === i;
 
-      // 입체 하단 베벨
-      ctx.fillStyle = '#090d16';
+      // 4px 하단 석재 입체 단면
+      ctx.fillStyle = '#080b14';
       ctx.fillRect(slot.x, slot.y + 4, slot.w, slot.h);
 
       // 상단 슬롯 표면
@@ -1109,7 +1199,6 @@ export class PixelGameRenderer {
         : '#151e30';
       ctx.fillRect(slot.x, slot.y, slot.w, slot.h);
 
-      // 픽셀 금장/판도라 테두리
       ctx.lineWidth = isHovered ? 2 : 1.5;
       ctx.strokeStyle = isHovered
         ? '#ffea00'
@@ -1119,16 +1208,17 @@ export class PixelGameRenderer {
       ctx.strokeRect(slot.x, slot.y, slot.w, slot.h);
 
       if (isPandoraSlot) {
-        ctx.fillStyle = 'rgba(199, 125, 255, 0.28)';
+        ctx.fillStyle = 'rgba(199, 125, 255, 0.32)';
         ctx.font = 'bold 9px monospace';
         ctx.textAlign = 'right';
-        ctx.fillText('🎲', slot.x + slot.w - 3, slot.y + 11);
+        ctx.fillText('🎲', slot.x + slot.w - 2, slot.y + 10);
       }
 
       const unit = participant.bench[i];
       if (unit && unit.instanceId !== draggedInstanceId) {
-        const cx = slot.x + slot.w * 0.5;
-        const cy = slot.y + slot.h * 0.58;
+        const tileCenterX = slot.x + slot.w * 0.5;
+        const tileCenterY = slot.y + slot.h * 0.56;
+        const isSelected = unit.instanceId === selectedInstanceId;
         this.drawUnitCompleteOnCanvas(ctx, {
           unitId: unit.unitId,
           name: unit.name,
@@ -1141,78 +1231,98 @@ export class PixelGameRenderer {
           maxMana: unit.maxMana,
           items: unit.items,
           team: 'HOME',
-          cx,
-          cy,
-          baseSizePx: Math.min(slot.w, slot.h) * 0.68,
+          tileCenterX,
+          tileCenterY,
           facingX: 1,
           hitFlash: false,
           squashRatioX: 1,
           squashRatioY: 1,
           isStunned: false,
           isReviving: false,
+          isSelectedOrDragged: isSelected,
           compactBenchMode: true,
+          benchSlotWidth: slot.w,
         });
       }
     }
   }
 
   /**
-   * 정비 페이즈(PREPARATION_PHASE): 보드(4x7) 기물들을 하단 아군 육각형 타일(row 4~7)에 렌더링
+   * 정비 페이즈(PREPARATION_PHASE): 보드(4x7) 기물들을 Y-Sorting(screenY 오름차순)으로 정렬하여 렌더링
    */
   private drawPreparationBoardUnits(
     ctx: CanvasRenderingContext2D,
     participant: Participant,
-    draggedInstanceId: string | null
+    draggedInstanceId: string | null,
+    selectedInstanceId: string | null
   ): void {
     const m = this.hexMetrics;
+    const renderList: Array<{
+      unit: UnitInstance;
+      screenX: number;
+      screenY: number;
+    }> = [];
+
     for (let r = 0; r < Participant.BOARD_ROWS; r++) {
       for (let c = 0; c < Participant.BOARD_COLS; c++) {
         const unit = participant.board[r][c];
         if (!unit || unit.instanceId === draggedInstanceId) continue;
-
         const combatRow = 4 + r;
         const center = HexGridMath.hexToScreenCenter(combatRow, c, m);
-        this.drawUnitCompleteOnCanvas(ctx, {
-          unitId: unit.unitId,
-          name: unit.name,
-          cost: unit.cost,
-          starLevel: unit.starLevel,
-          currentHp: unit.maxHp,
-          maxHp: unit.maxHp,
-          shield: 0,
-          currentMana: unit.startMana,
-          maxMana: unit.maxMana,
-          items: unit.items,
-          team: 'HOME',
-          cx: center.x,
-          cy: center.y,
-          baseSizePx: m.hexRadius * 1.18,
-          facingX: 1,
-          hitFlash: false,
-          squashRatioX: 1,
-          squashRatioY: 1,
-          isStunned: false,
-          isReviving: false,
-          compactBenchMode: false,
+        renderList.push({
+          unit,
+          screenX: center.x,
+          screenY: center.y,
         });
       }
+    }
+
+    // 6. Y-Sorting (원근 깊이 정렬): 화면의 y 좌표가 작은(뒷줄) 유닛부터 큰(앞줄) 유닛 순으로 정렬
+    renderList.sort((a, b) => a.screenY - b.screenY);
+
+    for (const entry of renderList) {
+      const { unit, screenX, screenY } = entry;
+      this.drawUnitCompleteOnCanvas(ctx, {
+        unitId: unit.unitId,
+        name: unit.name,
+        cost: unit.cost,
+        starLevel: unit.starLevel,
+        currentHp: unit.maxHp,
+        maxHp: unit.maxHp,
+        shield: 0,
+        currentMana: unit.startMana,
+        maxMana: unit.maxMana,
+        items: unit.items,
+        team: 'HOME',
+        tileCenterX: screenX,
+        tileCenterY: screenY,
+        facingX: 1,
+        hitFlash: false,
+        squashRatioX: 1,
+        squashRatioY: 1,
+        isStunned: false,
+        isReviving: false,
+        isSelectedOrDragged: unit.instanceId === selectedInstanceId,
+        compactBenchMode: false,
+      });
     }
   }
 
   /**
-   * 전투 페이즈(COMBAT_PHASE): 6방향 보간 이동, 공격 돌진(Hex Lunge), 80ms 피격 점멸, 넉백/탄성을 반영하여 렌더링
+   * 전투 페이즈(COMBAT_PHASE): 6방향 보간 이동, 공격 돌진(Hex Lunge), 80ms 피격 점멸, Y-Sorting 적용 렌더링
    */
   private updateAndDrawCombatUnits(
     ctx: CanvasRenderingContext2D,
     dtMs: number,
-    combatUnits: CombatUnit[]
+    combatUnits: CombatUnit[],
+    selectedInstanceId: string | null
   ): void {
     const m = this.hexMetrics;
 
     const renderList: Array<{
       cu: CombatUnit;
-      cx: number;
-      cy: number;
+      screenX: number;
+      screenY: number;
       facingX: 1 | -1;
       hitFlash: boolean;
       squashX: number;
@@ -1224,7 +1334,6 @@ export class PixelGameRenderer {
 
       const st = this.getOrInitUnitJuice(cu.instanceId, cu.row, cu.col);
 
-      // 1) 이동 보간 업데이트 (50ms 틱 사이를 부드럽게 6방향 육각형 중심으로 슬라이딩)
       if (st.moveToRow !== cu.row || st.moveToCol !== cu.col) {
         st.moveFromRow = st.renderRow;
         st.moveFromCol = st.renderCol;
@@ -1253,20 +1362,17 @@ export class PixelGameRenderer {
         m
       );
 
-      // 2) 6방향 공격 돌진(Hex Lunge) 오프셋 계산
       let lungeOffsetX = 0;
       let lungeOffsetY = 0;
       if (st.lungeTimerMs > 0) {
         st.lungeTimerMs = Math.max(0, st.lungeTimerMs - dtMs);
         const progress = 1 - st.lungeTimerMs / st.lungeDurationMs;
-        // 앞으로 확 찔렀다가 돌아오는 사인 곡선
         const lungeFactor = Math.sin(progress * Math.PI);
         const maxLungePx = m.hexRadius * 0.52;
         lungeOffsetX = st.lungeDirX * maxLungePx * lungeFactor;
         lungeOffsetY = st.lungeDirY * maxLungePx * lungeFactor;
       }
 
-      // 3) 피격 점멸(80ms White Hit-Flash) & 넉백 감쇠 & 찌그러짐(Squash & Stretch)
       if (st.hitFlashTimerMs > 0) {
         st.hitFlashTimerMs = Math.max(0, st.hitFlashTimerMs - dtMs);
       }
@@ -1284,8 +1390,8 @@ export class PixelGameRenderer {
 
       renderList.push({
         cu,
-        cx: basePos.x + lungeOffsetX + st.knockbackOffsetX,
-        cy: basePos.y + lungeOffsetY + st.knockbackOffsetY,
+        screenX: basePos.x + lungeOffsetX + st.knockbackOffsetX,
+        screenY: basePos.y + lungeOffsetY + st.knockbackOffsetY,
         facingX: st.facingX,
         hitFlash: st.hitFlashTimerMs > 0,
         squashX,
@@ -1293,11 +1399,11 @@ export class PixelGameRenderer {
       });
     }
 
-    // Y좌표 오름차순 정렬하여 아래쪽 행 기물이 위쪽 행 기물 앞에 자연스럽게 겹치도록 렌더링
-    renderList.sort((a, b) => a.cy - b.cy);
+    // 6. Y-Sorting (원근 깊이 정렬): units.sort((a, b) => a.screenY - b.screenY)
+    renderList.sort((a, b) => a.screenY - b.screenY);
 
     for (const item of renderList) {
-      const { cu, cx, cy, facingX, hitFlash, squashX, squashY } = item;
+      const { cu, screenX, screenY, facingX, hitFlash, squashX, squashY } = item;
       this.drawUnitCompleteOnCanvas(ctx, {
         unitId: cu.unitId,
         name: cu.name,
@@ -1310,22 +1416,24 @@ export class PixelGameRenderer {
         maxMana: cu.maxMana,
         items: cu.items,
         team: cu.team,
-        cx,
-        cy,
-        baseSizePx: m.hexRadius * 1.18,
+        tileCenterX: screenX,
+        tileCenterY: screenY,
         facingX,
         hitFlash,
         squashRatioX: squashX,
         squashRatioY: squashY,
         isStunned: cu.stunTimerMs > 0,
         isReviving: cu.isReviving,
+        isSelectedOrDragged: cu.instanceId === selectedInstanceId,
         compactBenchMode: false,
       });
     }
   }
 
   // ==========================================================================
-  // B. 단일 도트 기물 통합 렌더링 (3성 황금 마법진 + 그림자 + 성급별 1.0x/1.25x/1.5x 도트 + 눈금 체력바)
+  // 2 & 6. 도트 캐릭터 스케일(hexWidth*0.9, 2성 1.15x, 3성 1.4x),
+  //        발밑 기준점(Bottom-Center Anchor: centerY + hexRadius*0.15),
+  //        체력바/마나바/성급 배지 고정(spriteTopY - 10px), 상시 이름 라벨 완전 삭제!
   // ==========================================================================
 
   private drawUnitCompleteOnCanvas(
@@ -1342,45 +1450,83 @@ export class PixelGameRenderer {
       maxMana: number;
       items: ItemId[];
       team: 'HOME' | 'AWAY';
-      cx: number;
-      cy: number;
-      baseSizePx: number;
+      tileCenterX: number;
+      tileCenterY: number;
       facingX: 1 | -1;
       hitFlash: boolean;
       squashRatioX: number;
       squashRatioY: number;
       isStunned: boolean;
       isReviving: boolean;
+      isSelectedOrDragged: boolean;
       compactBenchMode: boolean;
+      benchSlotWidth?: number;
     }
   ): void {
-    // 성급별 외형 진화 배율: 1성 1.0배, 2성 1.25배, 3성 1.5배 거대화
+    const m = this.hexMetrics;
+
+    // 6. 캐릭터 스케일: 기본 1성 캐릭터의 렌더링 크기를 hexWidth * 0.9 (2성은 1.15배, 3성은 1.4배)
     const starScale =
-      u.starLevel === 3 ? 1.5 : u.starLevel === 2 ? 1.25 : 1.0;
-    const bobbingOffset =
-      Math.floor(Math.sin(this.globalAnimClockMs / 180 + u.cx) * 1.5);
+      u.starLevel === 3 ? 1.4 : u.starLevel === 2 ? 1.15 : 1.0;
+    const base1StarSize = u.compactBenchMode
+      ? (u.benchSlotWidth ?? 36) * 0.86
+      : m.hexWidth * 0.9;
+
+    const spriteDrawW = Math.round(base1StarSize * starScale * u.squashRatioX);
+    const spriteDrawH = Math.round(base1StarSize * starScale * u.squashRatioY);
+
+    // 6. 발밑 기준점(Feet Anchor): 캐릭터 스프라이트의 발바닥 끝(Bottom-Center)이
+    //    육각형 타일 정중앙에서 살짝 아래(centerY + hexRadius * 0.15)를 딛고 서도록 좌표 고정
+    const feetAnchorX = Math.round(u.tileCenterX);
+    const feetAnchorY = Math.round(
+      u.tileCenterY + (u.compactBenchMode ? 10 : m.hexRadius * 0.15)
+    );
+    const bobbingOffset = Math.floor(
+      Math.sin(this.globalAnimClockMs / 180 + u.tileCenterX) * 1.2
+    );
+
+    const spriteTopY = feetAnchorY + bobbingOffset - spriteDrawH;
 
     ctx.save();
 
     // 1) 3성 기물 전용: 발밑 육각형 타일에 회전하는 도트 황금 마법진과 상승하는 빛 입자 상시 출력
     if (u.starLevel === 3 && !u.compactBenchMode) {
-      this.drawThreeStarMagicCircle(ctx, u.cx, u.cy + 5, this.hexMetrics.hexRadius * 0.78);
+      this.drawThreeStarMagicCircle(
+        ctx,
+        feetAnchorX,
+        feetAnchorY,
+        m.hexRadius * 0.76
+      );
     }
 
-    // 2) 캐릭터 발밑 타원형 반투명 그림자(Drop Shadow)
-    const shadowRx = u.baseSizePx * 0.42 * starScale;
-    const shadowRy = shadowRx * 0.38;
+    // 2) 발바닥 기준점(feetAnchorX, feetAnchorY)에 타원형 반투명 그림자(Drop Shadow)
+    const shadowRx = Math.max(10, spriteDrawW * 0.34);
+    const shadowRy = Math.max(4, shadowRx * 0.38);
     ctx.beginPath();
-    ctx.ellipse(u.cx, u.cy + 7, shadowRx, shadowRy, 0, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.ellipse(feetAnchorX, feetAnchorY, shadowRx, shadowRy, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.56)';
     ctx.fill();
 
-    // 3) 2성 은빛 글로우 / 3성 황금 아우라 외곽 효과
-    const spriteDrawW = Math.round(u.baseSizePx * starScale * u.squashRatioX);
-    const spriteDrawH = Math.round(u.baseSizePx * starScale * u.squashRatioY);
+    // 3) 선택된 기물 발밑 하이라이트 링
+    if (u.isSelectedOrDragged) {
+      ctx.strokeStyle = '#ffea00';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(
+        feetAnchorX,
+        feetAnchorY,
+        shadowRx * 1.25,
+        shadowRy * 1.25,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.stroke();
+    }
+
+    // 4) 도트 캐릭터 스프라이트 렌더링 (Bottom-Center Anchor = feetAnchorX, feetAnchorY + bobbingOffset)
     const animFrame: 0 | 1 =
       Math.floor(this.globalAnimClockMs / 260) % 2 === 0 ? 0 : 1;
-
     const spriteCanvas = this.getOrCreateUnitPixelSprite(
       u.unitId,
       u.starLevel,
@@ -1389,7 +1535,7 @@ export class PixelGameRenderer {
     );
 
     ctx.save();
-    ctx.translate(Math.round(u.cx), Math.round(u.cy + bobbingOffset));
+    ctx.translate(feetAnchorX, feetAnchorY + bobbingOffset);
     if (u.facingX === -1) {
       ctx.scale(-1, 1);
     }
@@ -1399,66 +1545,60 @@ export class PixelGameRenderer {
     ctx.drawImage(
       spriteCanvas,
       Math.round(-spriteDrawW * 0.5),
-      Math.round(-spriteDrawH * 0.78),
+      -spriteDrawH,
       spriteDrawW,
       spriteDrawH
     );
     ctx.restore();
 
-    // 4) 기절(Stun) 중일 때 머리 위 회전하는 도트 별 표시
+    // 5) 기절(Stun) 중일 때 표시
     if (u.isStunned) {
       ctx.fillStyle = '#ffea00';
-      ctx.font = 'bold 11px monospace';
+      ctx.font = 'bold 10px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('💫STUN', u.cx, u.cy - spriteDrawH * 0.85);
+      ctx.fillText('💫', feetAnchorX, spriteTopY - 22);
     }
 
-    // 5) 머리 위 세련된 모바일 게임풍 체력바(200 HP마다 눈금 표시) + 마나바 + 성급 별표 + 장착 아이템
+    // 6) 머리 바로 위(spriteTopY - 10px)에 가로폭 hexWidth * 0.75, 높이 7px 체력바 + 3px 마나바 + 좌측 성급 별(★~★★★) + 장착 아이템 도트 아이콘
+    //    주의: 상시 기물 이름 텍스트(Label)는 전장 시인성 극대화를 위해 완전히 삭제!
     const barWidth = u.compactBenchMode
-      ? Math.max(30, u.baseSizePx * 0.95)
-      : Math.max(38, u.baseSizePx * (u.starLevel === 3 ? 1.25 : 1.05));
-    const barHeight = u.compactBenchMode ? 4 : 6;
-    const manaHeight = u.compactBenchMode ? 2 : 3;
-    const barX = Math.round(u.cx - barWidth * 0.5);
-    const barY = Math.round(u.cy - spriteDrawH * 0.76 - (u.compactBenchMode ? 6 : 11));
+      ? Math.max(26, (u.benchSlotWidth ?? 36) * 0.78)
+      : Math.max(32, Math.round(m.hexWidth * 0.75));
+    const hpBarHeight = u.compactBenchMode ? 5 : 7;
+    const manaBarHeight = u.compactBenchMode ? 2 : 3;
+    const barX = Math.round(feetAnchorX - barWidth * 0.5);
+    const barY = Math.round(spriteTopY - 10);
 
-    // 성급 별표 (★ / ★★ / ★★★)
-    const starsStr = '★'.repeat(u.starLevel);
-    ctx.font = `900 ${u.starLevel === 3 ? 11 : 9}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2.5;
-    ctx.strokeText(starsStr, u.cx, barY - 2);
-    ctx.fillStyle =
-      u.starLevel === 3
-        ? '#ffea00'
-        : u.starLevel === 2
-        ? '#e2e8f0'
-        : '#cbd5e1';
-    ctx.fillText(starsStr, u.cx, barY - 2);
+    // 체력바 & 마나바 외곽 프레임
+    ctx.fillStyle = '#070a12';
+    ctx.fillRect(
+      barX - 1,
+      barY - 1,
+      barWidth + 2,
+      hpBarHeight + manaBarHeight + 3
+    );
 
+    // 체력바 채우기
+    const hpRatio = Math.max(
+      0,
+      Math.min(1, u.currentHp / Math.max(1, u.maxHp))
+    );
+    const hpFillW = Math.round(barWidth * hpRatio);
+    ctx.fillStyle = u.team === 'HOME' ? '#2ec4b6' : '#e63946';
+    ctx.fillRect(barX, barY, hpFillW, hpBarHeight);
+
+    // 보호막(Shield) 오버레이
+    if (u.shield > 0) {
+      const shieldW = Math.min(
+        barWidth,
+        Math.round((u.shield / Math.max(1, u.maxHp)) * barWidth)
+      );
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(barX, barY, shieldW, Math.max(2, hpBarHeight - 2));
+    }
+
+    // 200 HP 단위 눈금(Tick Marks)
     if (!u.compactBenchMode) {
-      // 체력바 배경
-      ctx.fillStyle = '#090c14';
-      ctx.fillRect(barX - 1, barY - 1, barWidth + 2, barHeight + manaHeight + 3);
-
-      // 체력 비율 채우기
-      const hpRatio = Math.max(0, Math.min(1, u.currentHp / Math.max(1, u.maxHp)));
-      const hpFillW = Math.round(barWidth * hpRatio);
-      ctx.fillStyle = u.team === 'HOME' ? '#2ec4b6' : '#e63946';
-      ctx.fillRect(barX, barY, hpFillW, barHeight);
-
-      // 보호막(Shield) 오버레이
-      if (u.shield > 0) {
-        const shieldW = Math.min(
-          barWidth,
-          Math.round((u.shield / Math.max(1, u.maxHp)) * barWidth)
-        );
-        ctx.fillStyle = '#e2e8f0';
-        ctx.fillRect(barX, barY, shieldW, Math.max(2, barHeight - 2));
-      }
-
-      // 200 HP마다 검은색 픽셀 눈금(Tick Marks) 표시
       const segmentCount = Math.min(20, Math.floor(u.maxHp / 200));
       if (segmentCount >= 1) {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
@@ -1466,53 +1606,97 @@ export class PixelGameRenderer {
           const segHp = s * 200;
           if (segHp >= u.maxHp) break;
           const tickX = barX + Math.round((segHp / u.maxHp) * barWidth);
-          ctx.fillRect(tickX, barY, 1, barHeight);
+          ctx.fillRect(tickX, barY, 1, hpBarHeight);
         }
       }
-
-      // 마나바
-      const manaRatio =
-        u.maxMana > 0
-          ? Math.max(0, Math.min(1, u.currentMana / u.maxMana))
-          : 0;
-      ctx.fillStyle = '#1b263b';
-      ctx.fillRect(barX, barY + barHeight + 1, barWidth, manaHeight);
-      ctx.fillStyle = '#00bbf9';
-      ctx.fillRect(
-        barX,
-        barY + barHeight + 1,
-        Math.round(barWidth * manaRatio),
-        manaHeight
-      );
     }
 
-    // 장착 아이템 뱃지 & 코스트 테두리 이름표
+    // 마나바 (3px)
+    const manaRatio =
+      u.maxMana > 0
+        ? Math.max(0, Math.min(1, u.currentMana / u.maxMana))
+        : 0;
+    ctx.fillStyle = '#1b263b';
+    ctx.fillRect(barX, barY + hpBarHeight + 1, barWidth, manaBarHeight);
+    ctx.fillStyle = '#00bbf9';
+    ctx.fillRect(
+      barX,
+      barY + hpBarHeight + 1,
+      Math.round(barWidth * manaRatio),
+      manaBarHeight
+    );
+
+    // 체력바 좌측에 성급 별(★/★★/★★★) 배지 고정
+    const starsStr = '★'.repeat(u.starLevel);
+    ctx.font = `900 ${u.starLevel === 3 ? 10 : 9}px monospace`;
+    ctx.textAlign = 'right';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2.5;
+    ctx.strokeText(starsStr, barX - 3, barY + hpBarHeight);
+    ctx.fillStyle =
+      u.starLevel === 3
+        ? '#ffea00'
+        : u.starLevel === 2
+        ? '#e2e8f0'
+        : '#cbd5e1';
+    ctx.fillText(starsStr, barX - 3, barY + hpBarHeight);
+
+    // 장착 아이템 작은 도트 아이콘 (최대 3개, 체력바 바로 위)
     if (u.items.length > 0) {
       const iconText = u.items
+        .slice(0, 3)
         .map((id) => ITEM_DEFINITIONS[id]?.icon ?? '')
         .join('');
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(iconText, u.cx, barY - (u.compactBenchMode ? 10 : 12));
+      ctx.fillText(iconText, feetAnchorX, barY - 3);
     }
 
-    // 하단 코스트 컬러 도트 이름표
-    const shortName =
-      u.name.length > 6 ? u.name.slice(u.name.indexOf(' ') + 1) : u.name;
-    ctx.font = 'bold 9px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.strokeStyle = '#05070c';
-    ctx.lineWidth = 2.5;
-    ctx.strokeText(shortName, u.cx, u.cy + (u.compactBenchMode ? 15 : 17));
-    ctx.fillStyle = COST_BORDER_COLORS[u.cost];
-    ctx.fillText(shortName, u.cx, u.cy + (u.compactBenchMode ? 15 : 17));
+    // 2. 예외 처리: 플레이어가 해당 기물을 터치(Tap)하여 선택했거나 드래그 중일 때만 기물 말풍선으로 이름 표시
+    if (u.isSelectedOrDragged) {
+      this.drawSelectedUnitNameBubble(
+        ctx,
+        feetAnchorX,
+        barY - (u.items.length > 0 ? 15 : 6),
+        `${u.name} ${starsStr}`,
+        COST_BORDER_COLORS[u.cost]
+      );
+    }
 
     ctx.restore();
   }
 
   /**
-   * 3성 기물 발밑에 회전하는 도트 황금 마법진과 상승하는 황금 입자 렌더링
+   * 터치(Tap)로 선택되었거나 드래그 중인 기물에만 표시되는 깔끔한 말풍선 이름표
    */
+  private drawSelectedUnitNameBubble(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    bottomY: number,
+    label: string,
+    borderColor: string
+  ): void {
+    ctx.save();
+    ctx.font = '900 10px sans-serif';
+    const paddingX = 6;
+    const textW = ctx.measureText(label).width;
+    const boxW = Math.round(textW + paddingX * 2);
+    const boxH = 16;
+    const boxX = Math.round(cx - boxW * 0.5);
+    const boxY = Math.round(bottomY - boxH);
+
+    ctx.fillStyle = 'rgba(9, 13, 26, 0.94)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+    ctx.fillStyle = '#fef08a';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, cx, boxY + 12);
+    ctx.restore();
+  }
+
   private drawThreeStarMagicCircle(
     ctx: CanvasRenderingContext2D,
     cx: number,
@@ -1523,7 +1707,7 @@ export class PixelGameRenderer {
 
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.scale(1, 0.55); // 타원형 원근감
+    ctx.scale(1, 0.55);
     ctx.rotate(angle);
 
     ctx.strokeStyle = '#ffea00';
@@ -1532,7 +1716,6 @@ export class PixelGameRenderer {
     ctx.arc(0, 0, radius, 0, Math.PI * 2);
     ctx.stroke();
 
-    // 내부 회전 6각 별 마법진
     for (let k = 0; k < 2; k++) {
       ctx.beginPath();
       for (let i = 0; i < 3; i++) {
@@ -1548,10 +1731,11 @@ export class PixelGameRenderer {
     }
     ctx.restore();
 
-    // 상승하는 빛 도트 입자 4개
     for (let i = 0; i < 4; i++) {
       const phase = ((this.globalAnimClockMs * 0.04 + i * 25) % 100) / 100;
-      const px = cx + Math.cos(i * 1.7 + this.globalAnimClockMs * 0.003) * (radius * 0.65);
+      const px =
+        cx +
+        Math.cos(i * 1.7 + this.globalAnimClockMs * 0.003) * (radius * 0.65);
       const py = cy - phase * 28;
       ctx.fillStyle = i % 2 === 0 ? '#ffea00' : '#ffffff';
       ctx.fillRect(Math.round(px), Math.round(py), 3, 3);
@@ -1559,7 +1743,7 @@ export class PixelGameRenderer {
   }
 
   // ==========================================================================
-  // C. 20종 챔피언 고유 28x28 도트 스프라이트 프로시저럴 생성기 (1px 검은 외곽선 + 2성/3성 글로우 + 80ms White Flash)
+  // 20종 챔피언 고유 28x28 도트 스프라이트 생성기
   // ==========================================================================
 
   public getOrCreateUnitPixelSprite(
@@ -1581,7 +1765,6 @@ export class PixelGameRenderer {
 
     const spec = UNIT_PIXEL_SPECS[unitId] ?? UNIT_PIXEL_SPECS.u1_garen;
 
-    // 28x28 컬러 그리드 버퍼
     const pixels: (string | null)[][] = Array.from({ length: size }, () =>
       Array<string | null>(size).fill(null)
     );
@@ -1594,7 +1777,13 @@ export class PixelGameRenderer {
       }
     };
 
-    const fillRectPx = (x: number, y: number, w: number, h: number, color: string) => {
+    const fillRectPx = (
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+      color: string
+    ) => {
       for (let py = y; py < y + h; py++) {
         for (let px = x; px < x + w; px++) {
           setPx(px, py, color);
@@ -1602,10 +1791,13 @@ export class PixelGameRenderer {
       }
     };
 
-    const dy = frame === 1 ? -1 : 0; // 숨쉬기 1픽셀 모션
+    const dy = frame === 1 ? -1 : 0;
 
-    // 1. 등 뒤 날개 / 망토 (Wings & Cape)
-    if (spec.wings === 'ANGEL_WINGS' || spec.wings === 'DRAGON_WINGS' || spec.wings === 'DEMON_WINGS') {
+    if (
+      spec.wings === 'ANGEL_WINGS' ||
+      spec.wings === 'DRAGON_WINGS' ||
+      spec.wings === 'DEMON_WINGS'
+    ) {
       const wingColor =
         spec.wings === 'ANGEL_WINGS'
           ? '#ffffff'
@@ -1613,7 +1805,6 @@ export class PixelGameRenderer {
           ? spec.secondaryArmor
           : '#5a189a';
       const wingTip = spec.trimGold;
-      // 좌우 거대 날개 픽셀
       for (let wy = 7; wy <= 18; wy++) {
         const span = wy < 12 ? 9 - (wy - 7) : 5;
         for (let wx = 2; wx < 2 + span; wx++) {
@@ -1625,38 +1816,31 @@ export class PixelGameRenderer {
       fillRectPx(8, 12 + dy, 11, 10, spec.secondaryArmor);
     }
 
-    // 2. 다리 & 부츠 (Legs)
     const legOffset = frame === 1 ? 1 : 0;
     fillRectPx(10, 21, 3, 4 - legOffset, spec.primaryArmor);
     fillRectPx(15, 21, 3, 4, spec.primaryArmor);
     fillRectPx(10, 24 - legOffset, 3, 2, spec.trimGold);
     fillRectPx(15, 24, 3, 2, spec.trimGold);
 
-    // 3. 몸통 갑옷 / 로브 (Torso & Pauldrons)
     fillRectPx(9, 13 + dy, 10, 8, spec.primaryArmor);
     fillRectPx(11, 14 + dy, 6, 6, spec.secondaryArmor);
-    // 갑옷 금장 벨트 & 흉갑 문양
     fillRectPx(9, 19 + dy, 10, 2, spec.trimGold);
     fillRectPx(13, 14 + dy, 2, 5, spec.trimGold);
-    // 양 어깨 견갑(Pauldrons)
     fillRectPx(7, 13 + dy, 3, 4, spec.secondaryArmor);
     fillRectPx(18, 13 + dy, 3, 4, spec.secondaryArmor);
     setPx(7, 13 + dy, spec.trimGold);
     setPx(20, 13 + dy, spec.trimGold);
 
-    // 4. 머리 & 얼굴 & 눈빛 (Head & Eyes)
     fillRectPx(10, 7 + dy, 8, 6, spec.skinOrFace);
-    // 빛나는 눈 (우측을 바라보는 기준)
     setPx(12, 10 + dy, spec.eyeGlow);
     setPx(16, 10 + dy, spec.eyeGlow);
 
-    // 5. 투구 / 왕관 / 뿔 / 마법모자 (Headgear)
     if (spec.headgear === 'KNIGHT_HELM' || spec.headgear === 'HALO_HELM') {
       fillRectPx(9, 5 + dy, 10, 4, spec.primaryArmor);
       fillRectPx(10, 8 + dy, 8, 2, spec.trimGold);
-      fillRectPx(13, 3 + dy, 2, 3, spec.trimGold); // 투구 깃털
+      fillRectPx(13, 3 + dy, 2, 3, spec.trimGold);
       if (spec.headgear === 'HALO_HELM') {
-        fillRectPx(10, 2 + dy, 8, 1, '#ffea00'); // 천사 헤일로
+        fillRectPx(10, 2 + dy, 8, 1, '#ffea00');
       }
     } else if (spec.headgear === 'CROWN') {
       fillRectPx(9, 4 + dy, 10, 3, '#ffd700');
@@ -1664,7 +1848,6 @@ export class PixelGameRenderer {
       setPx(13, 2 + dy, '#ff0055');
       setPx(14, 2 + dy, '#ff0055');
       setPx(18, 3 + dy, '#ffea00');
-      // 고블린 귀
       fillRectPx(7, 8 + dy, 3, 2, spec.skinOrFace);
       fillRectPx(18, 8 + dy, 3, 2, spec.skinOrFace);
     } else if (spec.headgear === 'GOBLIN_EARS') {
@@ -1676,9 +1859,11 @@ export class PixelGameRenderer {
       fillRectPx(10, 4 + dy, 8, 3, spec.primaryArmor);
       fillRectPx(12, 2 + dy, 5, 2, spec.secondaryArmor);
       fillRectPx(10, 6 + dy, 8, 1, spec.trimGold);
-    } else if (spec.headgear === 'DEMON_HORNS' || spec.headgear === 'DRAGON_HORNS') {
+    } else if (
+      spec.headgear === 'DEMON_HORNS' ||
+      spec.headgear === 'DRAGON_HORNS'
+    ) {
       fillRectPx(10, 6 + dy, 8, 2, spec.primaryArmor);
-      // 솟아오른 양쪽 뿔
       fillRectPx(8, 3 + dy, 2, 4, spec.trimGold);
       fillRectPx(18, 3 + dy, 2, 4, spec.trimGold);
       setPx(7, 2 + dy, spec.weaponGlow);
@@ -1686,7 +1871,7 @@ export class PixelGameRenderer {
     } else if (spec.headgear === 'ELVEN_CIRCLET') {
       fillRectPx(9, 6 + dy, 10, 2, spec.trimGold);
       setPx(14, 5 + dy, spec.eyeGlow);
-      fillRectPx(8, 8 + dy, 2, 5, spec.secondaryArmor); // 엘프 장발
+      fillRectPx(8, 8 + dy, 2, 5, spec.secondaryArmor);
     } else if (spec.headgear === 'HOOD') {
       fillRectPx(9, 5 + dy, 10, 5, spec.primaryArmor);
       fillRectPx(11, 8 + dy, 6, 3, '#111111');
@@ -1704,9 +1889,7 @@ export class PixelGameRenderer {
       fillRectPx(12, 8 + dy, 4, 3, spec.eyeGlow);
     }
 
-    // 6. 손에 든 무기 (Weapons)
     if (spec.weapon === 'SWORD_SHIELD') {
-      // 왼손 거대 방패 + 오른손 검
       fillRectPx(4, 13 + dy, 4, 7, spec.secondaryArmor);
       fillRectPx(5, 14 + dy, 2, 5, spec.trimGold);
       fillRectPx(21, 7 + dy, 2, 11, spec.weaponColor);
@@ -1725,8 +1908,8 @@ export class PixelGameRenderer {
         const bx = by === 8 || by === 19 ? 20 : by < 11 || by > 16 ? 22 : 23;
         setPx(bx, by + dy, spec.weaponColor);
       }
-      fillRectPx(20, 9 + dy, 1, 10, '#e2e8f0'); // 활시위
-      fillRectPx(19, 13 + dy, 6, 1, spec.weaponGlow); // 화살
+      fillRectPx(20, 9 + dy, 1, 10, '#e2e8f0');
+      fillRectPx(19, 13 + dy, 6, 1, spec.weaponGlow);
     } else if (
       spec.weapon === 'ARCANE_STAFF' ||
       spec.weapon === 'NATURE_STAFF' ||
@@ -1743,8 +1926,8 @@ export class PixelGameRenderer {
       fillRectPx(21, 3 + dy, 2, 20, spec.weaponColor);
       fillRectPx(20, 2 + dy, 4, 3, spec.weaponGlow);
     } else if (spec.weapon === 'CANNON_BAG') {
-      fillRectPx(4, 11 + dy, 5, 9, '#ffd700'); // 황금 보따리
-      fillRectPx(20, 12 + dy, 5, 5, '#334155'); // 폭탄/대포
+      fillRectPx(4, 11 + dy, 5, 9, '#ffd700');
+      fillRectPx(20, 12 + dy, 5, 5, '#334155');
       setPx(24, 11 + dy, '#ffea00');
     } else if (spec.weapon === 'DRAGON_CLAW') {
       fillRectPx(20, 11 + dy, 5, 5, spec.weaponGlow);
@@ -1753,7 +1936,6 @@ export class PixelGameRenderer {
       setPx(25, 16 + dy, '#ffea00');
     }
 
-    // 7. 1px 검은색 외곽선(Pixel Outline) 및 2성 은빛 / 3성 황금 외곽 글로우 렌더링
     const outlineColor =
       starLevel === 3
         ? '#ffd700'
@@ -1776,7 +1958,6 @@ export class PixelGameRenderer {
       }
     }
 
-    // 8. 본체 픽셀 채우기 (피격 점멸 80ms 동안은 스프라이트 전체를 새하얗게 렌더링)
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const col = pixels[y][x];
@@ -1790,37 +1971,31 @@ export class PixelGameRenderer {
     return off;
   }
 
-  // ==========================================================================
-  // D. 전투 타격 이펙트 (초승달 검기, 도트 투사체, 피격 스파크, 포물선 데미지 폰트)
-  // ==========================================================================
-
   private updateAndDrawCombatVFX(
     ctx: CanvasRenderingContext2D,
     dtMs: number
   ): void {
-    // 1. 5코 3성 천지개벽 황금 번개 기둥 연출
     if (this.cataclysmFlashMs > 0) {
       this.cataclysmFlashMs = Math.max(0, this.cataclysmFlashMs - dtMs);
       const alpha = (this.cataclysmFlashMs / 900) * 0.75;
       ctx.save();
       ctx.fillStyle = `rgba(255, 234, 0, ${alpha * 0.35})`;
-      ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
 
       ctx.strokeStyle = '#ffea00';
       ctx.lineWidth = 6;
       ctx.globalAlpha = Math.min(1, alpha * 1.4);
       for (let i = 0; i < 7; i++) {
-        const lx = ((i + 0.5) / 7) * this.canvas.width;
+        const lx = ((i + 0.5) / 7) * this.viewportWidth;
         ctx.beginPath();
         ctx.moveTo(lx, 0);
-        ctx.lineTo(lx + (Math.random() - 0.5) * 24, this.canvas.height * 0.5);
-        ctx.lineTo(lx, this.canvas.height);
+        ctx.lineTo(lx + (Math.random() - 0.5) * 24, this.viewportHeight * 0.5);
+        ctx.lineTo(lx, this.viewportHeight);
         ctx.stroke();
       }
       ctx.restore();
     }
 
-    // 2. 근접 공격 초승달 모양 픽셀 검기(Slash Smear)
     for (let i = this.slashSmears.length - 1; i >= 0; i--) {
       const s = this.slashSmears[i];
       s.lifeMs += dtMs;
@@ -1836,7 +2011,6 @@ export class PixelGameRenderer {
       ctx.rotate(s.angleRad);
       ctx.globalAlpha = alpha;
 
-      // 외곽 초승달 검기 호
       ctx.beginPath();
       ctx.arc(0, 0, s.radius, -Math.PI * 0.42, Math.PI * 0.42, false);
       ctx.arc(
@@ -1851,7 +2025,6 @@ export class PixelGameRenderer {
       ctx.fillStyle = s.color;
       ctx.fill();
 
-      // 중심 백색 날카로운 코어
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = s.coreColor;
       ctx.beginPath();
@@ -1861,7 +2034,6 @@ export class PixelGameRenderer {
       ctx.restore();
     }
 
-    // 3. 원거리 화살/마법탄 도트 투사체(Pixel Projectiles)
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       p.lifeMs += dtMs;
@@ -1874,7 +2046,6 @@ export class PixelGameRenderer {
       const cy = p.y1 + (p.y2 - p.y1) * t - Math.sin(t * Math.PI) * 14;
 
       ctx.save();
-      // 잔상 꼬리
       const prevT = Math.max(0, t - 0.18);
       const tx = p.x1 + (p.x2 - p.x1) * prevT;
       const ty = p.y1 + (p.y2 - p.y1) * prevT - Math.sin(prevT * Math.PI) * 14;
@@ -1885,7 +2056,6 @@ export class PixelGameRenderer {
       ctx.lineTo(cx, cy);
       ctx.stroke();
 
-      // 도트 탄두
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(Math.round(cx - 3), Math.round(cy - 3), 6, 6);
       ctx.strokeStyle = p.color;
@@ -1894,7 +2064,6 @@ export class PixelGameRenderer {
       ctx.restore();
     }
 
-    // 4. 픽셀 피격 파편(Hit Sparks)
     for (let i = this.pixelSparks.length - 1; i >= 0; i--) {
       const sp = this.pixelSparks[i];
       sp.lifeMs += dtMs;
@@ -1915,7 +2084,6 @@ export class PixelGameRenderer {
       ctx.restore();
     }
 
-    // 5. 포물선 중력 팝업 데미지 폰트(Arcade Damage Popups)
     for (let i = this.damagePops.length - 1; i >= 0; i--) {
       const dp = this.damagePops[i];
       dp.lifeMs += dtMs;

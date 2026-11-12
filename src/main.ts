@@ -72,6 +72,9 @@ class FantasyAutoBattlerApp {
   private hoveredHex: HexCoord | null = null;
   private hoveredBenchIndex: number | null = null;
 
+  // 플레이어가 터치(Tap)하여 선택한 기물 인스턴스 ID (선택/드래그 중일 때만 말풍선 이름표 표시)
+  private selectedUnitInstanceId: string | null = null;
+
   constructor() {
     this.fxCanvas = document.getElementById('fx-canvas') as HTMLCanvasElement;
     this.pixelRenderer = new PixelGameRenderer(this.fxCanvas);
@@ -84,6 +87,9 @@ class FantasyAutoBattlerApp {
     this.bindGlobalDOMEvents();
     this.resizeCanvas();
     window.addEventListener('resize', () => this.resizeCanvas());
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => this.resizeCanvas(), 60);
+    });
 
     this.onGameStateUpdated();
     this.startRenderLoop();
@@ -94,7 +100,6 @@ class FantasyAutoBattlerApp {
   // ==========================================================================
 
   private bindGlobalDOMEvents(): void {
-    // 상단 HUD 룬/보석 버튼
     document
       .getElementById('pool-inspector-btn')
       ?.addEventListener('pointerup', () => this.openPoolInspectorModal());
@@ -117,6 +122,7 @@ class FantasyAutoBattlerApp {
       .getElementById('new-game-btn')
       ?.addEventListener('pointerup', () => {
         this.knownThreeStarUnits.clear();
+        this.selectedUnitInstanceId = null;
         this.pixelRenderer.resetCombatJuiceStates();
         this.game.startNewGame();
       });
@@ -126,15 +132,17 @@ class FantasyAutoBattlerApp {
       ?.addEventListener('pointerup', () => {
         document.getElementById('gameover-modal')?.classList.add('hidden');
         this.knownThreeStarUnits.clear();
+        this.selectedUnitInstanceId = null;
         this.pixelRenderer.resetCombatJuiceStates();
         this.game.startNewGame();
       });
 
     document
       .getElementById('tap-tooltip-close')
-      ?.addEventListener('pointerup', () =>
-        document.getElementById('tap-tooltip-bar')?.classList.add('hidden')
-      );
+      ?.addEventListener('pointerup', () => {
+        this.selectedUnitInstanceId = null;
+        document.getElementById('tap-tooltip-bar')?.classList.add('hidden');
+      });
 
     document
       .getElementById('return-home-btn')
@@ -147,13 +155,13 @@ class FantasyAutoBattlerApp {
       .getElementById('goblin-vault-box')
       ?.addEventListener('pointerup', () => {
         const p = this.game.getViewedParticipant();
-        const estGold = p.goblinVaultStacks * 3 + Math.floor(p.goblinVaultStacks / 4) * 5;
+        const estGold =
+          p.goblinVaultStacks * 3 + Math.floor(p.goblinVaultStacks / 4) * 5;
         this.showTapTooltip(
           `<strong>🪙 황금 고블린 금고 (${p.goblinVaultStacks} 스택)</strong><br/>고블린 시너지 활성화 중 패배할 때마다 스택이 쌓이며, 다음 전투 승리 시 한꺼번에 캐시아웃 대폭발 보상을 드랍합니다! (현재 예상 가치: 약 ${estGold}G 상당)`
         );
       });
 
-    // 하단 경제 & 전투 컨트롤 버튼
     document.getElementById('buy-xp-btn')?.addEventListener('pointerup', (e) => {
       if (this.game.player.buyXp()) {
         this.pixelRenderer.spawnPixelSparks(e.clientX, e.clientY, '#38bdf8', 14);
@@ -189,6 +197,7 @@ class FantasyAutoBattlerApp {
       .getElementById('start-combat-btn')
       ?.addEventListener('pointerup', () => {
         this.lastProcessedCombatTick = -1;
+        this.selectedUnitInstanceId = null;
         this.pixelRenderer.resetCombatJuiceStates();
         this.game.startCombatPhase();
       });
@@ -205,21 +214,15 @@ class FantasyAutoBattlerApp {
         this.game.skipCombatToResolution();
       });
 
-    // 전체화면 게임 캔버스 위での 육각형 타일 & 대기석 터치/드래그 시작
     this.fxCanvas.addEventListener('pointerdown', (e) =>
       this.handleCanvasPointerDown(e)
     );
 
-    // 전역 PointerMove / PointerUp
     window.addEventListener('pointermove', (e) => this.handlePointerMove(e));
     window.addEventListener('pointerup', (e) => this.handlePointerUp(e));
     window.addEventListener('pointercancel', (e) => this.handlePointerUp(e));
   }
 
-  /**
-   * 캔버스 위에서 pointerdown 발생 시:
-   * - 육각형 타일 히트박스(HexGridMath.screenPointToHex) 또는 하단 1x9 대기석 슬롯 히트 검사
-   */
   private handleCanvasPointerDown(e: PointerEvent): void {
     const rect = this.fxCanvas.getBoundingClientRect();
     const px = e.clientX - rect.left;
@@ -227,7 +230,7 @@ class FantasyAutoBattlerApp {
 
     const viewed = this.game.getViewedParticipant();
 
-    // 1. 전투 페이즈 중이면 가장 가까운 전투 기물 탭 툴팁 조회
+    // 1. 전투 페이즈 중이면 가장 가까운 전투 기물 탭 선택 및 툴팁 조회
     if (
       this.game.phase === 'COMBAT_PHASE' &&
       viewed.id === this.game.player.id
@@ -243,12 +246,16 @@ class FantasyAutoBattlerApp {
             u.currentHp > 0 && u.row === hitHex.row && u.col === hitHex.col
         );
         if (cu) {
+          this.selectedUnitInstanceId = cu.instanceId;
           this.startPointerInteraction(e, null, () => {
             this.showCombatUnitTooltip(cu);
           });
           return;
         }
       }
+      this.selectedUnitInstanceId = null;
+      document.getElementById('tap-tooltip-bar')?.classList.add('hidden');
+      return;
     }
 
     // 2. 하단 1x9 대기석(Bench) 슬롯 히트 검사
@@ -256,6 +263,7 @@ class FantasyAutoBattlerApp {
     if (benchIdx !== null) {
       const benchUnit = viewed.bench[benchIdx];
       if (benchUnit) {
+        this.selectedUnitInstanceId = benchUnit.instanceId;
         const canDrag =
           this.game.phase === 'PREPARATION_PHASE' &&
           viewed.id === this.game.player.id;
@@ -289,6 +297,7 @@ class FantasyAutoBattlerApp {
       const boardCol = hitHex.col;
       const boardUnit = viewed.board[boardRow]?.[boardCol];
       if (boardUnit) {
+        this.selectedUnitInstanceId = boardUnit.instanceId;
         const canDrag =
           this.game.phase === 'PREPARATION_PHASE' &&
           viewed.id === this.game.player.id;
@@ -308,8 +317,13 @@ class FantasyAutoBattlerApp {
             this.showUnitDetailTooltip(boardUnit);
           }
         );
+        return;
       }
     }
+
+    // 빈 곳 터치 시 선택 해제
+    this.selectedUnitInstanceId = null;
+    document.getElementById('tap-tooltip-bar')?.classList.add('hidden');
   }
 
   private startPointerInteraction(
@@ -343,6 +357,7 @@ class FantasyAutoBattlerApp {
         this.showDragGhost(e.clientX, e.clientY);
 
         if (this.dragPayload.kind === 'UNIT') {
+          this.selectedUnitInstanceId = this.dragPayload.instanceId;
           this.showSellDropzoneOverlay(this.dragPayload.unit);
         }
       }
@@ -446,22 +461,22 @@ class FantasyAutoBattlerApp {
     document.getElementById('sell-dropzone-overlay')?.classList.add('hidden');
   }
 
-  /**
-   * 육각형 슬롯 스냅(HexGridMath.screenPointToHex) 또는 하단 1x9 대기석 슬롯, 상점 판매 드롭존 처리
-   */
-  private completeDropAtPoint(payload: DragPayload, clientX: number, clientY: number): void {
+  private completeDropAtPoint(
+    payload: DragPayload,
+    clientX: number,
+    clientY: number
+  ): void {
     const player = this.game.player;
     const domTarget = document.elementFromPoint(clientX, clientY);
 
-    // 1) 기물 드래그 앤 드롭 처리
     if (payload.kind === 'UNIT') {
-      // a. 하단 상점 영역에 드롭 시 즉시 기물 판매
       if (
         domTarget?.closest('#shop-cards-wrapper') ||
         domTarget?.closest('#bottom-shop-bar')
       ) {
         const earned = player.sellUnit(payload.instanceId, this.game.sharedPool);
         if (earned > 0) {
+          this.selectedUnitInstanceId = null;
           this.pixelRenderer.spawnPixelSparks(clientX, clientY, '#facc15', 26);
           this.pixelRenderer.spawnArcadePopupText(
             clientX,
@@ -489,7 +504,6 @@ class FantasyAutoBattlerApp {
               col: payload.fromCol!,
             } as const);
 
-      // b. 하단 1x9 대기석 슬롯에 스냅
       const benchIdx = this.pixelRenderer.screenPointToBenchIndex(px, py);
       if (benchIdx !== null) {
         player.moveUnit(fromLoc, { area: 'BENCH', index: benchIdx });
@@ -498,7 +512,6 @@ class FantasyAutoBattlerApp {
         return;
       }
 
-      // c. 아군 육각형 전장 타일(row 4~7 -> boardRow 0~3, col 0~6)에 스냅
       const hitHex = HexGridMath.screenPointToHex(
         px,
         py,
@@ -528,7 +541,6 @@ class FantasyAutoBattlerApp {
       return;
     }
 
-    // 2) 아이템 또는 챔피언 복제기 드롭 -> 해당 육각형 타일 또는 대기석 기물 탐색
     const rect = this.fxCanvas.getBoundingClientRect();
     const px = clientX - rect.left;
     const py = clientY - rect.top;
@@ -655,7 +667,6 @@ class FantasyAutoBattlerApp {
       ticker.textContent = this.game.bannerNotifications[0];
     }
 
-    // 정찰(Scouting) 배너 표시/숨김
     const scoutBanner = document.getElementById('scouting-banner');
     const scoutText = document.getElementById('scouting-target-text');
     if (scoutBanner && scoutText) {
@@ -670,7 +681,6 @@ class FantasyAutoBattlerApp {
       }
     }
 
-    // 판도라의 대기석 표시
     const pandoraTag = document.getElementById('pandora-indicator');
     if (pandoraTag) {
       pandoraTag.classList.toggle(
@@ -683,13 +693,11 @@ class FantasyAutoBattlerApp {
   private renderLeftFloatingDock(): void {
     const viewed = this.game.getViewedParticipant();
 
-    // 1. 황금 고블린 금고 스택
     const vaultEl = document.getElementById('goblin-vault-stacks');
     if (vaultEl) {
       vaultEl.textContent = `${viewed.goblinVaultStacks}`;
     }
 
-    // 2. 반투명 블러 육각형 시너지 독
     const synContainer = document.getElementById('synergy-list');
     if (synContainer) {
       synContainer.innerHTML = '';
@@ -721,7 +729,6 @@ class FantasyAutoBattlerApp {
       }
     }
 
-    // 3. 보유 증강체 미니 룬 아이콘
     const augContainer = document.getElementById('augment-list');
     if (augContainer) {
       augContainer.innerHTML = '';
@@ -740,7 +747,6 @@ class FantasyAutoBattlerApp {
       }
     }
 
-    // 4. 챔피언 복제기 & 아이템 슬롯 (드래그 앤 드롭 장착)
     const dupWrap = document.getElementById('duplicator-slot-wrap');
     if (dupWrap) {
       dupWrap.innerHTML = '';
@@ -853,7 +859,10 @@ class FantasyAutoBattlerApp {
         p.id === this.game.viewedParticipantId ? 'is-viewed' : ''
       } ${p.isEliminated ? 'eliminated' : ''}`;
 
-      const hpPct = Math.max(0, Math.min(100, Math.round((p.hp / p.maxHp) * 100)));
+      const hpPct = Math.max(
+        0,
+        Math.min(100, Math.round((p.hp / p.maxHp) * 100))
+      );
       const personaText = p.persona
         ? PERSONA_BADGE_LABELS[p.persona]
         : '👤나';
@@ -885,6 +894,10 @@ class FantasyAutoBattlerApp {
     });
   }
 
+  /**
+   * 1. 상점 카드(Shop Portrait)에 2.5~3배 확대 클로즈업 도트 아바타, 시너지/코스트 테마 배경 그라데이션,
+   *    도트 무기 아이콘, 보유 기물 점프(Idle 바운스) 및 ★ 합성 가능 / 페어 마크 렌더링
+   */
   private renderShopAndControls(): void {
     const player = this.game.player;
 
@@ -944,7 +957,6 @@ class FantasyAutoBattlerApp {
         ?.classList.toggle('active', this.game.playbackSpeed === 2);
     }
 
-    // 하단 5장 챔피언 도트 일러스트 카드 렌더링
     const shopContainer = document.getElementById('shop-cards-container');
     if (!shopContainer) return;
     shopContainer.innerHTML = '';
@@ -970,16 +982,19 @@ class FantasyAutoBattlerApp {
 
       let mergeHintBadge = '';
       if (ownedCopies === 8) {
-        mergeHintBadge = `<div class="shop-merge-badge">👑즉시3성!</div>`;
+        mergeHintBadge = `<div class="shop-merge-badge">★ 3성 합성 가능!</div>`;
       } else if (ownedCopies === 2 || ownedCopies === 5) {
-        mergeHintBadge = `<div class="shop-merge-badge">⚡즉시2성!</div>`;
+        mergeHintBadge = `<div class="shop-merge-badge">★ 2성 합성 가능!</div>`;
       } else if (ownedCopies > 0) {
-        mergeHintBadge = `<div class="shop-merge-badge">✨보유(${ownedCopies})</div>`;
+        mergeHintBadge = `<div class="shop-merge-badge">★ 페어 (${ownedCopies}장)</div>`;
       }
 
-      const traitNames = template.traits
-        .map((t: TraitId) => `${TRAIT_DEFINITIONS[t].icon} ${TRAIT_DEFINITIONS[t].name}`)
-        .join('<br/>');
+      const traitIconsHtml = template.traits
+        .map(
+          (t: TraitId) =>
+            `<span class="shop-trait-pill">${TRAIT_DEFINITIONS[t].icon} ${TRAIT_DEFINITIONS[t].name}</span>`
+        )
+        .join('');
 
       card.innerHTML = `
         <div class="shop-card-top">
@@ -987,30 +1002,27 @@ class FantasyAutoBattlerApp {
           <span class="shop-cost-tag">🪙${template.cost}</span>
         </div>
         ${mergeHintBadge}
-        <div class="shop-card-portrait-row">
-          <canvas class="shop-pixel-portrait" width="28" height="28"></canvas>
-          <div class="shop-card-traits">${traitNames}</div>
+        <div class="shop-portrait-stage">
+          <canvas class="shop-pixel-portrait"></canvas>
+          <div class="shop-trait-Overlay-strip">${traitIconsHtml}</div>
         </div>
         <div class="shop-pool-footer">
-          <span>남은 풀:</span>
+          <span>풀 잔여</span>
           <strong>${remainingPool}/${maxPool}</strong>
         </div>
       `;
 
-      // 상점 카드 내부에 실제 28x28 도트 캐릭터 일러스트 복사 렌더링
+      // 상점 카드 중앙 초상화 영역에 필드 위 도트 캐릭터를 2.5~3배 확대 클로즈업 아바타로 렌더링
       const portraitCanvas = card.querySelector(
         '.shop-pixel-portrait'
       ) as HTMLCanvasElement | null;
       if (portraitCanvas) {
-        const pCtx = portraitCanvas.getContext('2d')!;
-        pCtx.imageSmoothingEnabled = false;
-        const sprite = this.pixelRenderer.getOrCreateUnitPixelSprite(
+        this.pixelRenderer.renderShopCardPortrait(
+          portraitCanvas,
           unitId,
-          1,
-          0,
-          false
+          template.cost,
+          isOwned
         );
-        pCtx.drawImage(sprite, 0, 0);
       }
 
       card.addEventListener('pointerup', (e) => {
@@ -1034,7 +1046,6 @@ class FantasyAutoBattlerApp {
   }
 
   private renderPhaseModals(): void {
-    // 1. 증강체 선택 모달
     const augModal = document.getElementById('augment-modal');
     const augRow = document.getElementById('augment-cards-row');
     if (augModal && augRow) {
@@ -1079,7 +1090,6 @@ class FantasyAutoBattlerApp {
       }
     }
 
-    // 2. 운명의 모루 모달
     const anvilModal = document.getElementById('anvil-modal');
     const anvilRow = document.getElementById('anvil-cards-row');
     if (anvilModal && anvilRow) {
@@ -1109,7 +1119,6 @@ class FantasyAutoBattlerApp {
       }
     }
 
-    // 3. 게임 종료 & LP 정산 모달
     const overModal = document.getElementById('gameover-modal');
     const overSummary = document.getElementById('gameover-summary');
     if (overModal && overSummary) {
@@ -1132,10 +1141,6 @@ class FantasyAutoBattlerApp {
       }
     }
   }
-
-  // ==========================================================================
-  // 3. 공유 기물 풀 & 3성 차단 인스펙터 모달 및 랭크 설정 모달
-  // ==========================================================================
 
   private openPoolInspectorModal(): void {
     const modal = document.getElementById('pool-inspector-modal');
@@ -1212,10 +1217,6 @@ class FantasyAutoBattlerApp {
     modal.classList.remove('hidden');
   }
 
-  // ==========================================================================
-  // 4. 단기 탭(Short Tap) 상세 툴팁 & 3성 합성 달성 연출
-  // ==========================================================================
-
   private showTapTooltip(html: string): void {
     const bar = document.getElementById('tap-tooltip-bar');
     const content = document.getElementById('tap-tooltip-content');
@@ -1276,20 +1277,21 @@ class FantasyAutoBattlerApp {
           20
         );
         this.game.pushBannerNotification(
-          `🌟★★★ [${loc.unit.name}] 3성 달성!! (1.5배 거대화 & 황금 마법진 발동 / 상점 영구 차단됨)`
+          `🌟★★★ [${loc.unit.name}] 3성 달성!! (1.4배 거대화 & 황금 마법진 발동 / 상점 영구 차단됨)`
         );
       }
     }
   }
 
   // ==========================================================================
-  // 5. 전체화면 캔버스 리사이즈 및 60FPS 픽셀 렌더 루프
+  // 3. 고해상도 모바일 레티나(DPR) 대응 리사이즈 & 60FPS 렌더 루프
   // ==========================================================================
 
   private resizeCanvas(): void {
-    this.fxCanvas.width = window.innerWidth || 800;
-    this.fxCanvas.height = window.innerHeight || 600;
-    this.pixelRenderer.recomputeLayoutMetrics();
+    const cssW = window.innerWidth || 800;
+    const cssH = window.innerHeight || 600;
+    const dpr = window.devicePixelRatio || 1;
+    this.pixelRenderer.resizeViewport(cssW, cssH, dpr);
   }
 
   private startRenderLoop(): void {
@@ -1304,6 +1306,11 @@ class FantasyAutoBattlerApp {
         this.game.phase === 'COMBAT_PHASE' &&
         viewed.id === this.game.player.id;
 
+      const activeSelectedOrDraggedId =
+        this.isDragging && this.dragPayload?.kind === 'UNIT'
+          ? this.dragPayload.instanceId
+          : this.selectedUnitInstanceId;
+
       this.pixelRenderer.renderFrame(dt, {
         inCombat,
         viewedParticipant: viewed,
@@ -1315,6 +1322,7 @@ class FantasyAutoBattlerApp {
           this.isDragging && this.dragPayload?.kind === 'UNIT'
             ? this.dragPayload.instanceId
             : null,
+        selectedInstanceId: activeSelectedOrDraggedId,
         hasPandoraBench: viewed.augments.includes('AUG_PANDORA_BENCH'),
       });
 
