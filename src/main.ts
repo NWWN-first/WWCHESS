@@ -1050,7 +1050,7 @@ class FantasyAutoBattlerApp {
       lvlText.textContent = `Lv.${player.level}`;
       const nextXp = XP_REQUIRED_BY_LEVEL[player.level + 1];
       xpText.textContent =
-        player.level >= 9 ? 'MAX' : `${player.xp}/${nextXp}`;
+        player.level >= 10 ? 'MAX' : `${player.xp}/${nextXp}`;
     }
 
     const goldText = document.getElementById('player-gold-text');

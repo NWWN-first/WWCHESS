@@ -774,8 +774,8 @@ export class Participant implements PoolParticipant {
    * 경험치 구매 (4골드 소모 -> 기본 +4 XP, [레벨 업!] 증강체 보유 시 +7 XP)
    */
   public buyXp(): boolean {
-    if (this.isEliminated || this.level >= 9) {
-      this.lastActionMessage = '이미 최대 레벨(Lv.9)입니다.';
+    if (this.isEliminated || this.level >= 10) {
+      this.lastActionMessage = '이미 최대 레벨(Lv.10)입니다.';
       return false;
     }
     if (this.gold < 4) {
@@ -793,15 +793,15 @@ export class Participant implements PoolParticipant {
    * 경험치를 추가하고 레벨업 임계값 도달 시 자동 레벨업을 수행한다.
    */
   public addXp(amount: number): void {
-    if (this.level >= 9) {
+    if (this.level >= 10) {
       this.xp = 0;
       return;
     }
 
     this.xp += amount;
-    while (this.level < 9) {
+    while (this.level < 10) {
       const nextLevel = this.level + 1;
-      const required = XP_REQUIRED_BY_LEVEL[nextLevel] ?? 100;
+      const required = XP_REQUIRED_BY_LEVEL[nextLevel] ?? 124;
       if (this.xp >= required) {
         this.xp -= required;
         this.level = nextLevel;
@@ -810,7 +810,7 @@ export class Participant implements PoolParticipant {
       }
     }
 
-    if (this.level >= 9) {
+    if (this.level >= 10) {
       this.xp = 0;
     }
   }

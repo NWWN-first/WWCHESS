@@ -1,15 +1,13 @@
-// src/SharedPoolManager.ts
-
 import {
   ALL_UNIT_LIST,
   CostTier,
   POOL_SIZE_BY_COST,
-  SHOP_ODDS_BY_LEVEL,
   StarLevel,
   UNIT_TEMPLATES,
   UNITS_BY_COST,
   UnitTemplate,
 } from './GameData';
+import { ShopProbability } from './ShopProbability';
 
 /**
  * SharedPoolManager와 상호작용하는 참가자(플레이어 또는 AI 봇) 최소 인터페이스.
@@ -175,17 +173,42 @@ export class SharedPoolManager {
     this.releaseShopToPool(participant);
 
     const newShop: (string | null)[] = [];
-    const clampedLevel = Math.max(1, Math.min(9, participant.level));
-    const odds = SHOP_ODDS_BY_LEVEL[clampedLevel] ?? SHOP_ODDS_BY_LEVEL[1];
+    const clampedLevel = Math.max(1, Math.min(10, participant.level));
 
     for (let slot = 0; slot < slotCount; slot++) {
-      const targetCost = this.rollCostByOdds(odds);
-      const pickedUnitId = this.drawSingleUnitForParticipant(participant, targetCost);
-      newShop.push(pickedUnitId);
+      const availableByCost = this.getAvailableCopiesByCostForParticipant(participant);
+      const targetCost = ShopProbability.rollNormalizedCostTier(clampedLevel, availableByCost);
+      if (targetCost === null) {
+        newShop.push(null);
+      } else {
+        const pickedUnitId = this.drawSingleUnitForParticipant(participant, targetCost);
+        newShop.push(pickedUnitId);
+      }
     }
 
     participant.shop = newShop;
     return newShop;
+  }
+
+  /**
+   * 특정 참가자 기준으로 각 코스트(1~5)에 남아 있는 유효(3성 미달성 & 잔여량 > 0) 기물 총합을 계산한다.
+   */
+  public getAvailableCopiesByCostForParticipant(
+    participant: PoolParticipant
+  ): Record<CostTier, number> {
+    const result: Record<CostTier, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    const costs: CostTier[] = [1, 2, 3, 4, 5];
+    for (const c of costs) {
+      let sum = 0;
+      for (const u of UNITS_BY_COST[c]) {
+        const rem = this.getRemainingCount(u.id);
+        if (rem > 0 && !participant.hasThreeStarUnit(u.id)) {
+          sum += rem;
+        }
+      }
+      result[c] = sum;
+    }
+    return result;
   }
 
   /**
@@ -225,22 +248,6 @@ export class SharedPoolManager {
 
     this.tryTakeUnitFromPool(oldUnitId, neededCopies);
     return oldUnitId;
-  }
-
-  /**
-   * 레벨별 확률 배열([1코%, 2코%, 3코%, 4코%, 5코%])에 따라 목표 코스트(1~5)를 추첨한다.
-   */
-  private rollCostByOdds(odds: [number, number, number, number, number]): CostTier {
-    const totalOdds = odds.reduce((sum, val) => sum + val, 0);
-    let roll = Math.random() * totalOdds;
-
-    for (let i = 0; i < odds.length; i++) {
-      roll -= odds[i];
-      if (roll <= 0) {
-        return (i + 1) as CostTier;
-      }
-    }
-    return 1;
   }
 
   /**

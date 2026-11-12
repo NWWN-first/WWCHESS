@@ -266,12 +266,16 @@ export class AIBotController {
         }
       }
 
-      // 플레이어가 4~5코스트 기물을 6개 이상(예: 2성 2개) 모으고 있는지 감지
-      if (!other.isAI && aiParams.skillLevel >= 0.75) {
+      // 플레이어가 4코스트(풀 10개) 5개 이상 또는 5코스트(풀 9개) 4개 이상 모으고 있는지 감지하여 견제(Holding) 타겟 등록
+      if (!other.isAI && aiParams.skillLevel >= 0.7) {
         for (const template of Object.values(UNIT_TEMPLATES)) {
           if (template.cost >= 4) {
             const playerCopies = other.getOwnedUnitCopiesCount(template.id);
-            if (playerCopies >= 6 && !other.hasThreeStarUnit(template.id)) {
+            const denyThreshold = template.cost === 5 ? 4 : 5;
+            if (
+              playerCopies >= denyThreshold &&
+              !other.hasThreeStarUnit(template.id)
+            ) {
               unitsToDenyFromPlayer.add(template.id);
             }
           }
@@ -353,7 +357,7 @@ export class AIBotController {
       aiParams
     );
 
-    // B. 페르소나별 레벨업(buyXp) 의사결정
+    // B. 페르소나별 레벨업(buyXp) 의사결정 (Lv.10 확장 지원)
     const targetGoldFloor = this.getPersonaGoldFloor(
       bot,
       persona,
@@ -366,27 +370,27 @@ export class AIBotController {
       // 저코스트 3성 리롤러: 5~6레벨에서 경험치 구매를 멈추고 리롤에 집중.
       // 단, 핵심 1~2코 3성이 2개 이상 완성되었거나 체력이 위험하면 레벨업 재개
       const threeStarCount = this.countTotalThreeStarUnits(bot);
-      if ((bot.level < 5 || threeStarCount >= 2) && bot.level < 9) {
-        while (bot.gold - 4 >= targetGoldFloor && bot.level < 8) {
+      if ((bot.level < 5 || threeStarCount >= 2) && bot.level < 10) {
+        while (bot.gold - 4 >= targetGoldFloor && bot.level < 9) {
           if (!bot.buyXp()) break;
         }
       }
     } else if (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') {
-      // 고밸류 운영러: 50골드(또는 사악한 금융 70골드) 칼이자를 지키며 남는 골드로 8~9레벨 직행
-      while (bot.gold - 4 >= targetGoldFloor && bot.level < 9) {
+      // 고밸류 운영러: 50골드(또는 사악한 금융 70골드) 칼이자를 지키며 남는 골드로 9~10레벨 직행
+      while (bot.gold - 4 >= targetGoldFloor && bot.level < 10) {
         if (!bot.buyXp()) break;
       }
     } else if (persona === 'GOBLIN_GAMBLER') {
       // 황금 고블린 코인충: 평상시에는 50골드를 모으면서 천천히 레벨업,
       // 체력 35 이하 또는 금고 55스택 이상 도달 시 골드를 전부 털어 레벨업+폭풍 리롤!
-      const desiredLevel = isGoblinCashoutTurn ? 8 : 6;
+      const desiredLevel = isGoblinCashoutTurn ? 9 : 6;
       while (bot.gold - 4 >= targetGoldFloor && bot.level < desiredLevel) {
         if (!bot.buyXp()) break;
       }
     } else {
-      // FLEX_MASTER (유연한 정석 밸런스형): 라운드 흐름에 맞춰 정석 레벨업
+      // FLEX_MASTER (유연한 정석 밸런스형): 라운드 흐름에 맞춰 정석 레벨업 (후반 Lv.10 도달)
       const stageNum = parseInt(currentRound.split('-')[0] || '2', 10);
-      const standardTargetLevel = Math.min(9, Math.max(4, stageNum + 3));
+      const standardTargetLevel = Math.min(10, Math.max(4, stageNum + 3));
       while (
         bot.gold - 4 >= targetGoldFloor &&
         bot.level < standardTargetLevel
@@ -494,16 +498,15 @@ export class AIBotController {
       if (!template) continue;
 
       // 1) 고티어 전용 3성 견제 (Holding/Denying):
-      // 다이아몬드 이상(skillLevel >= 0.75) AI는 플레이어가 4~5코스트 기물을 6개 이상 모았을 때
-      // 상점에 그 기물이 뜨면 여유 골드가 있을 때 사서 대기석 구석에 숨겨둔다!
+      // 4코스트(풀 10개)는 2장만 쥐어도 상대가 3성 불가, 5코스트(풀 9개)는 단 1장만 쥐어도 상대가 복제기 없이 3성 불가!
       if (
-        aiParams.skillLevel >= 0.75 &&
+        aiParams.skillLevel >= 0.7 &&
         unitsToDenyFromPlayer.has(unitId) &&
-        bot.gold >= template.cost + 10 &&
+        bot.gold >= template.cost + 8 &&
         bot.canBuyUnit(unitId, template.cost)
       ) {
         if (bot.buyUnit(slotIdx, sharedPool)) {
-          // 방금 구매한 견제 기물을 찾아서 대기석 가장 오른쪽 구석으로 이동 및 보호 마킹
+          // 방금 구매한 견제 기물을 찾아서 대기석에 보호 마킹
           const loc = bot
             .getAllUnitLocations()
             .find((l) => l.area === 'BENCH' && l.unit.unitId === unitId);
@@ -514,11 +517,12 @@ export class AIBotController {
         }
       }
 
-      // 2) 일반 기물 구매 가치(Utility Score) 평가 (temperature 노이즈 가미)
+      // 2) 일반 기물 구매 가치(Utility Score) 평가 (공유 풀 잔여량 및 3성 가능성 반영)
       const utilityScore = this.evaluateShopUnitUtility(
         bot,
         brain,
         template,
+        sharedPool,
         aiParams
       );
 
@@ -534,26 +538,31 @@ export class AIBotController {
 
   /**
    * 상점 기물 1개의 구매 매력도(Utility Score)를 계산한다.
-   * temperature 노이즈를 섞어 인간적인 선택 편차를 재현한다.
+   * 공유 풀 잔여량(30/25/18/10/9)을 확인하여 수학적으로 3성이 불가능해진 경우 무리한 수집을 중단한다.
    */
   private evaluateShopUnitUtility(
     bot: Participant,
     brain: BotBrainState,
     template: UnitTemplate,
+    sharedPool: SharedPoolManager,
     aiParams: AISkillParameters
   ): number {
     if (bot.hasThreeStarUnit(template.id)) return -999;
 
     let score = 20;
     const ownedCopies = bot.getOwnedUnitCopiesCount(template.id);
+    const remainingInPool = sharedPool.getRemainingCount(template.id);
+    const canStillReachThreeStar =
+      ownedCopies + remainingInPool + bot.duplicators >= 9;
 
     // 1. 보유 개수(페어/합성 근접도) 가산점
     if (ownedCopies === 2 || ownedCopies === 5 || ownedCopies === 8) {
       score += 65; // 이번 1장 구매로 즉시 2성 또는 3성 합성!
     } else if (ownedCopies >= 6) {
-      score += 48; // 3성 작 진행 중
+      score += canStillReachThreeStar ? 48 : -20; // 풀 고갈로 3성 불가 시 수집 포기
     } else if (ownedCopies >= 3) {
-      score += 28; // 이미 2성 보유 중
+      // 이미 2성을 보유 중일 때: 4~5코스트(풀 10개/9개)가 이미 다른 참가자에게 팔려 3성이 불가능하면 추가 매수 억제
+      score += canStillReachThreeStar ? 26 : -25;
     } else if (ownedCopies === 1) {
       score += 22; // 페어 완성
     }

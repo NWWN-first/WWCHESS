@@ -51,7 +51,9 @@ export interface UnitPixelArtSpec {
 }
 
 export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
-  // 1코스트 (5종)
+  // --------------------------------------------------------------------------
+  // 1코스트 (14종)
+  // --------------------------------------------------------------------------
   u1_garen: {
     primaryArmor: '#2b579a',
     secondaryArmor: '#d9e2ec',
@@ -112,8 +114,178 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'ARCANE_STAFF',
     wings: 'NONE',
   },
+  u1_valen: {
+    primaryArmor: '#1e3a8a',
+    secondaryArmor: '#f8fafc',
+    trimGold: '#fbbf24',
+    skinOrFace: '#fde68a',
+    eyeGlow: '#38bdf8',
+    weaponColor: '#e2e8f0',
+    weaponGlow: '#fde047',
+    headgear: 'HALO_HELM',
+    weapon: 'SWORD_SHIELD',
+    wings: 'NONE',
+  },
+  u1_imp: {
+    primaryArmor: '#7f1d1d',
+    secondaryArmor: '#dc2626',
+    trimGold: '#f97316',
+    skinOrFace: '#ef4444',
+    eyeGlow: '#fef08a',
+    weaponColor: '#ea580c',
+    weaponGlow: '#facc15',
+    headgear: 'DEMON_HORNS',
+    weapon: 'ARCANE_STAFF',
+    wings: 'DEMON_WINGS',
+  },
+  u1_thorn: {
+    primaryArmor: '#14532d',
+    secondaryArmor: '#16a34a',
+    trimGold: '#a3e635',
+    skinOrFace: '#86efac',
+    eyeGlow: '#fef08a',
+    weaponColor: '#65a30d',
+    weaponGlow: '#4ade80',
+    headgear: 'GOLEM_CORE',
+    weapon: 'SWORD_SHIELD',
+    wings: 'NONE',
+  },
+  u1_whelp: {
+    primaryArmor: '#9a3412',
+    secondaryArmor: '#ea580c',
+    trimGold: '#facc15',
+    skinOrFace: '#fb923c',
+    eyeGlow: '#fef08a',
+    weaponColor: '#f97316',
+    weaponGlow: '#fde047',
+    headgear: 'DRAGON_HORNS',
+    weapon: 'DRAGON_CLAW',
+    wings: 'DRAGON_WINGS',
+  },
+  u1_ghoul: {
+    primaryArmor: '#312e81',
+    secondaryArmor: '#4c1d95',
+    trimGold: '#a855f7',
+    skinOrFace: '#cbd5e1',
+    eyeGlow: '#2dd4bf',
+    weaponColor: '#94a3b8',
+    weaponGlow: '#c084fc',
+    headgear: 'SKULL',
+    weapon: 'DUAL_DAGGERS',
+    wings: 'NONE',
+  },
+  u1_chrona: {
+    primaryArmor: '#0f172a',
+    secondaryArmor: '#0284c7',
+    trimGold: '#38bdf8',
+    skinOrFace: '#e2e8f0',
+    eyeGlow: '#7dd3fc',
+    weaponColor: '#38bdf8',
+    weaponGlow: '#e0f2fe',
+    headgear: 'KNIGHT_HELM',
+    weapon: 'SWORD_SHIELD',
+    wings: 'CAPE',
+  },
+  u1_snatch: {
+    primaryArmor: '#713f12',
+    secondaryArmor: '#ca8a04',
+    trimGold: '#facc15',
+    skinOrFace: '#65a30d',
+    eyeGlow: '#fef08a',
+    weaponColor: '#fde047',
+    weaponGlow: '#f59e0b',
+    headgear: 'GOBLIN_EARS',
+    weapon: 'SPEAR',
+    wings: 'NONE',
+  },
+  u1_shieldmaiden: {
+    primaryArmor: '#1e40af',
+    secondaryArmor: '#93c5fd',
+    trimGold: '#f59e0b',
+    skinOrFace: '#fed7aa',
+    eyeGlow: '#ffffff',
+    weaponColor: '#cbd5e1',
+    weaponGlow: '#fbbf24',
+    headgear: 'KNIGHT_HELM',
+    weapon: 'GREATSWORD',
+    wings: 'CAPE',
+  },
+  u1_ember: {
+    primaryArmor: '#450a0a',
+    secondaryArmor: '#991b1b',
+    trimGold: '#f97316',
+    skinOrFace: '#b91c1c',
+    eyeGlow: '#fbbf24',
+    weaponColor: '#7f1d1d',
+    weaponGlow: '#ef4444',
+    headgear: 'DEMON_HORNS',
+    weapon: 'SWORD_SHIELD',
+    wings: 'NONE',
+  },
 
-  // 2코스트 (5종)
+  // --------------------------------------------------------------------------
+  // 2코스트 (13종)
+  // --------------------------------------------------------------------------
+  u2_tink: {
+    primaryArmor: '#3f6212',
+    secondaryArmor: '#84cc16',
+    trimGold: '#facc15',
+    skinOrFace: '#65a30d',
+    eyeGlow: '#bef264',
+    weaponColor: '#a3e635',
+    weaponGlow: '#4ade80',
+    headgear: 'GOBLIN_EARS',
+    weapon: 'CANNON_BAG',
+    wings: 'NONE',
+  },
+  u2_jeanne: {
+    primaryArmor: '#1d4ed8',
+    secondaryArmor: '#fef08a',
+    trimGold: '#facc15',
+    skinOrFace: '#ffedd5',
+    eyeGlow: '#60a5fa',
+    weaponColor: '#fef9c3',
+    weaponGlow: '#fde047',
+    headgear: 'HALO_HELM',
+    weapon: 'SWORD_SHIELD',
+    wings: 'CAPE',
+  },
+  u2_kyle: {
+    primaryArmor: '#4c0519',
+    secondaryArmor: '#be123c',
+    trimGold: '#fb7185',
+    skinOrFace: '#fecdd3',
+    eyeGlow: '#f43f5e',
+    weaponColor: '#9f1239',
+    weaponGlow: '#fb7185',
+    headgear: 'DEMON_HORNS',
+    weapon: 'BOW',
+    wings: 'CAPE',
+  },
+  u2_ent: {
+    primaryArmor: '#365314',
+    secondaryArmor: '#15803d',
+    trimGold: '#86efac',
+    skinOrFace: '#78350f',
+    eyeGlow: '#4ade80',
+    weaponColor: '#57534e',
+    weaponGlow: '#22c55e',
+    headgear: 'GOLEM_CORE',
+    weapon: 'NATURE_STAFF',
+    wings: 'NONE',
+  },
+  u2_zed: {
+    primaryArmor: '#18181b',
+    secondaryArmor: '#dc2626',
+    trimGold: '#991b1b',
+    skinOrFace: '#52525b',
+    eyeGlow: '#ef4444',
+    weaponColor: '#e4e4e7',
+    weaponGlow: '#f87171',
+    headgear: 'HOOD',
+    weapon: 'DUAL_DAGGERS',
+    wings: 'CAPE',
+  },
   u2_zephyr: {
     primaryArmor: '#1e1b2e',
     secondaryArmor: '#7209b7',
@@ -174,8 +346,94 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'BOW',
     wings: 'CAPE',
   },
+  u2_pyre: {
+    primaryArmor: '#7c2d12',
+    secondaryArmor: '#ea580c',
+    trimGold: '#fbbf24',
+    skinOrFace: '#fdba74',
+    eyeGlow: '#fef08a',
+    weaponColor: '#f97316',
+    weaponGlow: '#fde047',
+    headgear: 'DRAGON_HORNS',
+    weapon: 'GREATSWORD',
+    wings: 'NONE',
+  },
+  u2_boneknight: {
+    primaryArmor: '#1e1b4b',
+    secondaryArmor: '#6366f1',
+    trimGold: '#2dd4bf',
+    skinOrFace: '#e2e8f0',
+    eyeGlow: '#5eead4',
+    weaponColor: '#94a3b8',
+    weaponGlow: '#2dd4bf',
+    headgear: 'SKULL',
+    weapon: 'SWORD_SHIELD',
+    wings: 'CAPE',
+  },
+  u2_malice: {
+    primaryArmor: '#581c87',
+    secondaryArmor: '#a855f7',
+    trimGold: '#f43f5e',
+    skinOrFace: '#e9d5ff',
+    eyeGlow: '#fb7185',
+    weaponColor: '#9333ea',
+    weaponGlow: '#f43f5e',
+    headgear: 'WIZARD_HAT',
+    weapon: 'ARCANE_STAFF',
+    wings: 'NONE',
+  },
 
-  // 3코스트 (4종)
+  // --------------------------------------------------------------------------
+  // 3코스트 (13종)
+  // --------------------------------------------------------------------------
+  u3_grom: {
+    primaryArmor: '#854d0e',
+    secondaryArmor: '#eab308',
+    trimGold: '#fef08a',
+    skinOrFace: '#4d7c0f',
+    eyeGlow: '#ef4444',
+    weaponColor: '#facc15',
+    weaponGlow: '#fef08a',
+    headgear: 'GOBLIN_EARS',
+    weapon: 'GREATSWORD',
+    wings: 'CAPE',
+  },
+  u3_sieg: {
+    primaryArmor: '#7f1d1d',
+    secondaryArmor: '#b91c1c',
+    trimGold: '#fbbf24',
+    skinOrFace: '#fde68a',
+    eyeGlow: '#f97316',
+    weaponColor: '#f59e0b',
+    weaponGlow: '#ef4444',
+    headgear: 'DRAGON_HORNS',
+    weapon: 'SWORD_SHIELD',
+    wings: 'DRAGON_WINGS',
+  },
+  u3_sylphie: {
+    primaryArmor: '#065f46',
+    secondaryArmor: '#34d399',
+    trimGold: '#a7f3d0',
+    skinOrFace: '#ecfdf5',
+    eyeGlow: '#6ee7b7',
+    weaponColor: '#10b981',
+    weaponGlow: '#a7f3d0',
+    headgear: 'ELVEN_CIRCLET',
+    weapon: 'NATURE_STAFF',
+    wings: 'CAPE',
+  },
+  u3_vlad: {
+    primaryArmor: '#450a0a',
+    secondaryArmor: '#dc2626',
+    trimGold: '#f87171',
+    skinOrFace: '#f1f5f9',
+    eyeGlow: '#ef4444',
+    weaponColor: '#991b1b',
+    weaponGlow: '#f43f5e',
+    headgear: 'CROWN',
+    weapon: 'ARCANE_STAFF',
+    wings: 'CAPE',
+  },
   u3_drake: {
     primaryArmor: '#9d0208',
     secondaryArmor: '#dc2f02',
@@ -224,8 +482,106 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'SCYTHE',
     wings: 'CAPE',
   },
+  u3_seraphina: {
+    primaryArmor: '#1e3a8a',
+    secondaryArmor: '#bfdbfe',
+    trimGold: '#fde047',
+    skinOrFace: '#fffbeb',
+    eyeGlow: '#38bdf8',
+    weaponColor: '#facc15',
+    weaponGlow: '#e0f2fe',
+    headgear: 'HALO_HELM',
+    weapon: 'ARCANE_STAFF',
+    wings: 'ANGEL_WINGS',
+  },
+  u3_grizzle: {
+    primaryArmor: '#78350f',
+    secondaryArmor: '#d97706',
+    trimGold: '#facc15',
+    skinOrFace: '#84cc16',
+    eyeGlow: '#fde047',
+    weaponColor: '#94a3b8',
+    weaponGlow: '#f97316',
+    headgear: 'GOLEM_CORE',
+    weapon: 'CANNON_BAG',
+    wings: 'NONE',
+  },
+  u3_orion: {
+    primaryArmor: '#1e1b4b',
+    secondaryArmor: '#38bdf8',
+    trimGold: '#e0f2fe',
+    skinOrFace: '#e2e8f0',
+    eyeGlow: '#7dd3fc',
+    weaponColor: '#38bdf8',
+    weaponGlow: '#bae6fd',
+    headgear: 'ELVEN_CIRCLET',
+    weapon: 'BOW',
+    wings: 'CAPE',
+  },
+  u3_nyx: {
+    primaryArmor: '#3b0764',
+    secondaryArmor: '#be185d',
+    trimGold: '#f472b6',
+    skinOrFace: '#fbcfe8',
+    eyeGlow: '#f43f5e',
+    weaponColor: '#ec4899',
+    weaponGlow: '#f9a8d4',
+    headgear: 'DEMON_HORNS',
+    weapon: 'DUAL_DAGGERS',
+    wings: 'DEMON_WINGS',
+  },
+  u3_fenrir: {
+    primaryArmor: '#0f172a',
+    secondaryArmor: '#0284c7',
+    trimGold: '#38bdf8',
+    skinOrFace: '#cbd5e1',
+    eyeGlow: '#00f5d4',
+    weaponColor: '#7dd3fc',
+    weaponGlow: '#38bdf8',
+    headgear: 'SKULL',
+    weapon: 'DRAGON_CLAW',
+    wings: 'CAPE',
+  },
 
-  // 4코스트 (3종)
+  // --------------------------------------------------------------------------
+  // 4코스트 (12종)
+  // --------------------------------------------------------------------------
+  u4_arthur: {
+    primaryArmor: '#1e3a8a',
+    secondaryArmor: '#facc15',
+    trimGold: '#fef08a',
+    skinOrFace: '#fde68a',
+    eyeGlow: '#ffffff',
+    weaponColor: '#fde047',
+    weaponGlow: '#ffffff',
+    headgear: 'CROWN',
+    weapon: 'HOLY_BLADE',
+    wings: 'CAPE',
+  },
+  u4_merlin: {
+    primaryArmor: '#311068',
+    secondaryArmor: '#6366f1',
+    trimGold: '#38bdf8',
+    skinOrFace: '#ffedd5',
+    eyeGlow: '#38bdf8',
+    weaponColor: '#818cf8',
+    weaponGlow: '#7dd3fc',
+    headgear: 'WIZARD_HAT',
+    weapon: 'ARCHMAGE_ORB',
+    wings: 'CAPE',
+  },
+  u4_thanatos: {
+    primaryArmor: '#090d16',
+    secondaryArmor: '#581c87',
+    trimGold: '#2dd4bf',
+    skinOrFace: '#f8fafc',
+    eyeGlow: '#00f5d4',
+    weaponColor: '#c084fc',
+    weaponGlow: '#00f5d4',
+    headgear: 'SKULL',
+    weapon: 'SCYTHE',
+    wings: 'DEMON_WINGS',
+  },
   u4_sylph: {
     primaryArmor: '#1b4332',
     secondaryArmor: '#52b788',
@@ -262,8 +618,82 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'ARCHMAGE_ORB',
     wings: 'CAPE',
   },
+  u4_valkyrie: {
+    primaryArmor: '#d97706',
+    secondaryArmor: '#fef3c7',
+    trimGold: '#fde047',
+    skinOrFace: '#fffbeb',
+    eyeGlow: '#38bdf8',
+    weaponColor: '#fef08a',
+    weaponGlow: '#ffffff',
+    headgear: 'HALO_HELM',
+    weapon: 'SPEAR',
+    wings: 'ANGEL_WINGS',
+  },
+  u4_fafnir: {
+    primaryArmor: '#b45309',
+    secondaryArmor: '#f59e0b',
+    trimGold: '#fef08a',
+    skinOrFace: '#fbbf24',
+    eyeGlow: '#ef4444',
+    weaponColor: '#fde047',
+    weaponGlow: '#f97316',
+    headgear: 'DRAGON_HORNS',
+    weapon: 'SWORD_SHIELD',
+    wings: 'DRAGON_WINGS',
+  },
+  u4_lichking: {
+    primaryArmor: '#0f172a',
+    secondaryArmor: '#0369a1',
+    trimGold: '#38bdf8',
+    skinOrFace: '#e0f2fe',
+    eyeGlow: '#00f5d4',
+    weaponColor: '#7dd3fc',
+    weaponGlow: '#38bdf8',
+    headgear: 'CROWN',
+    weapon: 'ARCHMAGE_ORB',
+    wings: 'CAPE',
+  },
+  u4_midas: {
+    primaryArmor: '#a16207',
+    secondaryArmor: '#facc15',
+    trimGold: '#fef9c3',
+    skinOrFace: '#84cc16',
+    eyeGlow: '#fef08a',
+    weaponColor: '#fde047',
+    weaponGlow: '#ffffff',
+    headgear: 'CROWN',
+    weapon: 'ARCANE_STAFF',
+    wings: 'CAPE',
+  },
+  u4_artemis: {
+    primaryArmor: '#7c2d12',
+    secondaryArmor: '#dc2626',
+    trimGold: '#fbbf24',
+    skinOrFace: '#ffedd5',
+    eyeGlow: '#fde047',
+    weaponColor: '#f59e0b',
+    weaponGlow: '#ef4444',
+    headgear: 'DRAGON_HORNS',
+    weapon: 'BOW',
+    wings: 'DRAGON_WINGS',
+  },
+  u4_diablo: {
+    primaryArmor: '#14532d',
+    secondaryArmor: '#22c55e',
+    trimGold: '#fde047',
+    skinOrFace: '#dcfce7',
+    eyeGlow: '#86efac',
+    weaponColor: '#4ade80',
+    weaponGlow: '#fef08a',
+    headgear: 'ELVEN_CIRCLET',
+    weapon: 'NATURE_STAFF',
+    wings: 'CAPE',
+  },
 
-  // 5코스트 전설 (3종)
+  // --------------------------------------------------------------------------
+  // 5코스트 전설 (8종)
+  // --------------------------------------------------------------------------
   u5_ignis: {
     primaryArmor: '#b7094c',
     secondaryArmor: '#ff4800',
@@ -275,6 +705,30 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     headgear: 'DRAGON_HORNS',
     weapon: 'DRAGON_CLAW',
     wings: 'DRAGON_WINGS',
+  },
+  u5_goldtooth: {
+    primaryArmor: '#ffd700',
+    secondaryArmor: '#b5179e',
+    trimGold: '#ffea00',
+    skinOrFace: '#70e000',
+    eyeGlow: '#ff0055',
+    weaponColor: '#ffea00',
+    weaponGlow: '#00f5d4',
+    headgear: 'CROWN',
+    weapon: 'CANNON_BAG',
+    wings: 'CAPE',
+  },
+  u5_luciel: {
+    primaryArmor: '#311068',
+    secondaryArmor: '#facc15',
+    trimGold: '#38bdf8',
+    skinOrFace: '#f8fafc',
+    eyeGlow: '#f43f5e',
+    weaponColor: '#e0f2fe',
+    weaponGlow: '#facc15',
+    headgear: 'HALO_HELM',
+    weapon: 'BOW',
+    wings: 'ANGEL_WINGS',
   },
   u5_michael: {
     primaryArmor: '#ffffff',
@@ -288,17 +742,53 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'HOLY_BLADE',
     wings: 'ANGEL_WINGS',
   },
-  u5_goldtooth: {
-    primaryArmor: '#ffd700',
-    secondaryArmor: '#b5179e',
-    trimGold: '#ffea00',
-    skinOrFace: '#70e000',
-    eyeGlow: '#ff0055',
-    weaponColor: '#ffea00',
-    weaponGlow: '#00f5d4',
+  u5_bahamut: {
+    primaryArmor: '#1e1b4b',
+    secondaryArmor: '#7c3aed',
+    trimGold: '#38bdf8',
+    skinOrFace: '#c084fc',
+    eyeGlow: '#00f5d4',
+    weaponColor: '#38bdf8',
+    weaponGlow: '#f472b6',
+    headgear: 'DRAGON_HORNS',
+    weapon: 'ARCHMAGE_ORB',
+    wings: 'DRAGON_WINGS',
+  },
+  u5_chronos: {
+    primaryArmor: '#0f172a',
+    secondaryArmor: '#0284c7',
+    trimGold: '#facc15',
+    skinOrFace: '#e0f2fe',
+    eyeGlow: '#fef08a',
+    weaponColor: '#facc15',
+    weaponGlow: '#38bdf8',
     headgear: 'CROWN',
-    weapon: 'CANNON_BAG',
-    wings: 'CAPE',
+    weapon: 'ARCHMAGE_ORB',
+    wings: 'ANGEL_WINGS',
+  },
+  u5_lilith: {
+    primaryArmor: '#4c0519',
+    secondaryArmor: '#e11d48',
+    trimGold: '#fda4af',
+    skinOrFace: '#ffe4e6',
+    eyeGlow: '#ffea00',
+    weaponColor: '#fb7185',
+    weaponGlow: '#f43f5e',
+    headgear: 'DEMON_HORNS',
+    weapon: 'SCYTHE',
+    wings: 'DEMON_WINGS',
+  },
+  u5_yggdrasil: {
+    primaryArmor: '#064e3b',
+    secondaryArmor: '#10b981',
+    trimGold: '#fde047',
+    skinOrFace: '#a7f3d0',
+    eyeGlow: '#fef08a',
+    weaponColor: '#fde047',
+    weaponGlow: '#34d399',
+    headgear: 'CROWN',
+    weapon: 'NATURE_STAFF',
+    wings: 'ANGEL_WINGS',
   },
 };
 
@@ -318,7 +808,7 @@ const WEAPON_BADGE_ICONS: Record<WeaponKind, string> = {
 };
 
 /**
- * 실시간 전투 타격감(Combat Juice) 애니메이션 상태
+ * 실시간 전투 타격감(Combat Juice) & 피격 잔상 트레일(Damage Trail) 애니메이션 상태
  */
 interface UnitVisualJuiceState {
   renderRow: number;
@@ -340,6 +830,9 @@ interface UnitVisualJuiceState {
   knockbackOffsetX: number;
   knockbackOffsetY: number;
   squashTimerMs: number;
+
+  trailHp: number;
+  trailMaxHp: number;
 
   facingX: 1 | -1;
 }
@@ -954,6 +1447,8 @@ export class PixelGameRenderer {
         knockbackOffsetX: 0,
         knockbackOffsetY: 0,
         squashTimerMs: 0,
+        trailHp: -1,
+        trailMaxHp: -1,
         facingX: 1,
       };
       this.unitJuiceMap.set(instanceId, st);
@@ -1729,6 +2224,7 @@ export class PixelGameRenderer {
 
     const renderList: Array<{
       cu: CombatUnit;
+      trailHp: number;
       screenX: number;
       screenY: number;
       facingX: 1 | -1;
@@ -1741,6 +2237,18 @@ export class PixelGameRenderer {
       if (cu.currentHp <= 0 && !cu.isReviving) continue;
 
       const st = this.getOrInitUnitJuice(cu.instanceId, cu.row, cu.col);
+
+      // 피격 잔상 게이지(trailHp) 초기화 및 ~250ms 부드러운 감쇠 업데이트
+      if (st.trailHp < 0 || st.trailMaxHp !== cu.maxHp) {
+        st.trailHp = cu.currentHp;
+        st.trailMaxHp = cu.maxHp;
+      } else if (cu.currentHp >= st.trailHp) {
+        st.trailHp = cu.currentHp;
+      } else {
+        const hpGap = st.trailHp - cu.currentHp;
+        const shrinkPerMs = Math.max(hpGap / 180, cu.maxHp / 250);
+        st.trailHp = Math.max(cu.currentHp, st.trailHp - shrinkPerMs * dtMs);
+      }
 
       if (st.moveToRow !== cu.row || st.moveToCol !== cu.col) {
         st.moveFromRow = st.renderRow;
@@ -1814,6 +2322,7 @@ export class PixelGameRenderer {
 
       renderList.push({
         cu,
+        trailHp: st.trailHp,
         screenX: basePos.x + lungeOffsetX + st.knockbackOffsetX,
         screenY:
           basePos.y + lungeOffsetY + st.knockbackOffsetY + strideArcOffsetY,
@@ -1824,18 +2333,19 @@ export class PixelGameRenderer {
       });
     }
 
-
     // 6. Y-Sorting (원근 깊이 정렬): units.sort((a, b) => a.screenY - b.screenY)
     renderList.sort((a, b) => a.screenY - b.screenY);
 
     for (const item of renderList) {
-      const { cu, screenX, screenY, facingX, hitFlash, squashX, squashY } = item;
+      const { cu, trailHp, screenX, screenY, facingX, hitFlash, squashX, squashY } =
+        item;
       this.drawUnitCompleteOnCanvas(ctx, {
         unitId: cu.unitId,
         name: cu.name,
         cost: cu.cost,
         starLevel: cu.starLevel,
         currentHp: cu.currentHp,
+        trailHp,
         maxHp: cu.maxHp,
         shield: cu.shield,
         currentMana: cu.currentMana,
@@ -1857,9 +2367,7 @@ export class PixelGameRenderer {
   }
 
   // ==========================================================================
-  // 2 & 6. 도트 캐릭터 스케일(hexWidth*0.9, 2성 1.15x, 3성 1.4x),
-  //        발밑 기준점(Bottom-Center Anchor: centerY + hexRadius*0.15),
-  //        체력바/마나바/성급 배지 고정(spriteTopY - 10px), 상시 이름 라벨 완전 삭제!
+  // 상용 모바일 게임풍(TFT 모바일 / 킹갓캐슬 스타일) 입체 글로시 체력바(HP) & 마나바(MP)
   // ==========================================================================
 
   private drawUnitCompleteOnCanvas(
@@ -1870,6 +2378,7 @@ export class PixelGameRenderer {
       cost: CostTier;
       starLevel: StarLevel;
       currentHp: number;
+      trailHp?: number;
       maxHp: number;
       shield: number;
       currentMana: number;
@@ -1901,8 +2410,7 @@ export class PixelGameRenderer {
     const spriteDrawW = Math.round(base1StarSize * starScale * u.squashRatioX);
     const spriteDrawH = Math.round(base1StarSize * starScale * u.squashRatioY);
 
-    // 6. 발밑 기준점(Feet Anchor): 캐릭터 스프라이트의 발바닥 끝(Bottom-Center)이
-    //    육각형 타일 정중앙에서 살짝 아래(centerY + hexRadius * 0.15)를 딛고 서도록 좌표 고정
+    // 발밑 기준점(Feet Anchor): 캐릭터 스프라이트의 발바닥 끝(Bottom-Center)
     const feetAnchorX = Math.round(u.tileCenterX);
     const feetAnchorY = Math.round(
       u.tileCenterY + (u.compactBenchMode ? 10 : m.hexRadius * 0.15)
@@ -1982,110 +2490,292 @@ export class PixelGameRenderer {
       ctx.fillStyle = '#ffea00';
       ctx.font = 'bold 10px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('💫', feetAnchorX, spriteTopY - 22);
+      ctx.fillText('💫', feetAnchorX, spriteTopY - 25);
     }
 
-    // 6) 머리 바로 위(spriteTopY - 10px)에 가로폭 hexWidth * 0.75, 높이 7px 체력바 + 3px 마나바 + 좌측 성급 별(★~★★★) + 장착 아이템 도트 아이콘
-    //    주의: 상시 기물 이름 텍스트(Label)는 전장 시인성 극대화를 위해 완전히 삭제!
+    // ========================================================================
+    // 6) 상용 모바일 게임풍 입체 체력바(HP) & 마나바(MP) 일체형 프레임 렌더링
+    // ========================================================================
     const barWidth = u.compactBenchMode
-      ? Math.max(26, (u.benchSlotWidth ?? 36) * 0.78)
-      : Math.max(32, Math.round(m.hexWidth * 0.75));
-    const hpBarHeight = u.compactBenchMode ? 5 : 7;
-    const manaBarHeight = u.compactBenchMode ? 2 : 3;
+      ? Math.max(26, Math.round((u.benchSlotWidth ?? 36) * 0.78))
+      : Math.max(36, Math.round(m.hexWidth * 0.8));
+    const hpBarHeight = u.compactBenchMode ? 5 : 8;
+    const manaBarHeight = u.compactBenchMode ? 2.5 : 3.5;
     const barX = Math.round(feetAnchorX - barWidth * 0.5);
-    const barY = Math.round(spriteTopY - 10);
+    const barY = Math.round(spriteTopY - 12);
+    const totalFrameH = hpBarHeight + manaBarHeight + 1;
 
-    // 체력바 & 마나바 외곽 프레임
-    ctx.fillStyle = '#070a12';
-    ctx.fillRect(
-      barX - 1,
+    // 6-1) 다크 메탈릭 베젤 & 캡슐 프레임 + 하단 드롭 섀도우(Drop Shadow)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+    this.fillBeveledRect(
+      ctx,
+      barX - 2,
+      barY,
+      barWidth + 4,
+      totalFrameH + 3,
+      2
+    );
+
+    ctx.fillStyle = 'rgba(10, 14, 23, 0.88)';
+    this.fillBeveledRect(
+      ctx,
+      barX - 2,
       barY - 1,
-      barWidth + 2,
-      hpBarHeight + manaBarHeight + 3
+      barWidth + 4,
+      totalFrameH + 2,
+      2
+    );
+    ctx.strokeStyle = '#04070d';
+    ctx.lineWidth = 1;
+    this.strokeBeveledRect(
+      ctx,
+      barX - 2,
+      barY - 1,
+      barWidth + 4,
+      totalFrameH + 2,
+      2
     );
 
-    // 체력바 채우기
-    const hpRatio = Math.max(
-      0,
-      Math.min(1, u.currentHp / Math.max(1, u.maxHp))
-    );
+    // 체력바 내부 어두운 트랙 배경
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(barX, barY, barWidth, hpBarHeight);
+
+    const safeMaxHp = Math.max(1, u.maxHp);
+    const hpRatio = Math.max(0, Math.min(1, u.currentHp / safeMaxHp));
     const hpFillW = Math.round(barWidth * hpRatio);
-    ctx.fillStyle = u.team === 'HOME' ? '#2ec4b6' : '#e63946';
-    ctx.fillRect(barX, barY, hpFillW, hpBarHeight);
 
-    // 보호막(Shield) 오버레이
-    if (u.shield > 0) {
-      const shieldW = Math.min(
-        barWidth,
-        Math.round((u.shield / Math.max(1, u.maxHp)) * barWidth)
+    // 6-2) 피격 잔상 트레일(White/Yellow Damage Trail) 애니메이션 (~250ms)
+    const effectiveTrailHp = Math.max(
+      u.currentHp,
+      u.trailHp !== undefined ? u.trailHp : u.currentHp
+    );
+    const trailRatio = Math.max(0, Math.min(1, effectiveTrailHp / safeMaxHp));
+    const trailFillW = Math.round(barWidth * trailRatio);
+
+    if (trailFillW > hpFillW) {
+      const trailGrad = ctx.createLinearGradient(
+        barX,
+        barY,
+        barX,
+        barY + hpBarHeight
       );
-      ctx.fillStyle = '#f8fafc';
-      ctx.fillRect(barX, barY, shieldW, Math.max(2, hpBarHeight - 2));
+      trailGrad.addColorStop(0, '#ffffff');
+      trailGrad.addColorStop(0.45, '#fef08a');
+      trailGrad.addColorStop(1, '#f59e0b');
+      ctx.fillStyle = trailGrad;
+      ctx.fillRect(
+        barX + hpFillW,
+        barY,
+        trailFillW - hpFillW,
+        hpBarHeight
+      );
     }
 
-    // 200 HP 단위 눈금(Tick Marks)
-    if (!u.compactBenchMode) {
-      const segmentCount = Math.min(20, Math.floor(u.maxHp / 200));
-      if (segmentCount >= 1) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-        for (let s = 1; s <= segmentCount; s++) {
-          const segHp = s * 200;
-          if (segHp >= u.maxHp) break;
-          const tickX = barX + Math.round((segHp / u.maxHp) * barWidth);
-          ctx.fillRect(tickX, barY, 1, hpBarHeight);
+    // 6-3) 아군(에메랄드 그린) vs 적군(크림슨 레드) 수직 그라데이션 체력 게이지
+    if (hpFillW > 0) {
+      const hpGrad = ctx.createLinearGradient(
+        barX,
+        barY,
+        barX,
+        barY + hpBarHeight
+      );
+      if (u.team === 'HOME') {
+        hpGrad.addColorStop(0, '#22c55e');
+        hpGrad.addColorStop(1, '#15803d');
+      } else {
+        hpGrad.addColorStop(0, '#ef4444');
+        hpGrad.addColorStop(1, '#991b1b');
+      }
+      ctx.fillStyle = hpGrad;
+      ctx.fillRect(barX, barY, hpFillW, hpBarHeight);
+    }
+
+    // 보호막(Shield > 0) 보유 시: 체력바 우측 끝에 은빛/하늘색 쉴드 게이지 결합 렌더링
+    if (u.shield > 0) {
+      const shieldW = Math.max(
+        3,
+        Math.min(barWidth, Math.round((u.shield / safeMaxHp) * barWidth))
+      );
+      const shieldStartX =
+        hpFillW + shieldW <= barWidth
+          ? barX + hpFillW
+          : barX + barWidth - shieldW;
+      const shieldGrad = ctx.createLinearGradient(
+        shieldStartX,
+        barY,
+        shieldStartX,
+        barY + hpBarHeight
+      );
+      shieldGrad.addColorStop(0, '#f8fafc');
+      shieldGrad.addColorStop(0.5, '#bae6fd');
+      shieldGrad.addColorStop(1, '#38bdf8');
+      ctx.fillStyle = shieldGrad;
+      ctx.fillRect(shieldStartX, barY, shieldW, hpBarHeight);
+
+      ctx.strokeStyle = '#e0f2fe';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(shieldStartX, barY, shieldW, hpBarHeight);
+    }
+
+    // 체력바 상단 1.5px 반투명 화이트 하이라이트 라인 (유리관/캡슐 입체 볼륨감)
+    if (hpFillW > 0 || u.shield > 0) {
+      const glossW = Math.min(
+        barWidth,
+        hpFillW +
+          (u.shield > 0 ? Math.round((u.shield / safeMaxHp) * barWidth) : 0)
+      );
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.38)';
+      ctx.fillRect(barX, barY, glossW, 1.5);
+    }
+
+    // 6-4) 체력 수치별 동적 눈금(Dynamic HP Tick Marks: 250 HP 얇은 눈금 & 1,000 HP 굵은 눈금)
+    if (!u.compactBenchMode && safeMaxHp > 250) {
+      const maxTicks = Math.min(36, Math.floor((safeMaxHp - 1) / 250));
+      for (let t = 1; t <= maxTicks; t++) {
+        const tickHp = t * 250;
+        const tickX = barX + Math.round((tickHp / safeMaxHp) * barWidth);
+        const isThousandTick = tickHp % 1000 === 0;
+        if (isThousandTick) {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.92)';
+          ctx.fillRect(tickX - 0.5, barY, 1.5, hpBarHeight);
+        } else {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+          ctx.fillRect(
+            tickX,
+            barY,
+            1,
+            Math.max(3, Math.round(hpBarHeight * 0.65))
+          );
         }
       }
     }
 
-    // 마나바 (3px)
+    // 6-5) 마나바 (MP Bar): 체력바 바로 아래에 밀착 결합, 아케인 블루/시안 그라데이션 & 90% 이상 시 화이트 펄스 발광
+    const manaY = barY + hpBarHeight + 1;
     const manaRatio =
       u.maxMana > 0
         ? Math.max(0, Math.min(1, u.currentMana / u.maxMana))
         : 0;
-    ctx.fillStyle = '#1b263b';
-    ctx.fillRect(barX, barY + hpBarHeight + 1, barWidth, manaBarHeight);
-    ctx.fillStyle = '#00bbf9';
-    ctx.fillRect(
-      barX,
-      barY + hpBarHeight + 1,
-      Math.round(barWidth * manaRatio),
-      manaBarHeight
-    );
+    const manaFillW = Math.round(barWidth * manaRatio);
 
-    // 체력바 좌측에 성급 별(★/★★/★★★) 배지 고정
-    const starsStr = '★'.repeat(u.starLevel);
-    ctx.font = `900 ${u.starLevel === 3 ? 10 : 9}px monospace`;
-    ctx.textAlign = 'right';
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2.5;
-    ctx.strokeText(starsStr, barX - 3, barY + hpBarHeight);
-    ctx.fillStyle =
-      u.starLevel === 3
-        ? '#ffea00'
-        : u.starLevel === 2
-        ? '#e2e8f0'
-        : '#cbd5e1';
-    ctx.fillText(starsStr, barX - 3, barY + hpBarHeight);
+    ctx.fillStyle = '#09101d';
+    ctx.fillRect(barX, manaY, barWidth, manaBarHeight);
 
-    // 장착 아이템 작은 도트 아이콘 (최대 3개, 체력바 바로 위)
-    if (u.items.length > 0) {
-      const iconText = u.items
-        .slice(0, 3)
-        .map((id) => ITEM_DEFINITIONS[id]?.icon ?? '')
-        .join('');
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(iconText, feetAnchorX, barY - 3);
+    if (manaFillW > 0) {
+      const isAlmostFullMana = manaRatio >= 0.9;
+      const manaGrad = ctx.createLinearGradient(
+        barX,
+        manaY,
+        barX,
+        manaY + manaBarHeight
+      );
+      if (isAlmostFullMana) {
+        const pulse =
+          0.5 + 0.5 * Math.sin(this.globalAnimClockMs * 0.018);
+        manaGrad.addColorStop(0, '#ffffff');
+        manaGrad.addColorStop(0.5, pulse > 0.5 ? '#bae6fd' : '#38bdf8');
+        manaGrad.addColorStop(1, '#0284c7');
+      } else {
+        manaGrad.addColorStop(0, '#38bdf8');
+        manaGrad.addColorStop(1, '#0284c7');
+      }
+      ctx.fillStyle = manaGrad;
+      ctx.fillRect(barX, manaY, manaFillW, manaBarHeight);
+
+      // 마나바 상단 1px 하이라이트 및 90% 이상 발광 테두리
+      ctx.fillStyle = isAlmostFullMana
+        ? 'rgba(255, 255, 255, 0.85)'
+        : 'rgba(255, 255, 255, 0.32)';
+      ctx.fillRect(barX, manaY, manaFillW, 1);
+
+      if (isAlmostFullMana && !u.compactBenchMode) {
+        ctx.strokeStyle = 'rgba(224, 242, 254, 0.88)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX - 0.5, manaY - 0.5, barWidth + 1, manaBarHeight + 1);
+      }
     }
 
-    // 2. 예외 처리: 플레이어가 해당 기물을 터치(Tap)하여 선택했거나 드래그 중일 때만 기물 말풍선으로 이름 표시
+    // 6-6) 성급 엠블럼 통합 (체력바 좌측 끝에 코스트 색상이 반영된 다이아몬드/방패형 성급 배지)
+    const starsStr = '★'.repeat(u.starLevel);
+    const costColor = COST_BORDER_COLORS[u.cost];
+    const badgeH = totalFrameH + 2;
+    const badgeW = u.starLevel === 3 ? 21 : u.starLevel === 2 ? 15 : 11;
+    const badgeX = barX - badgeW - 2;
+    const badgeY = barY - 1;
+
+    if (u.starLevel === 3) {
+      // 3성 황금 광채 후광
+      ctx.fillStyle = 'rgba(250, 204, 21, 0.35)';
+      this.fillBeveledRect(
+        ctx,
+        badgeX - 1.5,
+        badgeY - 1.5,
+        badgeW + 3,
+        badgeH + 3,
+        3
+      );
+    }
+
+    ctx.fillStyle = 'rgba(10, 14, 23, 0.94)';
+    this.fillBeveledRect(ctx, badgeX, badgeY, badgeW, badgeH, 2.5);
+    ctx.strokeStyle = u.starLevel === 3 ? '#facc15' : costColor;
+    ctx.lineWidth = u.starLevel === 3 ? 1.5 : 1.1;
+    this.strokeBeveledRect(ctx, badgeX, badgeY, badgeW, badgeH, 2.5);
+
+    ctx.font = `900 ${u.starLevel === 3 ? 8 : 7.5}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle =
+      u.starLevel === 3
+        ? '#fde047'
+        : u.starLevel === 2
+        ? '#f8fafc'
+        : '#cbd5e1';
+    ctx.fillText(
+      starsStr,
+      badgeX + badgeW * 0.5,
+      badgeY + Math.round(badgeH * 0.74)
+    );
+
+    // 6-7) 장착 아이템 미니 슬롯 통합 (체력바 바로 위에 최대 3개 11x11px 테두리 미니 아이콘 정렬)
+    if (u.items.length > 0) {
+      const equipped = u.items.slice(0, 3);
+      const slotSize = u.compactBenchMode ? 9 : 11;
+      const slotGap = 2;
+      const totalItemsW =
+        equipped.length * slotSize + (equipped.length - 1) * slotGap;
+      const startItemX = Math.round(feetAnchorX - totalItemsW * 0.5);
+      const itemY = barY - slotSize - 3;
+
+      equipped.forEach((itemId, idx) => {
+        const def = ITEM_DEFINITIONS[itemId];
+        if (!def) return;
+        const ix = startItemX + idx * (slotSize + slotGap);
+
+        ctx.fillStyle = 'rgba(10, 14, 23, 0.92)';
+        ctx.fillRect(ix, itemY, slotSize, slotSize);
+
+        ctx.strokeStyle = def.isCompleted ? '#facc15' : '#94a3b8';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ix, itemY, slotSize, slotSize);
+
+        ctx.font = `${slotSize - 2}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(
+          def.icon,
+          ix + slotSize * 0.5,
+          itemY + slotSize - 1.5
+        );
+      });
+    }
+
+    // 7) 예외 처리: 플레이어가 해당 기물을 터치(Tap)하여 선택했거나 드래그 중일 때만 기물 말풍선으로 이름 표시
     if (u.isSelectedOrDragged) {
       this.drawSelectedUnitNameBubble(
         ctx,
         feetAnchorX,
-        barY - (u.items.length > 0 ? 15 : 6),
+        barY - (u.items.length > 0 ? 18 : 6),
         `${u.name} ${starsStr}`,
-        COST_BORDER_COLORS[u.cost]
+        costColor
       );
     }
 
