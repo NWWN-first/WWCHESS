@@ -20,6 +20,7 @@ import { AIPersona, Participant, UnitInstance } from './Participant';
 import { AISkillParameters, RankManager } from './RankManager';
 import { SharedPoolManager } from './SharedPoolManager';
 import { SynergyEngine } from './SynergyEngine';
+import { NeuralBotEngine, NeuralInferenceResult } from './NeuralBotEngine';
 
 export interface BotBrainState {
   botId: string;
@@ -35,6 +36,7 @@ export interface BotBrainState {
   maxRerollsAllowedThisRound: number;
   targetGoldFloorThisRound: number;
   unitsToDenyCache: Set<string>;
+  lastNeuralResult?: NeuralInferenceResult;
 }
 
 
@@ -267,6 +269,11 @@ export class AIBotController {
       aiParams
     );
 
+    // 딥러닝 신경망 추론 (상태 텐서 기반 Value, MacroAction, ItemUrgency 산출)
+    const stateTensor = this.extractAIStateTensor(bot, allParticipants, currentRound);
+    const neuralResult = NeuralBotEngine.getInstance().predictSync(stateTensor.features);
+    brain.lastNeuralResult = neuralResult;
+
     const persona = brain.persona;
     const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
     const isEmergencySurvival = bot.hp <= 30;
@@ -277,7 +284,10 @@ export class AIBotController {
       (stageNum >= 4 && bot.gold >= 40) || bot.gold >= 50;
 
     brain.isRolldownActive =
-      isEmergencySurvival || isGoblinCashoutTurn || isHighStageAllIn;
+      isEmergencySurvival ||
+      isGoblinCashoutTurn ||
+      isHighStageAllIn ||
+      neuralResult.macroAction === 'ROLLDOWN';
     brain.rerollsExecutedThisRound = 0;
 
     brain.targetGoldFloorThisRound = this.getPersonaGoldFloor(
@@ -287,6 +297,12 @@ export class AIBotController {
       isGoblinCashoutTurn,
       aiParams
     );
+
+    if (neuralResult.macroAction === 'SAVE_INTEREST') {
+      brain.targetGoldFloorThisRound = Math.max(brain.targetGoldFloorThisRound, 50);
+    } else if (neuralResult.macroAction === 'ROLLDOWN' || isEmergencySurvival) {
+      brain.targetGoldFloorThisRound = Math.min(brain.targetGoldFloorThisRound, 10);
+    }
 
     if (isEmergencySurvival || isGoblinCashoutTurn) {
       brain.maxRerollsAllowedThisRound = 20;
@@ -626,6 +642,19 @@ export class AIBotController {
     if (aug.tier === 'SILVER') score += 10;
     else if (aug.tier === 'GOLD') score += 25;
     else if (aug.tier === 'PRISMATIC') score += 45;
+
+    // 신경망 상태 가치 평가 연동 (순위 기대치 Value Score에 따른 증강 최적화)
+    if (brain.lastNeuralResult) {
+      const val = brain.lastNeuralResult.valueScore;
+      // 순위 기대치가 낮아 위기일 때(val < 0.45)는 즉발 전투력/골드 증강에 가산점
+      if (val < 0.45 && (aug.category === 'ECONOMY' || aug.category === 'HERO')) {
+        score += 20;
+      }
+      // 순위 기대치가 높아 여유로울 때(val >= 0.65)는 후반 고점/전투/프리즘 증강에 가산점
+      if (val >= 0.65 && (aug.category === 'COMBAT' || aug.category === 'TRAIT' || aug.tier === 'PRISMATIC')) {
+        score += 25;
+      }
+    }
 
     const threeStarCount = this.countTotalThreeStarUnits(bot);
     const ownedLocations = bot.getAllUnitLocations();
@@ -1712,6 +1741,11 @@ export class AIBotController {
             // 대기석에 조합 아이템이 3개 이상 쌓여있다면 빠른 템포 합성을 위해 보너스 부여!
             if (baseIndices.length >= 4) score += 30;
             else if (baseIndices.length >= 3) score += 15;
+
+            // 신경망 추론: 아이템 긴급도(Item Urgency)가 높으면 템 소진 보너스
+            if (brain.lastNeuralResult && brain.lastNeuralResult.itemUrgency > 0.55) {
+              score += Math.round(brain.lastNeuralResult.itemUrgency * 30);
+            }
 
             // 영웅 증강 타겟 기물에게 아이템을 몰아주면 추가 보너스
             if (brain.heroTargetUnitId === unit.unitId) score += 25;

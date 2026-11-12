@@ -1,0 +1,169 @@
+# scripts/train_bot_network.py
+import json
+import os
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+
+DATA_PATH = "/tmp/wwchess_training_data.json"
+ONNX_OUT_PATH = "public/models/wwchess_bot.onnx"
+WEIGHTS_TS_PATH = "src/NeuralWeights.ts"
+
+os.makedirs("public/models", exist_ok=True)
+
+class WWChessDataset(Dataset):
+    def __init__(self, data):
+        self.states = torch.tensor([d["state"] for d in data], dtype=torch.float32)
+        self.actions = torch.tensor([d["action"] for d in data], dtype=torch.long)
+        self.urgencies = torch.tensor([[d["itemUrgency"]] for d in data], dtype=torch.float32)
+        self.rewards = torch.tensor([[d["reward"]] for d in data], dtype=torch.float32)
+
+    def __len__(self):
+        return len(self.states)
+
+    def __getitem__(self, idx):
+        return self.states[idx], self.actions[idx], self.urgencies[idx], self.rewards[idx]
+
+class WWChessBotNet(nn.Module):
+    def __init__(self, input_dim=11):
+        super().__init__()
+        # 공유 백본 (Shared representation)
+        self.fc1 = nn.Linear(input_dim, 32)
+        self.relu1 = nn.ReLU()
+        self.fc2 = nn.Linear(32, 32)
+        self.relu2 = nn.ReLU()
+
+        # Value Head: 현재 상태에서의 순위 기대치 (0.0: 8등 ~ 1.0: 1등)
+        self.val_fc = nn.Linear(32, 16)
+        self.val_relu = nn.ReLU()
+        self.val_out = nn.Linear(16, 1)
+        self.val_sig = nn.Sigmoid()
+
+        # Policy Head: [0: SAVE_INTEREST, 1: TEMPO_LEVEL, 2: ROLLDOWN, 3: STABILIZE_REROLL]
+        self.pol_fc = nn.Linear(32, 16)
+        self.pol_relu = nn.ReLU()
+        self.pol_out = nn.Linear(16, 4)
+
+        # Item Urgency Head: 즉시 아이템 장착/완성 우선도 (0.0 ~ 1.0)
+        self.urg_fc = nn.Linear(32, 8)
+        self.urg_relu = nn.ReLU()
+        self.urg_out = nn.Linear(8, 1)
+        self.urg_sig = nn.Sigmoid()
+
+    def forward(self, x):
+        h = self.relu1(self.fc1(x))
+        h = self.relu2(self.fc2(h))
+
+        v = self.val_sig(self.val_out(self.val_relu(self.val_fc(h))))
+        p = self.pol_out(self.pol_relu(self.pol_fc(h)))
+        u = self.urg_sig(self.urg_out(self.urg_relu(self.urg_fc(h))))
+
+        return v, p, u
+
+def train():
+    print(f"[Train] Loading data from {DATA_PATH}...")
+    with open(DATA_PATH, "r") as f:
+        data = json.load(f)
+
+    print(f"[Train] Loaded {len(data)} samples.")
+    dataset = WWChessDataset(data)
+    loader = DataLoader(dataset, batch_size=128, shuffle=True)
+
+    input_dim = len(data[0]["state"])
+    print(f"[Train] State feature dimension: {input_dim}")
+
+    model = WWChessBotNet(input_dim=input_dim)
+    optimizer = optim.Adam(model.parameters(), lr=0.003, weight_decay=1e-4)
+
+    mse_loss = nn.MSELoss()
+    ce_loss = nn.CrossEntropyLoss()
+
+    epochs = 18
+    model.train()
+    for ep in range(epochs):
+        total_loss = 0.0
+        for states, actions, urgencies, rewards in loader:
+            optimizer.zero_grad()
+            pred_v, pred_p, pred_u = model(states)
+
+            l_val = mse_loss(pred_v, rewards)
+            l_pol = ce_loss(pred_p, actions)
+            l_urg = mse_loss(pred_u, urgencies)
+
+            loss = l_val * 2.0 + l_pol + l_urg * 0.5
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+
+        avg_loss = total_loss / len(loader)
+        if (ep + 1) % 3 == 0 or ep == epochs - 1:
+            print(f"[Train] Epoch {ep + 1:2d}/{epochs} - Avg Loss: {avg_loss:.4f}")
+
+    # 1. Export ONNX Model
+    model.eval()
+    dummy_input = torch.randn(1, input_dim, dtype=torch.float32)
+    torch.onnx.export(
+        model,
+        dummy_input,
+        ONNX_OUT_PATH,
+        input_names=["state_vector"],
+        output_names=["value_score", "policy_logits", "item_urgency"],
+        dynamic_axes={"state_vector": {0: "batch_size"}},
+        opset_version=14,
+    )
+    print(f"[Export] Saved ONNX model to {ONNX_OUT_PATH} (Size: {os.path.getsize(ONNX_OUT_PATH)} bytes)")
+
+    # 2. Export Fast In-Memory Neural Weights (TypeScript)
+    state_dict = model.state_dict()
+    weights_json = {}
+    for k, v in state_dict.items():
+        weights_json[k] = v.detach().cpu().numpy().tolist()
+
+    ts_content = f"""// src/NeuralWeights.ts
+// 고속 인라인 신경망 추론을 위한 가중치 매트릭스 (100% 오프라인 & 0ms 인퍼런스)
+export interface NeuralNetworkWeights {{
+  fc1_w: number[][];
+  fc1_b: number[];
+  fc2_w: number[][];
+  fc2_b: number[];
+  val_fc_w: number[][];
+  val_fc_b: number[];
+  val_out_w: number[][];
+  val_out_b: number[];
+  pol_fc_w: number[][];
+  pol_fc_b: number[];
+  pol_out_w: number[][];
+  pol_out_b: number[];
+  urg_fc_w: number[][];
+  urg_fc_b: number[];
+  urg_out_w: number[][];
+  urg_out_b: number[];
+}}
+
+export const TRAINED_NEURAL_WEIGHTS: NeuralNetworkWeights = {{
+  fc1_w: {json.dumps(weights_json["fc1.weight"])},
+  fc1_b: {json.dumps(weights_json["fc1.bias"])},
+  fc2_w: {json.dumps(weights_json["fc2.weight"])},
+  fc2_b: {json.dumps(weights_json["fc2.bias"])},
+  val_fc_w: {json.dumps(weights_json["val_fc.weight"])},
+  val_fc_b: {json.dumps(weights_json["val_fc.bias"])},
+  val_out_w: {json.dumps(weights_json["val_out.weight"])},
+  val_out_b: {json.dumps(weights_json["val_out.bias"])},
+  pol_fc_w: {json.dumps(weights_json["pol_fc.weight"])},
+  pol_fc_b: {json.dumps(weights_json["pol_fc.bias"])},
+  pol_out_w: {json.dumps(weights_json["pol_out.weight"])},
+  pol_out_b: {json.dumps(weights_json["pol_out.bias"])},
+  urg_fc_w: {json.dumps(weights_json["urg_fc.weight"])},
+  urg_fc_b: {json.dumps(weights_json["urg_fc.bias"])},
+  urg_out_w: {json.dumps(weights_json["urg_out.weight"])},
+  urg_out_b: {json.dumps(weights_json["urg_out.bias"])},
+}};
+"""
+    with open(WEIGHTS_TS_PATH, "w") as f:
+        f.write(ts_content)
+    print(f"[Export] Saved inline TypeScript neural weights to {WEIGHTS_TS_PATH}")
+
+if __name__ == "__main__":
+    train()
