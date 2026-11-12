@@ -18,13 +18,68 @@
       rel="stylesheet"
     />
     <title>WWCHESS - 헥사곤 도트 판타지 오토배틀러</title>
-    <script type="module" crossorigin src="./assets/index-BVGbUkgt.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CtB8vLTY.css">
+    <script type="module" crossorigin src="./assets/index-C1dVpz-d.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-VucdyCKh.css">
   </head>
   <body>
     <div id="app" class="app-root">
+      <!-- 씬 전환 부드러운 페이드아웃/페이드인 커튼 레이어 -->
+      <div id="screen-transition-curtain" class="screen-transition-curtain"></div>
+
+      <!-- 메인 타이틀 로비 화면 (앱 실행 시 첫 진입 화면) -->
+      <section id="main-lobby-screen" class="main-lobby-screen">
+        <div class="lobby-backdrop-effects">
+          <div class="ambient-glow glow-1"></div>
+          <div class="ambient-glow glow-2"></div>
+          <div class="ambient-stars"></div>
+        </div>
+
+        <div class="lobby-center-container">
+          <!-- 웅장한 타이틀 로고 영역 -->
+          <div class="lobby-title-area">
+            <div class="lobby-crest-emblem">⚔️ ⬡ ⚔️</div>
+            <h1 class="lobby-main-title">WWCHESS</h1>
+            <div class="lobby-sub-title">FANTASY AUTO BATTLER · 신비의 전장</div>
+            <div class="lobby-badge-row">
+              <span class="lobby-feature-tag">✨ TFT S18 증강</span>
+              <span class="lobby-feature-tag">🧠 딥러닝 ONNX 봇</span>
+              <span class="lobby-feature-tag">⚡ 100% 오프라인</span>
+            </div>
+          </div>
+
+          <!-- 메인 메뉴 버튼군 -->
+          <div class="lobby-menu-group">
+            <button id="lobby-start-btn" class="lobby-menu-btn start-btn" role="button" tabindex="0">
+              <span class="btn-icon">⚔️</span>
+              <span class="btn-text">게임 시작</span>
+            </button>
+
+            <button id="lobby-compendium-btn" class="lobby-menu-btn secondary-btn" role="button" tabindex="0">
+              <span class="btn-icon">📊</span>
+              <span class="btn-text">기물 &amp; 시너지 도감</span>
+            </button>
+
+            <button id="lobby-rank-btn" class="lobby-menu-btn secondary-btn" role="button" tabindex="0">
+              <span class="btn-icon">👑</span>
+              <span class="btn-text">내 랭크 &amp; 전적</span>
+            </button>
+
+            <button id="lobby-settings-btn" class="lobby-menu-btn secondary-btn" role="button" tabindex="0">
+              <span class="btn-icon">⚙️</span>
+              <span class="btn-text">환경 설정</span>
+            </button>
+          </div>
+
+          <div class="lobby-footer-info">
+            <span>WWCHESS Mobile Edition · v1.0.0</span>
+          </div>
+        </div>
+      </section>
+
       <!-- 100vw x 100vh 전체화면 픽셀 아트 + 판타지 결투장 + 육각형 전장 & 석조 대기석 단일 게임 캔버스 -->
       <canvas id="fx-canvas" class="game-viewport-canvas"></canvas>
+      <!-- Pixi.js v8 WebGL 하드웨어 가속 발광 파티클 & 육각형 배치 충격파 캔버스 -->
+      <canvas id="pixi-canvas" class="pixi-viewport-canvas"></canvas>
 
       <!-- 정비 시간 5초 이하 긴박 붉은 맥동 비네팅 오버레이 -->
       <div id="urgent-vignette-overlay" class="urgent-vignette-overlay hidden"></div>
@@ -83,8 +138,16 @@
             🌲숲맵
           </div>
 
+          <div id="sound-toggle-btn" class="rune-icon-btn sound-gem" role="button" tabindex="0" title="효과음 켜기/끄기">
+            🔊
+          </div>
+
           <div id="pool-inspector-btn" class="rune-icon-btn gold-gem" role="button" tabindex="0" title="공유 풀 도감">
             📊도감
+          </div>
+
+          <div id="lobby-nav-btn" class="rune-icon-btn emerald-gem" role="button" tabindex="0" title="메인 로비 화면으로 이동">
+            🏠로비
           </div>
 
           <div id="new-game-btn" class="rune-icon-btn ruby-gem" role="button" tabindex="0" title="새 게임 시작">
@@ -95,10 +158,10 @@
       </header>
 
       <!-- AI 봇 정찰(Scouting) 카메라 활성 배너 -->
-      <div id="scouting-banner" class="scouting-banner hidden">
+      <div id="scouting-banner" class="scouting-banner hidden" title="클릭하거나 스페이스(Space)를 누르면 내 경기장으로 즉시 복귀합니다">
         <span id="scouting-target-text">🔍 정찰 중</span>
         <div id="return-home-btn" class="rune-action-pill return-pill" role="button" tabindex="0">
-          🏠 내 진영
+          🏠 내 경기장 복귀 (Space)
         </div>
       </div>
 
@@ -208,9 +271,19 @@
       <!-- 모달 1: 고대 증강체 선택 모달 (2-1, 3-2, 4-2) -->
       <div id="augment-modal" class="modal-backdrop hidden">
         <div class="fantasy-modal-frame augment-modal-card">
-          <div class="modal-crown-title" id="augment-modal-title">✨ 고대 룬 증강체 선택</div>
+          <div class="modal-header-row">
+            <div class="modal-crown-title" id="augment-modal-title">✨ 고대 룬 증강체 선택</div>
+            <div id="minimize-augment-btn" class="rune-icon-btn sapphire-gem" role="button" tabindex="0" title="필드 확인을 위해 증강창 내리기">👁️ 내 필드 확인</div>
+          </div>
           <div class="modal-sub-caption">전장의 판도를 뒤흔들 룬 증강체 1개를 각인하세요 (카드별 1회 리롤)</div>
           <div id="augment-cards-row" class="augment-cards-row"></div>
+        </div>
+      </div>
+
+      <!-- 증강창 최소화 시 노출되는 플로팅 복원 바 -->
+      <div id="restore-augment-bar" class="restore-augment-bar hidden">
+        <div id="restore-augment-btn" class="restore-augment-pill" role="button" tabindex="0">
+          ✨ 룬 증강체 선택창 다시 열기 ▲
         </div>
       </div>
 
@@ -269,8 +342,57 @@
         <div class="fantasy-modal-frame gameover-modal-card">
           <div id="gameover-title" class="modal-crown-title">🏆 전장 정산 완료!</div>
           <div id="gameover-summary" class="gameover-summary"></div>
-          <div id="play-again-btn" class="start-battle-crystal" role="button" tabindex="0" style="margin: 12px auto 0; width: 200px; height: 44px;">
-            🔥 다음 매치 시작
+          <div class="gameover-btn-row">
+            <div id="gameover-lobby-btn" class="start-battle-crystal emerald-glow" role="button" tabindex="0">
+              🏠 메인 로비로
+            </div>
+            <div id="play-again-btn" class="start-battle-crystal" role="button" tabindex="0">
+              🔥 다음 매치 시작
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 모달 6: 환경 설정 모달 (Settings Modal) -->
+      <div id="settings-modal" class="modal-backdrop hidden">
+        <div class="fantasy-modal-frame settings-modal-card">
+          <div class="modal-header-row">
+            <div class="modal-crown-title">⚙️ 게임 환경 설정</div>
+            <div id="close-settings-modal-btn" class="rune-icon-btn ruby-gem" role="button" tabindex="0">닫기 ✕</div>
+          </div>
+          <div class="settings-content-body">
+            <div class="settings-section">
+              <div class="settings-section-title">전투 &amp; 게임 플레이</div>
+              <div class="settings-row">
+                <span class="settings-label">전투 기본 배속</span>
+                <div class="settings-options" id="settings-speed-options">
+                  <button class="setting-opt-btn active" data-speed="1">1x 기본</button>
+                  <button class="setting-opt-btn" data-speed="2">2x 고속</button>
+                </div>
+              </div>
+              <div class="settings-row">
+                <span class="settings-label">전장 맵 테마</span>
+                <div class="settings-options" id="settings-map-options">
+                  <button class="setting-opt-btn active" data-map="forest">🌲 판타지 숲</button>
+                  <button class="setting-opt-btn" data-map="town">🏰 왕도 광장</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="settings-section-title">인공지능 &amp; 시스템</div>
+              <div class="settings-row">
+                <span class="settings-label">AI 봇 두뇌 모드</span>
+                <div class="settings-options" id="settings-ai-options">
+                  <button class="setting-opt-btn active" data-ai="neural">🧠 딥러닝 ONNX 지능</button>
+                  <button class="setting-opt-btn" data-ai="standard">⚖️ 정석 룰베이스</button>
+                </div>
+              </div>
+              <div class="settings-row">
+                <span class="settings-label">오프라인 구동</span>
+                <div class="settings-badge-ok">✅ 100% 완전 오프라인 로컬 실행 중</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
