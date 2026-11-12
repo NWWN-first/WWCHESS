@@ -113,7 +113,8 @@ class FantasyAutoBattlerApp {
     this.fxCanvas = document.getElementById('fx-canvas') as HTMLCanvasElement;
     this.fxCtx = this.fxCanvas.getContext('2d')!;
 
-    this.game = new GameLoopManager(() => {
+    this.game = new GameLoopManager();
+    this.game.setOnStateChange(() => {
       this.onGameStateUpdated();
     });
 
@@ -1633,6 +1634,11 @@ class FantasyAutoBattlerApp {
   }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', () => {
+    new FantasyAutoBattlerApp();
+  });
+} else {
   new FantasyAutoBattlerApp();
-});
+}
+

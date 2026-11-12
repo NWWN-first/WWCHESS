@@ -482,8 +482,8 @@ export class Participant implements PoolParticipant {
     this.removeUnitAtLocation(found);
 
     // 환급 골드 계산
-    const cost = unit.cost;
-    let refundGold = cost;
+    const cost: number = unit.cost;
+    let refundGold: number = cost;
     if (unit.starLevel === 2) {
       refundGold = cost === 1 ? 3 : cost * 3 - 1;
     } else if (unit.starLevel === 3) {
