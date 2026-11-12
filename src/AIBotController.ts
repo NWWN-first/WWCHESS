@@ -47,6 +47,88 @@ const STANDARD_ORIGIN_TRAITS: TraitId[] = [
   'ARCANE_TOWER',
 ];
 
+export type UnitRole = 'TANK' | 'AD_CARRY' | 'AP_CARRY' | 'BRUISER';
+
+export function getUnitRole(unitId: string): UnitRole {
+  const template = UNIT_TEMPLATES[unitId];
+  if (!template) return 'BRUISER';
+
+  if (
+    template.traits.includes('VANGUARD') ||
+    template.traits.includes('PALADIN') ||
+    (template.stats.def >= 40 && template.stats.range === 1)
+  ) {
+    if (
+      template.traits.includes('SHADOW_ASSASSIN') ||
+      template.traits.includes('BERSERKER')
+    ) {
+      return 'BRUISER';
+    }
+    return 'TANK';
+  }
+
+  if (
+    template.traits.includes('ARCHMAGE') ||
+    template.traits.includes('ARCANE_TOWER')
+  ) {
+    return 'AP_CARRY';
+  }
+
+  if (
+    template.traits.includes('RANGER') ||
+    template.traits.includes('SHADOW_ASSASSIN')
+  ) {
+    return 'AD_CARRY';
+  }
+
+  if (template.traits.includes('BERSERKER') || template.stats.range === 1) {
+    return 'BRUISER';
+  }
+
+  return 'AD_CARRY';
+}
+
+export interface ScoutingContext {
+  opponentHighHpCount: number;
+  opponentHealShieldTraits: number;
+  opponentVanguardCount: number;
+  opponentMagicCount: number;
+  traitContestedMap: Map<TraitId, number>;
+}
+
+export interface AIStateTensor {
+  hpRatio: number;
+  goldNorm: number;
+  levelNorm: number;
+  stageNorm: number;
+  benchUnitsRatio: number;
+  itemBenchRatio: number;
+  boardPowerNorm: number;
+  winStreakNorm: number;
+  lossStreakNorm: number;
+  contestedTraitRatio: number;
+  emergencyFlag: number;
+  features: number[];
+}
+
+const ITEM_ROLE_AFFINITY: Record<CompletedItemId, Record<UnitRole, number>> = {
+  INFINITY_EDGE: { TANK: 10, AD_CARRY: 95, AP_CARRY: 30, BRUISER: 80 },
+  GIANT_SLAYER: { TANK: 15, AD_CARRY: 90, AP_CARRY: 65, BRUISER: 75 },
+  HEXTECH_GUNBLADE: { TANK: 35, AD_CARRY: 60, AP_CARRY: 95, BRUISER: 80 },
+  SPEAR_OF_SHOJIN: { TANK: 20, AD_CARRY: 50, AP_CARRY: 95, BRUISER: 40 },
+  BLOODTHIRSTER: { TANK: 60, AD_CARRY: 75, AP_CARRY: 35, BRUISER: 95 },
+  RAPID_FIRECANNON: { TANK: 10, AD_CARRY: 90, AP_CARRY: 40, BRUISER: 60 },
+  GUINSOOS_RAGEBLADE: { TANK: 20, AD_CARRY: 95, AP_CARRY: 70, BRUISER: 80 },
+  STATIKK_SHIV: { TANK: 30, AD_CARRY: 80, AP_CARRY: 85, BRUISER: 70 },
+  TITANS_RESOLVE: { TANK: 85, AD_CARRY: 50, AP_CARRY: 40, BRUISER: 95 },
+  RABADONS_DEATHCAP: { TANK: 10, AD_CARRY: 20, AP_CARRY: 100, BRUISER: 40 },
+  ARCHANGELS_STAFF: { TANK: 25, AD_CARRY: 20, AP_CARRY: 95, BRUISER: 45 },
+  SUNFIRE_CAPE: { TANK: 95, AD_CARRY: 20, AP_CARRY: 30, BRUISER: 80 },
+  BLUE_BUFF: { TANK: 20, AD_CARRY: 30, AP_CARRY: 95, BRUISER: 40 },
+  PROTECTORS_VOW: { TANK: 100, AD_CARRY: 15, AP_CARRY: 20, BRUISER: 75 },
+  BRAMBLE_VEST: { TANK: 100, AD_CARRY: 10, AP_CARRY: 10, BRUISER: 70 },
+};
+
 const BOT_PRESETS: Array<{ name: string; persona: AIPersona; initialTrait: TraitId }> = [
   { name: '봇1 [도박꾼 잭]', persona: 'HYPER_ROLLER', initialTrait: 'UNDEAD_SCOURGE' },
   { name: '봇2 [리롤왕 볼트]', persona: 'HYPER_ROLLER', initialTrait: 'ELVEN_SYLVAN' },
@@ -226,19 +308,19 @@ export class AIBotController {
     }
 
     // 2. 현재 열린 첫 상점에서 유효 기물 즉시 구매 및 기본 배치 수행
+    const scouting = this.analyzeScoutingContext(bot, allParticipants);
     this.buyDesirableUnitsFromCurrentShop(
       bot,
       brain,
       brain.unitsToDenyCache,
       sharedPool,
-      aiParams
+      aiParams,
+      scouting
     );
     this.performPersonaLevelUpStep(bot, brain, currentRound);
     this.tryUseBotDuplicators(bot, brain, sharedPool);
 
-    const humanPlayer =
-      allParticipants.find((p) => !p.isAI && !p.isEliminated) ?? null;
-    this.optimizeBoardAndItems(bot, brain, humanPlayer, sharedPool, aiParams);
+    this.optimizeBoardAndItems(bot, brain, allParticipants, sharedPool, aiParams);
 
     // 3. 첫 번째 동적 APM 행동 타이머 설정 (올인 Rolldown: 0.6~1.0초, 평상시: 1.0~5.0초)
     brain.nextActionDelayMs = this.computeNextBotActionDelayMs(brain.isRolldownActive);
@@ -288,6 +370,8 @@ export class AIBotController {
     // 1. 레벨업 체크
     this.performPersonaLevelUpStep(bot, brain, currentRound);
 
+    const scouting = this.analyzeScoutingContext(bot, allParticipants);
+
     // 2. 상점 리롤 및 기물 쓸어담기 1스텝 실행
     let didAct = false;
     const nextRerollCost = bot.freeRerolls > 0 ? 0 : 2;
@@ -304,16 +388,15 @@ export class AIBotController {
           brain,
           brain.unitsToDenyCache,
           sharedPool,
-          aiParams
+          aiParams,
+          scouting
         );
       }
     }
 
     // 3. 복제기 사용 및 실시간 보드 재배치/아이템 장착 갱신
     this.tryUseBotDuplicators(bot, brain, sharedPool);
-    const humanPlayer =
-      allParticipants.find((p) => !p.isAI && !p.isEliminated) ?? null;
-    this.optimizeBoardAndItems(bot, brain, humanPlayer, sharedPool, aiParams);
+    this.optimizeBoardAndItems(bot, brain, allParticipants, sharedPool, aiParams);
 
     return didAct;
   }
@@ -383,126 +466,350 @@ export class AIBotController {
       aiParams
     );
 
+    const scouting = this.analyzeScoutingContext(bot, allParticipants);
     this.runEconomyAndShopLoop(
       bot,
       brain,
       unitsToDenyFromPlayer,
       sharedPool,
       currentRound,
-      aiParams
+      aiParams,
+      scouting
     );
 
     this.tryUseBotDuplicators(bot, brain, sharedPool);
 
-    const humanPlayer = allParticipants.find((p) => !p.isAI && !p.isEliminated) ?? null;
-    this.optimizeBoardAndItems(bot, brain, humanPlayer, sharedPool, aiParams);
+    this.optimizeBoardAndItems(bot, brain, allParticipants, sharedPool, aiParams);
   }
 
 
   /**
-   * 증강체 라운드(2-1, 3-2, 4-2) 진입 시 AI 봇이 자신의 페르소나와 덱 상황에 맞게 최적의 증강체를 지능적으로 선택한다.
-   * - 영웅 증강: 보유 기물/선호 시너지에 부합 시 최우선 픽 후 3성 올인 플랜 수립
-   * - 시너지 증강(문장/왕관): 주력/보조 시너지와 일치 시 8~9프리즘을 향해 최우선 선택
-   * - 리롤 덱: 이미 3성 기물이 나와 잘 풀렸다면 전투/골드 증강, 아직 안 나왔으면 리롤/영웅 증강
-   * - 고밸류 덱: 초중반 체력이 여유로우면 레벨업/돈 증강, 체력 40 이하 위기 시 즉발 전투/체력 증강
+   * 상대방 7명의 보드 상태(체력 1,300+ 거대 기물, 힐/보호막 시너지, 선봉대, 마법사 수 등)를 종합 정찰(Scouting)한다.
+   */
+  public analyzeScoutingContext(
+    bot: Participant,
+    allParticipants: Participant[]
+  ): ScoutingContext {
+    let opponentHighHpCount = 0;
+    let opponentHealShieldTraits = 0;
+    let opponentVanguardCount = 0;
+    let opponentMagicCount = 0;
+    const traitContestedMap = new Map<TraitId, number>();
+
+    for (const other of allParticipants) {
+      if (other.isEliminated || other.id === bot.id) continue;
+
+      const traits = other.getActiveTraitCounts();
+      for (const [traitId, count] of traits.entries()) {
+        if (count >= 2) {
+          traitContestedMap.set(traitId, (traitContestedMap.get(traitId) ?? 0) + 1);
+        }
+      }
+
+      if (
+        (traits.get('HOLY_EMPIRE') ?? 0) >= 2 ||
+        (traits.get('PALADIN') ?? 0) >= 2 ||
+        (traits.get('UNDEAD_SCOURGE') ?? 0) >= 2
+      ) {
+        opponentHealShieldTraits++;
+      }
+      if ((traits.get('VANGUARD') ?? 0) >= 2) {
+        opponentVanguardCount++;
+      }
+      if (
+        (traits.get('ARCANE_TOWER') ?? 0) >= 2 ||
+        (traits.get('ARCHMAGE') ?? 0) >= 2
+      ) {
+        opponentMagicCount++;
+      }
+
+      for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+        for (let c = 0; c < Participant.BOARD_COLS; c++) {
+          const u = other.board[r][c];
+          if (u && u.maxHp >= 1300) {
+            opponentHighHpCount++;
+          }
+        }
+      }
+    }
+
+    return {
+      opponentHighHpCount,
+      opponentHealShieldTraits,
+      opponentVanguardCount,
+      opponentMagicCount,
+      traitContestedMap,
+    };
+  }
+
+  /**
+   * 딥러닝/ONNX 모델 추론용 정규화 상태 텐서(Feature Vector)를 추출한다.
+   * [현재 체력비율, 골드, 레벨, 스테이지, 대기석기물비율, 아이템비율, 필드전투력, 연승, 연패, 경합비율, 위기플래그]
+   */
+  public extractAIStateTensor(
+    bot: Participant,
+    allParticipants: Participant[],
+    currentRound: string
+  ): AIStateTensor {
+    const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
+    const hpRatio = Math.max(0, Math.min(1, bot.hp / 100));
+    const goldNorm = Math.min(1, bot.gold / 100);
+    const levelNorm = Math.min(1, bot.level / 10);
+    const stageNorm = Math.min(1, stageNum / 7);
+
+    const benchCount = bot.bench.filter((u) => u !== null).length;
+    const benchUnitsRatio = benchCount / Participant.BENCH_SIZE;
+    const itemBenchRatio = Math.min(1, bot.itemBench.length / 10);
+
+    let boardPower = 0;
+    for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+      for (let c = 0; c < Participant.BOARD_COLS; c++) {
+        const u = bot.board[r][c];
+        if (u) {
+          boardPower += u.cost * 10 + u.starLevel * 25 + u.items.length * 15;
+        }
+      }
+    }
+    const boardPowerNorm = Math.min(1, boardPower / 500);
+
+    const winStreakNorm = Math.min(1, bot.winStreak / 10);
+    const lossStreakNorm = Math.min(1, bot.loseStreak / 10);
+
+    const brain = this.getOrCreateBrain(bot);
+    const scouting = this.analyzeScoutingContext(bot, allParticipants);
+    const contestedCount = scouting.traitContestedMap.get(brain.targetTrait) ?? 0;
+    const contestedTraitRatio = Math.min(1, contestedCount / 4);
+    const emergencyFlag = bot.hp <= 35 ? 1 : 0;
+
+    const features = [
+      hpRatio,
+      goldNorm,
+      levelNorm,
+      stageNorm,
+      benchUnitsRatio,
+      itemBenchRatio,
+      boardPowerNorm,
+      winStreakNorm,
+      lossStreakNorm,
+      contestedTraitRatio,
+      emergencyFlag,
+    ];
+
+    return {
+      hpRatio,
+      goldNorm,
+      levelNorm,
+      stageNorm,
+      benchUnitsRatio,
+      itemBenchRatio,
+      boardPowerNorm,
+      winStreakNorm,
+      lossStreakNorm,
+      contestedTraitRatio,
+      emergencyFlag,
+      features,
+    };
+  }
+
+  /**
+   * 증강체 1개의 종합 가치(Valuation / Utility Score)를 산출한다.
+   * - 덱 시너지 적합도, 영웅 증강 2~3성 각, 체력 위기(Crisis)에 따른 즉발 vs 장기 밸류 판단
+   * - 신규 시즌 18 증강(천상의 축복, 불완전한 초월, 단체 포옹, 고단수, 중심 잡기, 전기 충전, 판도라 등) 전면 가치평가
+   */
+  public evaluateAugmentValue(
+    aug: AugmentDefinition,
+    bot: Participant,
+    brain: BotBrainState,
+    allParticipants?: Participant[]
+  ): number {
+    let score = 25;
+    if (aug.tier === 'SILVER') score += 10;
+    else if (aug.tier === 'GOLD') score += 25;
+    else if (aug.tier === 'PRISMATIC') score += 45;
+
+    const threeStarCount = this.countTotalThreeStarUnits(bot);
+    const ownedLocations = bot.getAllUnitLocations();
+    const ownedUnitIds = new Set(ownedLocations.map((l) => l.unit.unitId));
+
+    // 1. 영웅 증강 (Hero Augment) 정밀 평가
+    if (aug.category === 'HERO' && aug.heroUnitId) {
+      const heroTemplate = UNIT_TEMPLATES[aug.heroUnitId];
+      const heroUnit = ownedLocations.find((l) => l.unit.unitId === aug.heroUnitId)?.unit;
+      const ownsHero = !!heroUnit;
+      const isTwoStar = heroUnit && heroUnit.starLevel >= 2;
+      const matchesTrait =
+        heroTemplate &&
+        (heroTemplate.traits.includes(brain.targetTrait) ||
+          heroTemplate.traits.includes(brain.secondaryTrait));
+
+      if (ownsHero) {
+        score += 85;
+        if (isTwoStar) score += 35; // 이미 2성이면 3성 스파이크 각이 매우 높음!
+      } else if (matchesTrait) {
+        score += 65;
+      } else {
+        score -= 25;
+      }
+    }
+
+    // 2. 시너지 문장 / 왕관 증강 평가 (8~9단계 프리즘 필수 트리거)
+    if (aug.bonusTrait) {
+      if (aug.bonusTrait === brain.targetTrait) {
+        score += 95;
+        // 다른 봇들이 안 가는 빈집 시너지라면 추가 가산
+        if (allParticipants) {
+          const scouting = this.analyzeScoutingContext(bot, allParticipants);
+          const contested = scouting.traitContestedMap.get(aug.bonusTrait) ?? 0;
+          if (contested === 0) score += 25;
+          else if (contested >= 2) score -= 20;
+        }
+      } else if (aug.bonusTrait === brain.secondaryTrait) {
+        score += 65;
+      } else if (bot.getActiveTraitCounts().has(aug.bonusTrait)) {
+        score += 45;
+      } else {
+        score -= 30;
+      }
+    }
+
+    // 3. 체력 위기(Crisis Management) 및 템포 가치평가
+    const isCrisis = bot.hp <= 35;
+    const isHealthy = bot.hp >= 70;
+
+    // 아이템 관련 증강 여부
+    const isItemAug =
+      aug.effectKey === 'ITEM_PACK_1' ||
+      aug.effectKey === 'SMALL_PACK' ||
+      aug.effectKey === 'USEFUL_METAL' ||
+      aug.effectKey === 'THIEF_GLOVES' ||
+      aug.effectKey === 'RADIANT_RELICS' ||
+      aug.effectKey === 'LIVING_FORGE' ||
+      aug.effectKey === 'MAKE_WAY';
+
+    if (isCrisis) {
+      // 즉발 전투력/체력 증강에 대폭 가산점!
+      if (
+        aug.effectKey === 'TINY_TITANS' ||
+        aug.effectKey === 'CELESTIAL_BLESSING' ||
+        aug.effectKey === 'ASCENSION' ||
+        aug.effectKey === 'INCOMPLETE_ASCENSION' ||
+        aug.effectKey === 'FINAL_ASCENSION' ||
+        aug.effectKey === 'GROUP_HUG' ||
+        aug.effectKey === 'STAND_UNITED' ||
+        aug.effectKey === 'STAND_UNITED_1' ||
+        aug.effectKey === 'LAST_STAND'
+      ) {
+        score += 90;
+      } else if (aug.category === 'COMBAT') {
+        score += 55;
+      }
+
+      // 장기적 이자/골드 증강은 죽기 전에 쓸모없으므로 강력 감점!
+      if (
+        aug.effectKey === 'HEDGE_FUND' ||
+        aug.effectKey === 'DIABOLIC_FINANCE' ||
+        aug.effectKey === 'LEVEL_UP' ||
+        aug.effectKey === 'RICH_GET_RICHER' ||
+        aug.effectKey === 'CAPITAL_GAIN_1' ||
+        aug.effectKey === 'GOLDEN_EGG'
+      ) {
+        score -= 70;
+      } else if (aug.category === 'ECONOMY') {
+        score -= 35;
+      }
+    } else if (isHealthy) {
+      // 체력이 넉넉할 때는 레벨업/이자/골드 스노우볼 증강 우대
+      if (
+        aug.category === 'ECONOMY' ||
+        aug.effectKey === 'LEVEL_UP' ||
+        aug.effectKey === 'DIABOLIC_FINANCE' ||
+        aug.effectKey === 'HEDGE_FUND' ||
+        aug.effectKey === 'RICH_GET_RICHER'
+      ) {
+        score += 55;
+      }
+    }
+
+    // 4. 페르소나 및 덱 상황별 가치평가
+    const isRerollAug =
+      aug.effectKey === 'GOLDEN_TICKET' ||
+      aug.effectKey === 'CLEARANCE_SALE' ||
+      aug.effectKey === 'PANDORA_BENCH' ||
+      aug.effectKey === 'FATED_DUPLICATION' ||
+      aug.effectKey === 'TRADE_SECTOR' ||
+      aug.effectKey === 'REROLL_DAY' ||
+      aug.effectKey === 'HYPER_ROLL' ||
+      aug.effectKey === 'PRISMATIC_TICKET';
+
+    if (brain.persona === 'HYPER_ROLLER' || brain.persona === 'LOW_COST_REROLLER') {
+      if (threeStarCount >= 2) {
+        // 이미 3성이 2개 이상 완성됨 -> 전투/스탯 증강 집중
+        if (aug.category === 'COMBAT') score += 50;
+        if (aug.category === 'ECONOMY') score += 30;
+      } else {
+        // 아직 3성 미완성 -> 리롤 및 복제기 증강 집중
+        if (isRerollAug) score += 75;
+        if (aug.category === 'COMBAT') score += 20;
+      }
+    } else if (
+      brain.persona === 'FAST_NINE_GREEDY' ||
+      brain.persona === 'FAST_NINE_ECONOMIST'
+    ) {
+      if (bot.level < 8) {
+        if (
+          aug.category === 'ECONOMY' ||
+          aug.effectKey === 'LEVEL_UP' ||
+          aug.effectKey === 'SILVER_SPOON' ||
+          aug.effectKey === 'HEDGE_FUND'
+        ) {
+          score += 70;
+        }
+      } else {
+        if (aug.category === 'COMBAT') score += 60;
+      }
+    } else if (brain.persona === 'GOBLIN_GAMBLER') {
+      if (
+        aug.effectKey === 'GOBLIN_CROWN' ||
+        aug.effectKey === 'DIABOLIC_FINANCE' ||
+        aug.effectKey === 'CALCULATED_LOSS' ||
+        aug.category === 'ECONOMY'
+      ) {
+        score += 80;
+      }
+    } else {
+      // FLEX_MASTER
+      if (aug.category === 'COMBAT') score += 40;
+      if (isItemAug) score += 35;
+    }
+
+    // 5. 아이템 보유량 연계 (대기석 및 장착 아이템이 적으면 아이템 증강 우대)
+    const totalItems = bot.itemBench.length + ownedLocations.reduce((acc, l) => acc + l.unit.items.length, 0);
+    if (totalItems <= 4 && isItemAug) {
+      score += 45;
+    }
+
+    return score;
+  }
+
+  /**
+   * 증강체 라운드(2-1, 3-2, 4-2) 진입 시 AI 봇이 정밀 가치평가(evaluateAugmentValue)를 통해 최적의 증강체를 선택한다.
    */
   public selectAugmentForBot(
     bot: Participant,
     tier: AugmentTier,
-    sharedPool: SharedPoolManager
+    sharedPool: SharedPoolManager,
+    allParticipants?: Participant[]
   ): AugmentDefinition | null {
     if (bot.isEliminated) return null;
     const brain = this.getOrCreateBrain(bot);
     const choices = DopamineEngine.rollAugmentChoices(bot, tier);
     if (choices.length === 0) return null;
 
-    const threeStarCount = this.countTotalThreeStarUnits(bot);
-    const ownedUnitIds = new Set(bot.getAllUnitLocations().map((l) => l.unit.unitId));
-
     let bestAug = choices[0];
     let bestScore = -999;
 
     for (const aug of choices) {
-      let score = 20;
-
-      // 1. 영웅 증강 (Hero Augment) 평가
-      if (aug.category === 'HERO' && aug.heroUnitId) {
-        const heroTemplate = UNIT_TEMPLATES[aug.heroUnitId];
-        const ownsHero = ownedUnitIds.has(aug.heroUnitId);
-        const matchesTrait =
-          heroTemplate &&
-          (heroTemplate.traits.includes(brain.targetTrait) ||
-            heroTemplate.traits.includes(brain.secondaryTrait));
-
-        if (ownsHero || matchesTrait) {
-          score += 70; // 보유 중이거나 시너지가 맞으면 강력하게 픽!
-        } else {
-          score -= 10;
-        }
-      }
-
-      // 2. 시너지 문장 / 왕관 증강 평가 (8~9단계 프리즘 필수 트리거)
-      if (aug.bonusTrait) {
-        if (aug.bonusTrait === brain.targetTrait) {
-          score += 85; // 주력 시너지 상징은 무조건 최우선
-        } else if (aug.bonusTrait === brain.secondaryTrait) {
-          score += 55;
-        } else {
-          score -= 20;
-        }
-      }
-
-      // 3. 페르소나 및 덱 상황별 유동적 선택
-      const isRerollAug =
-        aug.effectKey === 'GOLDEN_TICKET' ||
-        aug.effectKey === 'CLEARANCE_SALE' ||
-        aug.effectKey === 'PANDORA_BENCH' ||
-        aug.effectKey === 'FATED_DUPLICATION';
-
-      if (brain.persona === 'HYPER_ROLLER' || brain.persona === 'LOW_COST_REROLLER') {
-        if (threeStarCount >= 1) {
-          // 이미 3성이 떠서 리롤이 잘 풀린 경우 -> 돈 증강이나 전투 증강으로 전환
-          if (aug.category === 'COMBAT') score += 45;
-          if (aug.category === 'ECONOMY') score += 35;
-          if (isRerollAug) score += 15;
-        } else {
-          // 아직 3성이 안 뜸 -> 리롤 증강 집중
-          if (isRerollAug) score += 60;
-          if (aug.category === 'COMBAT') score += 20;
-        }
-      } else if (
-        brain.persona === 'FAST_NINE_GREEDY' ||
-        brain.persona === 'FAST_NINE_ECONOMIST'
-      ) {
-        if (bot.hp > 40) {
-          // 체력이 넉넉함: 레벨업 및 골드/이자 증강 최우선
-          if (
-            aug.category === 'ECONOMY' ||
-            aug.effectKey === 'LEVEL_UP' ||
-            aug.effectKey === 'DIABOLIC_FINANCE' ||
-            aug.effectKey === 'HEDGE_FUND'
-          ) {
-            score += 65;
-          }
-        } else {
-          // 체력 40 이하 생존 위기: 즉발 체력이나 강력한 전투 증강으로 전환
-          if (aug.effectKey === 'TINY_TITANS') score += 75;
-          if (aug.category === 'COMBAT') score += 55;
-        }
-      } else if (brain.persona === 'GOBLIN_GAMBLER') {
-        if (
-          aug.effectKey === 'GOBLIN_CROWN' ||
-          aug.effectKey === 'DIABOLIC_FINANCE' ||
-          aug.category === 'ECONOMY'
-        ) {
-          score += 70;
-        }
-      } else {
-        // FLEX_MASTER
-        if (aug.category === 'COMBAT') score += 35;
-        if (aug.category === 'ECONOMY') score += 30;
-      }
-
+      const score = this.evaluateAugmentValue(aug, bot, brain, allParticipants);
       if (score > bestScore) {
         bestScore = score;
         bestAug = aug;
@@ -618,7 +925,8 @@ export class AIBotController {
     unitsToDenyFromPlayer: Set<string>,
     sharedPool: SharedPoolManager,
     currentRound: string,
-    aiParams: AISkillParameters
+    aiParams: AISkillParameters,
+    scouting?: ScoutingContext
   ): void {
     const persona = brain.persona;
     const isEmergencySurvival = bot.hp <= 30;
@@ -632,7 +940,8 @@ export class AIBotController {
       brain,
       unitsToDenyFromPlayer,
       sharedPool,
-      aiParams
+      aiParams,
+      scouting
     );
 
     // B. 페르소나별 레벨업(buyXp) 의사결정 (Lv.10 확장 지원)
@@ -766,7 +1075,8 @@ export class AIBotController {
     brain: BotBrainState,
     unitsToDenyFromPlayer: Set<string>,
     sharedPool: SharedPoolManager,
-    aiParams: AISkillParameters
+    aiParams: AISkillParameters,
+    scouting?: ScoutingContext
   ): void {
     for (let slotIdx = 0; slotIdx < bot.shop.length; slotIdx++) {
       const unitId = bot.shop[slotIdx];
@@ -795,13 +1105,14 @@ export class AIBotController {
         }
       }
 
-      // 2) 일반 기물 구매 가치(Utility Score) 평가 (공유 풀 잔여량 및 3성 가능성 반영)
+      // 2) 일반 기물 구매 가치(Utility Score) 평가 (공유 풀 잔여량, 시너지 브레이크포인트, 스카우팅 경합도, 3성 가능성 반영)
       const utilityScore = this.evaluateShopUnitUtility(
         bot,
         brain,
         template,
         sharedPool,
-        aiParams
+        aiParams,
+        scouting
       );
 
       if (utilityScore >= 48) {
@@ -815,15 +1126,19 @@ export class AIBotController {
   }
 
   /**
-   * 상점 기물 1개의 구매 매력도(Utility Score)를 계산한다.
-   * 공유 풀 잔여량(30/25/18/10/9)을 확인하여 수학적으로 3성이 불가능해진 경우 무리한 수집을 중단한다.
+   * 상점 기물 1개의 구매 매력도(Utility Score)를 정밀 계산한다.
+   * - 3성/2성 합성 근접도, 공유 풀 잔여량 고갈 방지
+   * - 시너지 브레이크포인트 달성 여부 (새 시너지 활성화 시 +35 파워스파이크)
+   * - 정찰(Scouting)을 통한 경합도(Contested: -25~-35) 및 빈집 보너스(+30)
+   * - 역할군(탱커/딜러) 불균형 해소 가산점
    */
-  private evaluateShopUnitUtility(
+  public evaluateShopUnitUtility(
     bot: Participant,
     brain: BotBrainState,
     template: UnitTemplate,
     sharedPool: SharedPoolManager,
-    aiParams: AISkillParameters
+    aiParams: AISkillParameters,
+    scouting?: ScoutingContext
   ): number {
     if (bot.hasThreeStarUnit(template.id)) return -999;
 
@@ -836,63 +1151,110 @@ export class AIBotController {
     // 0. 영웅 증강 타겟 기물 (3성 우선 수집, 풀 고갈 시 2성 유지)
     if (brain.heroTargetUnitId === template.id) {
       if (canStillReachThreeStar) {
-        score += 80; // 3성을 위해 최우선 구매
+        score += 85; // 3성을 위해 최우선 구매
       } else if (ownedCopies < 3) {
-        score += 45; // 3성은 불가하지만 2성까지는 완성
+        score += 50; // 3성은 불가하지만 2성까지는 완성
       } else {
         score -= 30; // 3성 불가 판명 시 추가 수집 중단
       }
     }
 
     // 1. 보유 개수(페어/합성 근접도) 가산점
-    if (ownedCopies === 2 || ownedCopies === 5 || ownedCopies === 8) {
-      score += 65; // 이번 1장 구매로 즉시 2성 또는 3성 합성!
+    if (ownedCopies === 8) {
+      score += 95; // 이번 1장 구매로 즉시 3성 전장 파괴 트럭!
+    } else if (ownedCopies === 2) {
+      score += 70; // 이번 1장 구매로 즉시 2성 완성 파워스파이크!
+    } else if (ownedCopies === 5) {
+      score += canStillReachThreeStar ? 45 : -10; // 2성 2개 모임 (3성 초근접)
     } else if (ownedCopies >= 6) {
       score += canStillReachThreeStar ? 48 : -20; // 풀 고갈로 3성 불가 시 수집 포기
-
     } else if (ownedCopies >= 3) {
-      // 이미 2성을 보유 중일 때: 4~5코스트(풀 10개/9개)가 이미 다른 참가자에게 팔려 3성이 불가능하면 추가 매수 억제
-      score += canStillReachThreeStar ? 26 : -25;
+      score += canStillReachThreeStar ? 24 : -25;
     } else if (ownedCopies === 1) {
-      score += 22; // 페어 완성
+      score += 24; // 페어 완성
     }
 
-    // 2. 목표 시너지 일치 여부
-    if (template.traits.includes(brain.targetTrait)) {
+    // 2. 목표 시너지 및 보조 시너지 일치 여부
+    const matchesTarget = template.traits.includes(brain.targetTrait);
+    const matchesSecondary = template.traits.includes(brain.secondaryTrait);
+
+    if (matchesTarget) {
       score += 28;
     }
-    if (template.traits.includes(brain.secondaryTrait)) {
+    if (matchesSecondary) {
       score += 15;
     }
 
-    // 3. 페르소나별 코스트 선호도
+    // 3. 스카우팅 경합도 (Contestation) 및 빈집 보너스
+    if (scouting && matchesTarget) {
+      const contestedCount = scouting.traitContestedMap.get(brain.targetTrait) ?? 0;
+      if (contestedCount === 0) {
+        score += 30; // 아무도 안 가는 빈집 시너지! 3성 각이 활짝 열림
+      } else if (contestedCount >= 2) {
+        score -= 25; // 2명 이상 겹쳐서 기물 풀이 마르고 있음
+      }
+    }
+
+    // 4. 시너지 브레이크포인트 검사 (내 보드에 즉시 시너지 티어를 켤 수 있는가?)
+    const activeCounts = bot.getActiveTraitCounts();
+    for (const t of template.traits) {
+      const currentCount = activeCounts.get(t) ?? 0;
+      // 2, 4, 6, 8, 9 등 임계치 바로 1보 전일 때
+      if (currentCount === 1 || currentCount === 3 || currentCount === 5 || currentCount === 7) {
+        score += 35; // 즉시 시너지 발동 보너스!
+        break;
+      }
+    }
+
+    // 5. 역할군 밸런스 (앞라인 탱커 vs 후열 딜러)
+    const role = getUnitRole(template.id);
+    let frontCount = 0;
+    let backCount = 0;
+    for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+      for (let c = 0; c < Participant.BOARD_COLS; c++) {
+        const u = bot.board[r][c];
+        if (u) {
+          const uRole = getUnitRole(u.unitId);
+          if (uRole === 'TANK' || uRole === 'BRUISER') frontCount++;
+          else backCount++;
+        }
+      }
+    }
+
+    if (frontCount <= 1 && (role === 'TANK' || role === 'BRUISER')) {
+      score += 25; // 앞라인 탱커가 절실한 상황
+    } else if (backCount <= 1 && (role === 'AD_CARRY' || role === 'AP_CARRY')) {
+      score += 25; // 주력 딜러가 절실한 상황
+    }
+
+    // 6. 페르소나별 코스트 선호도
     if (brain.persona === 'HYPER_ROLLER' || brain.persona === 'LOW_COST_REROLLER') {
-      if (template.cost <= 2) score += 24;
-      if (template.cost >= 4 && bot.level <= 6) score -= 18;
+      if (template.cost <= 2) score += 26;
+      if (template.cost >= 4 && bot.level <= 6) score -= 20;
     } else if (
       brain.persona === 'FAST_NINE_GREEDY' ||
       brain.persona === 'FAST_NINE_ECONOMIST'
     ) {
-      if (template.cost >= 4) score += 34;
-      if (template.cost === 5) score += 18;
+      if (template.cost >= 4) score += 36;
+      if (template.cost === 5) score += 22;
       if (template.cost === 1 && bot.level >= 7 && ownedCopies === 0) score -= 25;
     } else if (brain.persona === 'GOBLIN_GAMBLER') {
       if (template.traits.includes('GOLDEN_GOBLIN')) {
-        score += 52; // 황금 고블린 기물 최우선 수집
+        score += 55; // 황금 고블린 기물 최우선 수집
       }
       if (
         (bot.hp <= 35 || bot.goblinVaultStacks >= 55) &&
         template.cost >= 4
       ) {
-        score += 32; // 캐시아웃 턴에는 4~5코 고밸류 기물 대량 매수
+        score += 34; // 캐시아웃 턴에는 4~5코 고밸류 기물 대량 매수
       }
     } else {
       // FLEX_MASTER
       score += template.cost * 5;
     }
 
-    // 4. 인간적 오차(Temperature Noise) 적용
-    const noise = (Math.random() - 0.5) * aiParams.temperature * 42;
+    // 7. 인간적 오차(Temperature Noise) 적용
+    const noise = (Math.random() - 0.5) * aiParams.temperature * 38;
     return score + noise;
   }
 
@@ -979,10 +1341,20 @@ export class AIBotController {
   public optimizeBoardAndItems(
     bot: Participant,
     brain: BotBrainState,
-    humanPlayer: Participant | null,
+    humanPlayerOrParticipants: Participant | Participant[] | null,
     sharedPool: SharedPoolManager,
     aiParams: AISkillParameters
   ): void {
+    const allParticipantsList = Array.isArray(humanPlayerOrParticipants)
+      ? humanPlayerOrParticipants
+      : humanPlayerOrParticipants
+      ? [humanPlayerOrParticipants]
+      : [];
+    const humanPlayer =
+      allParticipantsList.find((p) => !p.isAI && !p.isEliminated) ??
+      (!Array.isArray(humanPlayerOrParticipants) ? humanPlayerOrParticipants : null);
+    const scouting = this.analyzeScoutingContext(bot, allParticipantsList);
+
     // 1. 보드와 대기석의 모든 기물을 수집 (고티어 견제용 홀딩 기물은 대기석 끝칸에 고정)
     const allUnits: UnitInstance[] = [];
     const deniedUnits: UnitInstance[] = [];
@@ -1057,8 +1429,6 @@ export class AIBotController {
     }
 
     // 아직 배치 인원이 남았다면 중복 기물이라도 전투력이 높은 순으로 추가 배치
-    // 단, 황금 고블린 연패 코인충이 연패 스택을 쌓는 중(isGoblinSandbagging)이라면
-    // 고블린 시너지(3/5)를 채운 상태에서 일부러 최대 인원보다 1기 적게 배치하여 연패 유도!
     const maxDeployTarget =
       isGoblinSandbagging && bot.level >= 5
         ? Math.max(3, bot.level - 1)
@@ -1215,111 +1585,190 @@ export class AIBotController {
       }
     }
 
-    // 6. itemBench에 있는 아이템들을 분석하여 탱커와 주력 딜러에게 BiS 우선 합성 및 자동 장착
-    this.autoEquipBotItems(bot, brain, frontlineUnits, backlineUnits, assassinUnits);
+    // 6. 지능형 동적 아이템 합성 및 장착 가치평가 (Dynamic Item Valuation & Crafting)
+    this.dynamicallyCraftAndEquipItems(bot, brain, deployedUnits, scouting);
   }
 
   /**
-   * AI 봇의 itemBench 아이템들을 분석하여:
-   * 1) 메인 캐리(영웅 증강 유닛 또는 3성 딜러 / 고코스트 딜러) 및 메인 탱커의 BiS(추천 완성 아이템 3종)를 우선 확인
-   * 2) 기본 재료 2개로 BiS 완성 아이템을 조합할 수 있다면 즉시 해당 기물에게 장착하여 합체
-   * 3) 이미 완성된 BiS 아이템이 있으면 즉시 장착
-   * 4) 남은 잉여 아이템은 탱커/딜러 풀에 최적 분배
+   * 보드 유닛과 아이템 간의 유틸리티 점수를 평가한다.
+   * - 역할군 적합도 (ITEM_ROLE_AFFINITY)
+   * - 상대방 스카우팅 메타 카운터 (거학, 모렐로, 덤불조끼 등)
+   * - 유닛의 성급 (3성 / 2성) 및 캐리 비중
    */
-  private autoEquipBotItems(
+  public evaluateCompletedItemForUnit(
+    itemId: CompletedItemId,
+    unit: UnitInstance,
+    scouting?: ScoutingContext
+  ): number {
+    const role = getUnitRole(unit.unitId);
+    const affinity = ITEM_ROLE_AFFINITY[itemId];
+    let score = affinity ? affinity[role] : 50;
+
+    // 상대방 컨텍스트에 따른 메타 카운터 가산점
+    if (scouting) {
+      if (itemId === 'GIANT_SLAYER' && scouting.opponentHighHpCount >= 2) {
+        score += (role === 'AD_CARRY' || role === 'BRUISER') ? 40 : 20;
+      }
+      if (itemId === 'SUNFIRE_CAPE' && scouting.opponentHealShieldTraits >= 1) {
+        score += (role === 'TANK' || role === 'BRUISER') ? 40 : 20;
+      }
+      if (itemId === 'BRAMBLE_VEST' && scouting.opponentHighHpCount >= 2 && role === 'TANK') {
+        score += 30;
+      }
+      if (itemId === 'PROTECTORS_VOW' && role === 'TANK') {
+        score += 25;
+      }
+    }
+
+    // 유닛 성급 및 캐리력 보정
+    if (unit.starLevel === 3) score += 35;
+    else if (unit.starLevel === 2) score += 15;
+
+    return score;
+  }
+
+  /**
+   * 고정 BiS를 강제하지 않고, 대기석의 기본 재료 및 완성 아이템을 유동적으로 합성/장착한다.
+   * - 대기석 재료가 3개 이상 놀고 있으면 완성 아이템 즉시 합성 보너스 부여
+   * - 가장 높은 효용(Utility)을 내는 (조합템 쌍 -> 대상 기물)을 찾아 즉시 합성
+   * - 이미 완성된 아이템은 가장 어울리는 유닛에게 즉시 장착
+   * - 잉여 단일 재료는 역할군에 맞게 적절히 배분
+   */
+  private dynamicallyCraftAndEquipItems(
     bot: Participant,
     brain: BotBrainState,
-    frontlineUnits: UnitInstance[],
-    backlineUnits: UnitInstance[],
-    assassinUnits: UnitInstance[]
+    allBoardUnits: UnitInstance[],
+    scouting?: ScoutingContext
   ): void {
-    if (bot.itemBench.length === 0) return;
+    if (bot.itemBench.length === 0 || allBoardUnits.length === 0) return;
 
-    // 메인 캐리 및 탱커 선별
-    const allBoardUnits = [...frontlineUnits, ...backlineUnits, ...assassinUnits];
-    if (allBoardUnits.length === 0) return;
+    // 1. 이미 itemBench에 있는 완성 아이템들을 먼저 최적 유닛에게 장착
+    for (let i = bot.itemBench.length - 1; i >= 0; i--) {
+      const itemId = bot.itemBench[i];
+      const itemDef = ITEM_DEFINITIONS[itemId];
+      if (!itemDef || !itemDef.isCompleted) continue;
 
-    // 1. 핵심 캐리 기물 (영웅 증강 타겟 > 3성 딜러 > 고코 2성 딜러)
-    const carryCandidates = [...backlineUnits, ...assassinUnits, ...frontlineUnits].sort(
-      (a, b) => {
-        const aHero = brain.heroTargetUnitId === a.unitId ? 200 : 0;
-        const bHero = brain.heroTargetUnitId === b.unitId ? 200 : 0;
-        return (
-          bHero +
-          b.starLevel * 40 +
-          b.cost * 15 -
-          (aHero + a.starLevel * 40 + a.cost * 15)
+      let bestUnit: UnitInstance | null = null;
+      let bestScore = -999;
+
+      for (const unit of allBoardUnits) {
+        if (unit.items.length >= 3) continue;
+        const score = this.evaluateCompletedItemForUnit(
+          itemId as CompletedItemId,
+          unit,
+          scouting
         );
-      }
-    );
-
-    // 2. 핵심 탱커 기물
-    const tankCandidates = [...frontlineUnits].sort(
-      (a, b) => b.starLevel * 35 + b.cost * 12 - (a.starLevel * 35 + a.cost * 12)
-    );
-
-    const primaryCarry = carryCandidates[0];
-    const primaryTank = tankCandidates[0];
-
-    // BiS 합성 및 장착 헬퍼
-    const tryEquipBiSForUnit = (targetUnit: UnitInstance | undefined) => {
-      if (!targetUnit || targetUnit.items.length >= 3) return;
-      const recItems = getUnitRecommendedItems(targetUnit.unitId);
-
-      for (const targetCompleted of recItems) {
-        if (targetUnit.items.length >= 3) break;
-
-        // A. 이미 itemBench에 완성된 BiS 아이템이 있는 경우 즉시 장착
-        const readyIdx = bot.itemBench.findIndex((id) => id === targetCompleted);
-        if (readyIdx !== -1) {
-          bot.equipItemToUnit(readyIdx, targetUnit.instanceId);
-          continue;
+        if (score > bestScore) {
+          bestScore = score;
+          bestUnit = unit;
         }
+      }
 
-        // B. 기본 재료 2개로 해당 BiS를 제작할 수 있는지 검사
-        const recipe = getRecipeForCompletedItem(targetCompleted);
-        if (recipe) {
-          const [matA, matB] = recipe;
-          const idxA = bot.itemBench.indexOf(matA);
-          if (idxA !== -1) {
-            // matB를 찾을 때 idxA와 다른 인덱스인지 확인
-            const idxB = bot.itemBench.findIndex(
-              (id, idx) => id === matB && idx !== idxA
+      if (bestUnit && bestScore >= 35) {
+        bot.equipItemToUnit(i, bestUnit.instanceId);
+      }
+    }
+
+    // 2. 대기석의 기본 조합 재료들로 동적 최적 합성 탐색
+    let canStillCraft = true;
+    while (canStillCraft) {
+      canStillCraft = false;
+
+      // 현재 대기석의 기본 재료 인덱스 목록
+      const baseIndices: number[] = [];
+      for (let idx = 0; idx < bot.itemBench.length; idx++) {
+        const id = bot.itemBench[idx];
+        const def = ITEM_DEFINITIONS[id];
+        if (def && !def.isCompleted) {
+          baseIndices.push(idx);
+        }
+      }
+
+      if (baseIndices.length < 2) break;
+
+      let bestCraftScore = -999;
+      let bestMatIdx1 = -1;
+      let bestMatIdx2 = -1;
+      let bestTargetUnit: UnitInstance | null = null;
+
+      // 모든 (i, j) 기본 재료 쌍 검사
+      for (let a = 0; a < baseIndices.length; a++) {
+        for (let b = a + 1; b < baseIndices.length; b++) {
+          const idxA = baseIndices[a];
+          const idxB = baseIndices[b];
+          const matA = bot.itemBench[idxA] as BaseItemId;
+          const matB = bot.itemBench[idxB] as BaseItemId;
+          const craftedId = combineBaseItems(matA, matB);
+          if (!craftedId) continue;
+
+          for (const unit of allBoardUnits) {
+            if (unit.items.length >= 3) continue;
+            let score = this.evaluateCompletedItemForUnit(
+              craftedId,
+              unit,
+              scouting
             );
-            if (idxB !== -1) {
-              // 큰 인덱스부터 splice되도록 정렬
-              const firstIdx = Math.max(idxA, idxB);
-              const secondIdx = Math.min(idxA, idxB);
-              bot.equipItemToUnit(firstIdx, targetUnit.instanceId);
-              bot.equipItemToUnit(secondIdx, targetUnit.instanceId);
+
+            // 대기석에 조합 아이템이 3개 이상 쌓여있다면 빠른 템포 합성을 위해 보너스 부여!
+            if (baseIndices.length >= 4) score += 30;
+            else if (baseIndices.length >= 3) score += 15;
+
+            // 영웅 증강 타겟 기물에게 아이템을 몰아주면 추가 보너스
+            if (brain.heroTargetUnitId === unit.unitId) score += 25;
+
+            if (score > bestCraftScore) {
+              bestCraftScore = score;
+              bestMatIdx1 = idxA;
+              bestMatIdx2 = idxB;
+              bestTargetUnit = unit;
             }
           }
         }
       }
-    };
 
-    // 캐리와 탱커에게 BiS 우선 제작/장착 시도
-    tryEquipBiSForUnit(primaryCarry);
-    tryEquipBiSForUnit(primaryTank);
+      // 합성 결정 문턱값 (재료가 많을수록 더 유연하고 빠르게 합성!)
+      const threshold = baseIndices.length >= 4 ? 40 : baseIndices.length >= 3 ? 55 : 68;
 
-    // 3. 남은 아이템 일반 분배 (방어템 -> 탱커, 공격템 -> 딜러)
+      if (bestTargetUnit && bestCraftScore >= threshold && bestMatIdx1 !== -1 && bestMatIdx2 !== -1) {
+        // splice 인덱스 꼬임 방지를 위해 큰 인덱스부터 장착
+        const firstIdx = Math.max(bestMatIdx1, bestMatIdx2);
+        const secondIdx = Math.min(bestMatIdx1, bestMatIdx2);
+        bot.equipItemToUnit(firstIdx, bestTargetUnit.instanceId);
+        bot.equipItemToUnit(secondIdx, bestTargetUnit.instanceId);
+        canStillCraft = true; // 추가 재료가 남아있을 수 있으므로 루프 계속
+      }
+    }
+
+    // 3. 남은 잉여 단일 재료 아이템들을 역할군에 맞게 분배
     for (let i = bot.itemBench.length - 1; i >= 0; i--) {
       const itemId = bot.itemBench[i];
       const itemDef = ITEM_DEFINITIONS[itemId];
-      if (!itemDef) continue;
+      if (!itemDef || itemDef.isCompleted) continue;
 
-      const isDefensive = DEFENSIVE_ITEM_IDS.has(itemId);
-      const targetPool =
-        isDefensive && tankCandidates.length > 0
-          ? tankCandidates
-          : carryCandidates;
+      let bestUnit: UnitInstance | null = null;
+      let highestPower = -1;
 
-      for (const targetUnit of targetPool) {
-        if (targetUnit.items.length < 3) {
-          if (bot.equipItemToUnit(i, targetUnit.instanceId)) {
-            break;
+      for (const unit of allBoardUnits) {
+        if (unit.items.length >= 3) continue;
+        const role = getUnitRole(unit.unitId);
+
+        let match = false;
+        if (itemId === 'ARMOR' && (role === 'TANK' || role === 'BRUISER')) match = true;
+        else if ((itemId === 'SWORD' || itemId === 'BOW') && (role === 'AD_CARRY' || role === 'BRUISER')) match = true;
+        else if ((itemId === 'ROD' || itemId === 'TEAR') && role === 'AP_CARRY') match = true;
+        else if (role === 'BRUISER') match = true;
+
+        if (match) {
+          const power = unit.starLevel * 30 + unit.cost * 10;
+          if (power > highestPower) {
+            highestPower = power;
+            bestUnit = unit;
           }
         }
+      }
+
+      if (bestUnit) {
+        bot.equipItemToUnit(i, bestUnit.instanceId);
       }
     }
   }

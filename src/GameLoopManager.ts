@@ -333,7 +333,7 @@ export class GameLoopManager {
     // 생존한 AI 봇 7명도 자신의 페르소나와 덱에 맞는 증강체를 즉시 선택
     for (const p of this.participants) {
       if (p.isAI && !p.isEliminated) {
-        this.aiController.selectAugmentForBot(p, tier, this.sharedPool);
+        this.aiController.selectAugmentForBot(p, tier, this.sharedPool, this.participants);
       }
     }
 
