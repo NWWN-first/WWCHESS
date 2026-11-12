@@ -135,24 +135,25 @@ export class SynergyEngine {
   ): SynergyStyleTier {
     if (activeIndex < 0) return 'NONE';
 
-    // 황금 고블린(3/5)의 경우 3단계는 GOLD, 5단계는 PRISMATIC
-    if (traitId === 'GOLDEN_GOBLIN') {
-      return activeIndex === 0 ? 'GOLD' : 'PRISMATIC';
-    }
-
     const totalTiers = thresholds.length;
-    if (totalTiers === 2) {
-      // [2, 4] 또는 [2, 3] 시너지: 1단계 BRONZE, 2단계 GOLD
-      return activeIndex === 0 ? 'BRONZE' : 'GOLD';
-    }
 
-    if (totalTiers === 3) {
-      // [2, 4, 6] 또는 [2, 3, 4] 시너지: 1단계 BRONZE, 2단계 GOLD, 최종단계 PRISMATIC (6단 이상) 또는 GOLD
+    // 4단계 시너지: [2, 4, 6, 8] 또는 [2, 3, 4, 6]
+    if (totalTiers >= 4) {
       if (activeIndex === 0) return 'BRONZE';
       if (activeIndex === 1) return 'SILVER';
-      return thresholds[activeIndex] >= 6 || traitId === 'DRAGONKIN'
-        ? 'PRISMATIC'
-        : 'GOLD';
+      if (activeIndex === 2) return 'GOLD';
+      return 'PRISMATIC'; // 8시너지 또는 6용족 등 최고 티어는 프리즘!
+    }
+
+    // 3단계 시너지: [2, 4, 6], [2, 3, 5], [3, 5, 7]
+    if (totalTiers === 3) {
+      if (activeIndex === 0) return 'BRONZE';
+      if (activeIndex === 1) return 'SILVER';
+      return 'PRISMATIC'; // 6순찰, 6암살, 5성기사, 7고블린 등 최종 티어는 프리즘!
+    }
+
+    if (totalTiers === 2) {
+      return activeIndex === 0 ? 'BRONZE' : 'GOLD';
     }
 
     return 'GOLD';
@@ -174,6 +175,8 @@ export class SynergyEngine {
 
   /**
    * 임의의 기물 조합이 만들어내는 시너지 점수를 수치화한다 (AI 봇 최적 조합 평가용).
+   * - 8고시너지(PRISMATIC) 대박 뽕맛 가중치 (+65)
+   * - 다채로운 시너지 활성화(2/2/2, 4/2/2 등)를 통한 초중반 체력 보존 및 TOP 4(순방) 가중치 부여
    */
   public static evaluateCandidateUnitsSynergyScore(
     units: UnitInstance[],
@@ -197,15 +200,34 @@ export class SynergyEngine {
     }
 
     let score = 0;
+    let activeSynergyCount = 0;
+
     for (const [traitId, count] of counts.entries()) {
       const def = TRAIT_DEFINITIONS[traitId];
       if (!def) continue;
       const state = SynergyEngine.buildSynergyState(def, count);
-      if (state.styleTier === 'PRISMATIC') score += 48;
-      else if (state.styleTier === 'GOLD') score += 28;
-      else if (state.styleTier === 'SILVER') score += 16;
-      else if (state.styleTier === 'BRONZE') score += 9;
-      else if (count > 0) score += count * 1.5;
+      if (state.styleTier === 'PRISMATIC') {
+        score += 65;
+        activeSynergyCount++;
+      } else if (state.styleTier === 'GOLD') {
+        score += 34;
+        activeSynergyCount++;
+      } else if (state.styleTier === 'SILVER') {
+        score += 20;
+        activeSynergyCount++;
+      } else if (state.styleTier === 'BRONZE') {
+        score += 11;
+        activeSynergyCount++;
+      } else if (count > 0) {
+        score += count * 1.5;
+      }
+    }
+
+    // TFT 순방(TOP 4) 가중치: 다양한 시너지가 촘촘히 엮여있는 안정적인 밸런스 조합에 보너스 부여
+    if (activeSynergyCount >= 4) {
+      score += 20;
+    } else if (activeSynergyCount >= 3) {
+      score += 12;
     }
 
     return score;

@@ -65,6 +65,8 @@ let roundCapHit = 0;
 let deadlocks = 0;
 let combatTickSum = 0;
 let combatTickN = 0;
+const prismaticStats = new Map<string, { count: number; top1: number; top4: number; rankSum: number }>();
+const reroll3StarStats = { count: 0, top1: 0, top4: 0, rankSum: 0 };
 
 function logError(tag: string, e: unknown) {
   const msg = e instanceof Error ? `${e.message.split('\n')[0]} @ ${(e.stack ?? '').split('\n')[1]?.trim() ?? ''}` : String(e);
@@ -78,7 +80,7 @@ function runOneGame(): void {
   game.player.persona = 'FLEX_MASTER';
 
   const everyone = () => game.participants;
-  const lastBoards = new Map<string, { units: Set<string>; traits: Set<string> }>();
+  const lastBoards = new Map<string, { units: Set<string>; traits: Set<string>; prismaticTraits: Set<string>; lowCost3Stars: number }>();
   const placementOf = new Map<string, number>();
   let playSec = 0;
   let rounds = 0;
@@ -184,15 +186,29 @@ function runOneGame(): void {
       const sides = [pair.home, pair.isGhostMatch ? null : pair.away].filter(Boolean) as Participant[];
       for (const p of sides) {
         const ids = new Set<string>();
-        for (let r = 0; r < Participant.BOARD_ROWS; r++)
+        let lowCost3 = 0;
+        for (let r = 0; r < Participant.BOARD_ROWS; r++) {
           for (let c = 0; c < Participant.BOARD_COLS; c++) {
             const u = p.board[r][c];
-            if (u) ids.add(u.unitId);
+            if (u) {
+              ids.add(u.unitId);
+              if (u.starLevel === 3 && u.cost <= 3) lowCost3++;
+            }
           }
+        }
         const tr: string[] = [];
-        for (const s of SynergyEngine.calculateActiveSynergies(p)) if (s.styleTier !== 'NONE') tr.push(s.traitId);
+        const prismTr: string[] = [];
+        for (const s of SynergyEngine.calculateActiveSynergies(p)) {
+          if (s.styleTier !== 'NONE') tr.push(s.traitId);
+          if (s.styleTier === 'PRISMATIC') prismTr.push(s.traitId);
+        }
         snap.set(p.id, { units: [...ids], traits: tr });
-        lastBoards.set(p.id, { units: new Set(ids), traits: new Set(tr) });
+        lastBoards.set(p.id, {
+          units: new Set(ids),
+          traits: new Set(tr),
+          prismaticTraits: new Set(prismTr),
+          lowCost3Stars: lowCost3,
+        });
         const cnt = p.getBoardUnitCount();
         if (cnt < p.level) { flaws.boardUnderfill++; flaws.boardUnderfillUnits += p.level - cnt; }
         if (cnt === 0) flaws.noBoardAtCombat++;
@@ -272,6 +288,20 @@ function runOneGame(): void {
         if (place === 1) a.top1++;
         if (place <= 4) a.top4++;
       }
+      for (const pt of lb.prismaticTraits) {
+        let ps = prismaticStats.get(pt);
+        if (!ps) { ps = { count: 0, top1: 0, top4: 0, rankSum: 0 }; prismaticStats.set(pt, ps); }
+        ps.count++;
+        ps.rankSum += place;
+        if (place === 1) ps.top1++;
+        if (place <= 4) ps.top4++;
+      }
+      if (lb.lowCost3Stars >= 2) {
+        reroll3StarStats.count++;
+        reroll3StarStats.rankSum += place;
+        if (place === 1) reroll3StarStats.top1++;
+        if (place <= 4) reroll3StarStats.top4++;
+      }
     }
     const key = p.id === game.player.id ? 'PLAYER(FLEX)' : (p.persona ?? 'NONE');
     const pe = placementWinsByPersona.get(key) ?? { n: 0, sum: 0, top1: 0 };
@@ -310,37 +340,60 @@ const unitRows = [...unitStats.entries()]
   .map(([id, a]) => ({
     id, name: UNIT_TEMPLATES[id]?.name ?? id, cost: UNIT_TEMPLATES[id]?.cost ?? 0,
     matches: a.matches, wr: a.matches ? a.wins / a.matches : 0,
-    top1: a.top1 / GAMES, avgPlace: a.finalBoardCount ? a.finalPlacementSum / a.finalBoardCount : 0,
+    top1Rate: a.finalBoardCount ? a.top1 / a.finalBoardCount : 0,
+    top4Rate: a.finalBoardCount ? a.top4 / a.finalBoardCount : 0,
+    avgPlace: a.finalBoardCount ? a.finalPlacementSum / a.finalBoardCount : 0,
     fieldRate: a.finalBoardCount / (GAMES * 8),
   }))
   .filter((r) => r.matches >= 50);
 
-console.log('\n[1-A] 유닛 승률 TOP 10 (전투 수 50+)');
+console.log('\n[1-A] 유닛 승률 및 순방(TOP 4) TOP 10 (전투 수 50+)');
 for (const r of [...unitRows].sort((a, b) => b.wr - a.wr).slice(0, 10))
-  console.log(`  ${r.cost}코 ${r.name.padEnd(12)} 승률 ${(r.wr * 100).toFixed(1)}%  최종보드 평균순위 ${r.avgPlace.toFixed(2)}(1=최고)  1위보드포함 ${(r.top1 * 100).toFixed(1)}%/판  전투수 ${r.matches}`);
-console.log('[1-A] 유닛 승률 BOTTOM 10');
-for (const r of [...unitRows].sort((a, b) => a.wr - b.wr).slice(0, 10))
-  console.log(`  ${r.cost}코 ${r.name.padEnd(12)} 승률 ${(r.wr * 100).toFixed(1)}%  평균순위 ${r.avgPlace.toFixed(2)}  전투수 ${r.matches}`);
-console.log('[1-A] 코스트별 평균 유닛 승률');
+  console.log(`  ${r.cost}코 ${r.name.padEnd(12)} 승률 ${(r.wr * 100).toFixed(1)}%  평균순위 ${r.avgPlace.toFixed(2)}위  순방률(TOP4) ${(r.top4Rate * 100).toFixed(1)}%  우승률(1위) ${(r.top1Rate * 100).toFixed(1)}%  (전투 ${r.matches})`);
+
+console.log('[1-A] 유닛 순방률(TOP 4) TOP 10 (순방 안정 덱 핵심 기물)');
+for (const r of [...unitRows].sort((a, b) => b.top4Rate - a.top4Rate).slice(0, 10))
+  console.log(`  ${r.cost}코 ${r.name.padEnd(12)} 순방률(TOP4) ${(r.top4Rate * 100).toFixed(1)}%  우승률 ${(r.top1Rate * 100).toFixed(1)}%  평균순위 ${r.avgPlace.toFixed(2)}위  채용률 ${(r.fieldRate * 100).toFixed(1)}%`);
+
+console.log('[1-A] 코스트별 평균 유닛 승률 & 순방률');
 for (let c = 1; c <= 5; c++) {
   const rs = unitRows.filter((r) => r.cost === c);
-  console.log(`  ${c}코: 승률 ${(avg(rs.map((r) => r.wr)) * 100).toFixed(1)}%  최종보드 평균순위 ${avg(rs.map((r) => r.avgPlace)).toFixed(2)}  (${rs.length}종)`);
+  console.log(`  ${c}코: 승률 ${(avg(rs.map((r) => r.wr)) * 100).toFixed(1)}%  순방률(TOP4) ${(avg(rs.map((r) => r.top4Rate)) * 100).toFixed(1)}%  평균순위 ${avg(rs.map((r) => r.avgPlace)).toFixed(2)}위  (${rs.length}종)`);
 }
-console.log('[1-A] 1위 보드 포함률 TOP 8 (1위 8판당 몇 %가 해당 유닛 사용)');
-for (const r of [...unitRows].sort((a, b) => b.top1 - a.top1).slice(0, 8))
-  console.log(`  ${r.cost}코 ${r.name.padEnd(12)} 1위 보드 포함 ${(r.top1 * 100).toFixed(1)}%  채용률 ${(r.fieldRate * 100).toFixed(1)}%`);
 
-console.log('\n[1-B] 시너지 승률/1위 픽률 순위');
+console.log('\n[1-B] 시너지 승률, 1위 픽률 및 순방(TOP 4) 순위');
 const traitRows = [...traitStats.entries()]
   .map(([id, a]) => ({
     id, name: TRAIT_DEFINITIONS[id as keyof typeof TRAIT_DEFINITIONS]?.name ?? id,
-    matches: a.matches, wr: a.matches ? a.wins / a.matches : 0, top1: a.top1 / GAMES,
+    matches: a.matches, wr: a.matches ? a.wins / a.matches : 0,
+    top1Rate: a.finalBoardCount ? a.top1 / a.finalBoardCount : 0,
+    top4Rate: a.finalBoardCount ? a.top4 / a.finalBoardCount : 0,
     avgPlace: a.finalBoardCount ? a.finalPlacementSum / a.finalBoardCount : 0,
     adopt: a.finalBoardCount / (GAMES * 8),
   }))
   .sort((a, b) => b.wr - a.wr);
 for (const r of traitRows)
-  console.log(`  ${r.name.padEnd(10)} 승률 ${(r.wr * 100).toFixed(1)}%  1위픽률 ${(r.top1 * 100).toFixed(1)}%  채용률 ${(r.adopt * 100).toFixed(1)}%  평균순위 ${r.avgPlace.toFixed(2)}  전투 ${r.matches}`);
+  console.log(`  ${r.name.padEnd(10)} 승률 ${(r.wr * 100).toFixed(1)}%  순방(TOP4) ${(r.top4Rate * 100).toFixed(1)}%  우승(1위) ${(r.top1Rate * 100).toFixed(1)}%  평균순위 ${r.avgPlace.toFixed(2)}위  채용률 ${(r.adopt * 100).toFixed(1)}%`);
+
+console.log('\n[1-D] 초고시너지(8버티컬/프리즘) 달성 덱 파워 검증');
+if (prismaticStats.size === 0) {
+  console.log('  프리즘 시너지 달성 표본 없음 (증강체 및 고레벨 달성 필요)');
+} else {
+  for (const [t, s] of [...prismaticStats.entries()].sort((a, b) => b[1].top1 - a[1].top1)) {
+    const tname = TRAIT_DEFINITIONS[t as keyof typeof TRAIT_DEFINITIONS]?.name ?? t;
+    console.log(`  [프리즘] ${tname.padEnd(10)} 달성 ${s.count}회 | 순방률(TOP4) ${pct(s.top4, s.count)} | 우승률(1위) ${pct(s.top1, s.count)} | 평균순위 ${(s.rankSum / s.count).toFixed(2)}위`);
+  }
+}
+
+console.log('\n[1-E] 1~3코스트 3성 리롤 덱 순방(TOP 4) 안정성 검증');
+if (reroll3StarStats.count > 0) {
+  console.log(`  1~3코 3성 2개 이상 보유 덱: 총 ${reroll3StarStats.count}회 표본`);
+  console.log(`  -> 순방률(TOP 4): ${pct(reroll3StarStats.top4, reroll3StarStats.count)}`);
+  console.log(`  -> 우승률(1위):   ${pct(reroll3StarStats.top1, reroll3StarStats.count)}`);
+  console.log(`  -> 평균 순위:     ${(reroll3StarStats.rankSum / reroll3StarStats.count).toFixed(2)}위`);
+} else {
+  console.log('  리롤 3성 덱 표본 없음');
+}
 
 console.log('\n[1-C] 페르소나별 평균 순위 (1위=최고)');
 for (const [k, v] of placementWinsByPersona) {

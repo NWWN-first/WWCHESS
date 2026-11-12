@@ -174,6 +174,8 @@ export interface TraitEffectTier {
   bonusCritChance?: number;
   healPerAttack?: number;
   ccDurationReduction?: number;
+  holyRadianceDps?: number;
+  roundBonusGold?: number;
 }
 
 export interface TraitDefinition {
@@ -195,13 +197,14 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'ORIGIN',
     icon: '🛡️',
     color: '#F5D76E',
-    thresholds: [2, 4, 6],
+    thresholds: [2, 4, 6, 8],
     description:
-      '전투 시작 시 제국 기물들이 최대 체력 비례 신성 보호막(Shield)을 얻고 방어력이 증가합니다.',
+      '전투 시작 시 제국 기물들이 최대 체력 비례 신성 보호막(Shield)을 얻고 방어력이 증가합니다. 8신성제국 시 전설적 보호막과 방어력 증폭!',
     effects: [
       { threshold: 2, label: '(2) 최대 체력 20% 보호막, 방어력 +25', shieldMaxHpRatio: 0.2, bonusDef: 25 },
       { threshold: 4, label: '(4) 최대 체력 40% 보호막, 방어력 +55', shieldMaxHpRatio: 0.4, bonusDef: 55 },
       { threshold: 6, label: '(6) 최대 체력 75% 보호막, 방어력 +100', shieldMaxHpRatio: 0.75, bonusDef: 100 },
+      { threshold: 8, label: '(8) [프리즘] 최대 체력 130% 보호막, 방어력 +190', shieldMaxHpRatio: 1.3, bonusDef: 190 },
     ],
   },
   ABYSSAL_DEMON: {
@@ -210,13 +213,14 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'ORIGIN',
     icon: '👿',
     color: '#C0392B',
-    thresholds: [2, 4, 6],
+    thresholds: [2, 4, 6, 8],
     description:
       '악마 기물들의 기본 공격 및 스킬이 적에게 추가 고정 피해(True Damage)를 입히고 모든 피해 흡혈(Omnivamp)을 얻습니다.',
     effects: [
       { threshold: 2, label: '(2) 추가 고정 피해 11%, 모든 피해 흡혈 10%', trueDamageRatio: 0.11, omnivamp: 0.10 },
       { threshold: 4, label: '(4) 추가 고정 피해 25%, 모든 피해 흡혈 18%', trueDamageRatio: 0.25, omnivamp: 0.18 },
       { threshold: 6, label: '(6) 추가 고정 피해 48%, 모든 피해 흡혈 30%', trueDamageRatio: 0.48, omnivamp: 0.30 },
+      { threshold: 8, label: '(8) [프리즘] 추가 고정 피해 75%, 모든 피해 흡혈 48%', trueDamageRatio: 0.75, omnivamp: 0.48 },
     ],
   },
   ELVEN_SYLVAN: {
@@ -225,13 +229,14 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'ORIGIN',
     icon: '🌿',
     color: '#2ECC71',
-    thresholds: [2, 4, 6],
+    thresholds: [2, 4, 6, 8],
     description:
       '매 2초마다 엘프 기물의 공격 속도가 중첩되어 빨라지며 최대 체력의 일정 비율을 회복합니다.',
     effects: [
       { threshold: 2, label: '(2) 2초마다 공속 +8%, 최대 체력 4% 회복', atkSpeedPerStack: 0.08, hpRegenRatioPerTick: 0.04 },
       { threshold: 4, label: '(4) 2초마다 공속 +16%, 최대 체력 8% 회복', atkSpeedPerStack: 0.16, hpRegenRatioPerTick: 0.08 },
       { threshold: 6, label: '(6) 2초마다 공속 +30%, 최대 체력 15% 회복', atkSpeedPerStack: 0.3, hpRegenRatioPerTick: 0.15 },
+      { threshold: 8, label: '(8) [프리즘] 2초마다 공속 +50% 무한중첩, 최대 체력 25% 회복', atkSpeedPerStack: 0.5, hpRegenRatioPerTick: 0.25 },
     ],
   },
   DRAGONKIN: {
@@ -240,7 +245,7 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'ORIGIN',
     icon: '🐉',
     color: '#E67E22',
-    thresholds: [2, 3, 4],
+    thresholds: [2, 3, 4, 6],
     description:
       '전투 시작 시 화염 숨결로 적 전체에게 최대 체력 비례 화상 피해를 입히고, 용족 기물의 스킬 치명타가 활성화됩니다.',
     effects: [
@@ -265,6 +270,13 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
         enableSkillCrit: true,
         bonusCritDamage: 0.9,
       },
+      {
+        threshold: 6,
+        label: '(6) [프리즘] 개전 화상 65%, 스킬 치명타 활성화 (+160% 치명타 피해)',
+        initialBurnMaxHpRatio: 0.65,
+        enableSkillCrit: true,
+        bonusCritDamage: 1.6,
+      },
     ],
   },
   UNDEAD_SCOURGE: {
@@ -273,13 +285,14 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'ORIGIN',
     icon: '💀',
     color: '#8E44AD',
-    thresholds: [2, 4, 6],
+    thresholds: [2, 4, 6, 8],
     description:
       '전투 중 최초 사망 시 2초 뒤 지정된 체력 상태로 1회 부활(Revive)하며 공격 속도가 폭증합니다.',
     effects: [
       { threshold: 2, label: '(2) 최대 체력 40% 부활, 부활 후 공속 +35%', reviveHpRatio: 0.4, reviveBonusAtkSpeed: 0.35 },
       { threshold: 4, label: '(4) 최대 체력 70% 부활, 부활 후 공속 +65%', reviveHpRatio: 0.7, reviveBonusAtkSpeed: 0.65 },
       { threshold: 6, label: '(6) 최대 체력 100% 부활, 부활 후 공속 +120%', reviveHpRatio: 1.0, reviveBonusAtkSpeed: 1.2 },
+      { threshold: 8, label: '(8) [프리즘] 최대 체력 130% 부활, 부활 후 공속 +200%', reviveHpRatio: 1.3, reviveBonusAtkSpeed: 2.0 },
     ],
   },
   ARCANE_TOWER: {
@@ -288,13 +301,14 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'ORIGIN',
     icon: '🔮',
     color: '#3498DB',
-    thresholds: [2, 4, 6],
+    thresholds: [2, 4, 6, 8],
     description:
       '아군 전체의 기본 공격 시 마나 회복량이 증가하고, 마탑 기물들의 주문력(Spell Power)이 대폭 상승합니다.',
     effects: [
       { threshold: 2, label: '(2) 아군 평타 마나 +3, 마탑 주문력 +25%', teamManaPerAttack: 3, spellPowerBonus: 0.25 },
       { threshold: 4, label: '(4) 아군 평타 마나 +6, 마탑 주문력 +55%', teamManaPerAttack: 6, spellPowerBonus: 0.55 },
       { threshold: 6, label: '(6) 아군 평타 마나 +12, 마탑 주문력 +100%', teamManaPerAttack: 12, spellPowerBonus: 1.0 },
+      { threshold: 8, label: '(8) [프리즘] 아군 평타 마나 +18, 마탑 주문력 +180%', teamManaPerAttack: 18, spellPowerBonus: 1.8 },
     ],
   },
   GOLDEN_GOBLIN: {
@@ -303,12 +317,13 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'ORIGIN',
     icon: '🪙',
     color: '#F1C40F',
-    thresholds: [3, 5],
+    thresholds: [3, 5, 7],
     description:
-      '전투 패배 시 금고 스택(Vault Stacks)이 기하급수적으로 축적됩니다. 전투 승리 시 금고가 폭발(Cash-out)하며 누적 스택에 비례한 초호화 전리품 구슬이 쏟아집니다!',
+      '전투 패배 시 금고 스택이 기하급수적으로 축적됩니다. 전투 승리 시 금고가 폭발(Cash-out)하며 전리품이 쏟아집니다!',
     effects: [
       { threshold: 3, label: '(3) 패배 시 기본 금고 스택 축적 (1.0x), 승리 시 금고 개봉!', goblinStackMultiplier: 1.0 },
       { threshold: 5, label: '(5) 패배 시 금고 스택 2배 축적 (2.0x), 황금/프리즘 보물 대폭 증가!', goblinStackMultiplier: 2.0 },
+      { threshold: 7, label: '(7) [프리즘] 패배 금고 스택 3.5배 축적, 초호화 대박 보상 확정!', goblinStackMultiplier: 3.5 },
     ],
   },
 
@@ -319,13 +334,14 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'CLASS',
     icon: '🏰',
     color: '#95A5A6',
-    thresholds: [2, 4, 6],
+    thresholds: [2, 4, 6, 8],
     description:
-      '방어력이 대폭 증가하며 전투 시작 후 8초간 받는 모든 피해량이 30% 추가 감소합니다.',
+      '방어력이 대폭 증가하며 전투 시작 후 8초간 받는 모든 피해량이 추가 감소합니다. 8선봉대 달성 시 철벽의 요새가 됩니다.',
     effects: [
       { threshold: 2, label: '(2) 방어력 +40, 개전 8초간 피해 감소 30%', bonusDef: 40, damageReductionFirst8s: 0.3 },
       { threshold: 4, label: '(4) 방어력 +90, 개전 8초간 피해 감소 30%', bonusDef: 90, damageReductionFirst8s: 0.3 },
       { threshold: 6, label: '(6) 방어력 +180, 개전 8초간 피해 감소 30%', bonusDef: 180, damageReductionFirst8s: 0.3 },
+      { threshold: 8, label: '(8) [프리즘] 방어력 +320, 개전 8초간 피해 감소 50% 및 기절 면역', bonusDef: 320, damageReductionFirst8s: 0.5, ccDurationReduction: 1.0 },
     ],
   },
   BERSERKER: {
@@ -334,9 +350,9 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'CLASS',
     icon: '🪓',
     color: '#E74C3C',
-    thresholds: [2, 4, 6],
+    thresholds: [2, 4, 6, 8],
     description:
-      '체력이 50% 이하로 내려가면 광폭화하여 공격력과 공격속도가 2배로 증가하고 기본 공격이 주변 1칸에 스플래시 피해를 입힙니다.',
+      '체력이 50% 이하로 내려가면 광폭화하여 공격력과 공격속도가 증가하고 기본 공격이 주변에 스플래시 피해를 입힙니다.',
     effects: [
       {
         threshold: 2,
@@ -359,6 +375,13 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
         berserkAtkSpeedMultiplier: 2.5,
         berserkSplashRatio: 1.0,
       },
+      {
+        threshold: 8,
+        label: '(8) [프리즘] 광폭화 시 공격력/공속 3.0배, 주변 150% 스플래시 피해',
+        berserkAtkMultiplier: 3.0,
+        berserkAtkSpeedMultiplier: 3.0,
+        berserkSplashRatio: 1.5,
+      },
     ],
   },
   RANGER: {
@@ -367,12 +390,13 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'CLASS',
     icon: '🏹',
     color: '#27AE60',
-    thresholds: [2, 4],
+    thresholds: [2, 4, 6],
     description:
-      '기본 공격 3회마다 관통 화살을 추가로 발사하며 사거리가 +1 증가합니다.',
+      '기본 공격 3회마다 관통 화살을 추가로 발사하며 사거리가 증가합니다.',
     effects: [
       { threshold: 2, label: '(2) 사거리 +1, 3타마다 공격력 160% 관통 화살 발사', bonusRange: 1, pierceArrowDamageRatio: 1.6 },
       { threshold: 4, label: '(4) 사거리 +1, 3타마다 공격력 290% 관통 화살 발사', bonusRange: 1, pierceArrowDamageRatio: 2.9 },
+      { threshold: 6, label: '(6) [프리즘] 사거리 +2, 3타마다 공격력 450% 관통 화살 발사', bonusRange: 2, pierceArrowDamageRatio: 4.5 },
     ],
   },
   ARCHMAGE: {
@@ -381,13 +405,14 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'CLASS',
     icon: '⚡',
     color: '#9B59B6',
-    thresholds: [2, 4, 6],
+    thresholds: [2, 4, 6, 8],
     description:
       '주문력이 크게 증가하며, 최대 마나에 도달해 스킬을 시전할 때 체력이 가장 낮은 적에게 연쇄 번개를 추가로 떨어뜨립니다.',
     effects: [
       { threshold: 2, label: '(2) 주문력 +30%, 스킬 시전 시 180 연쇄 번개', spellPowerBonus: 0.3, chainLightningDamage: 180 },
       { threshold: 4, label: '(4) 주문력 +65%, 스킬 시전 시 380 연쇄 번개', spellPowerBonus: 0.65, chainLightningDamage: 380 },
       { threshold: 6, label: '(6) 주문력 +120%, 스킬 시전 시 750 연쇄 번개', spellPowerBonus: 1.2, chainLightningDamage: 750 },
+      { threshold: 8, label: '(8) [프리즘] 주문력 +220%, 스킬 시전 시 1400 연쇄 번개', spellPowerBonus: 2.2, chainLightningDamage: 1400 },
     ],
   },
   SHADOW_ASSASSIN: {
@@ -396,12 +421,13 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'CLASS',
     icon: '🗡️',
     color: '#34495E',
-    thresholds: [2, 4],
+    thresholds: [2, 4, 6],
     description:
-      '전투 시작 시 적진 가장 뒷열(원거리 딜러 라인)로 은신 도약(Leap)하며 치명타 확률과 치명타 피해량이 대폭 증가합니다.',
+      '전투 시작 시 적진 가장 뒷열로 은신 도약(Leap)하며 치명타 확률과 치명타 피해량이 대폭 증가합니다.',
     effects: [
       { threshold: 2, label: '(2) 후방 도약, 치명타 확률 +25%, 치명타 피해량 +35%', bonusCritChance: 0.25, bonusCritDamage: 0.35 },
       { threshold: 4, label: '(4) 후방 도약, 치명타 확률 +55%, 치명타 피해량 +75%', bonusCritChance: 0.55, bonusCritDamage: 0.75 },
+      { threshold: 6, label: '(6) [프리즘] 후방 도약, 치명타 확률 +80%, 치명타 피해량 +120%', bonusCritChance: 0.80, bonusCritDamage: 1.20 },
     ],
   },
   PALADIN: {
@@ -410,12 +436,13 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'CLASS',
     icon: '✨',
     color: '#F39C12',
-    thresholds: [2, 3],
+    thresholds: [2, 3, 5],
     description:
       '기본 공격 시 주변 아군의 체력을 회복시키고, 아군 전체에게 군중제어(기절) 지속시간 감소 또는 면역을 부여합니다.',
     effects: [
       { threshold: 2, label: '(2) 평타 시 주변 아군 65 회복, 아군 기절 지속시간 50% 감소', healPerAttack: 65, ccDurationReduction: 0.5 },
       { threshold: 3, label: '(3) 평타 시 주변 아군 150 회복, 아군 전체 군중제어 완전 면역', healPerAttack: 150, ccDurationReduction: 1.0 },
+      { threshold: 5, label: '(5) [프리즘] 평타 시 주변 아군 300 회복, 기절 면역, 방어력 +60', healPerAttack: 300, ccDurationReduction: 1.0, bonusDef: 60 },
     ],
   },
 };
@@ -744,7 +771,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u1_shieldmaiden',
     name: '황혼의 도끼병 프레이',
     cost: 1,
-    traits: ['HOLY_EMPIRE', 'BERSERKER'],
+    traits: ['HOLY_EMPIRE', 'BERSERKER', 'VANGUARD'],
     icon: '🪓',
     stats: {
       hp: 630,
@@ -768,7 +795,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u1_ember',
     name: '심연 방패병 모르그',
     cost: 1,
-    traits: ['ABYSSAL_DEMON', 'VANGUARD'],
+    traits: ['ABYSSAL_DEMON', 'VANGUARD', 'UNDEAD_SCOURGE'],
     icon: '🔥',
     stats: {
       hp: 670,
@@ -796,7 +823,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u2_tink',
     name: '고블린 연금술사 팅크',
     cost: 2,
-    traits: ['GOLDEN_GOBLIN', 'ARCANE_TOWER'],
+    traits: ['GOLDEN_GOBLIN', 'ARCANE_TOWER', 'ARCHMAGE'],
     icon: '🧪',
     stats: {
       hp: 580,
@@ -820,7 +847,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u2_jeanne',
     name: '성전사 잔느',
     cost: 2,
-    traits: ['HOLY_EMPIRE', 'PALADIN'],
+    traits: ['HOLY_EMPIRE', 'PALADIN', 'VANGUARD'],
     icon: '⚜️',
     stats: {
       hp: 780,
@@ -868,7 +895,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u2_ent',
     name: '숲의 수호신 엔트',
     cost: 2,
-    traits: ['ELVEN_SYLVAN', 'VANGUARD'],
+    traits: ['ELVEN_SYLVAN', 'VANGUARD', 'PALADIN'],
     icon: '🌳',
     stats: {
       hp: 850,
@@ -1057,7 +1084,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u2_boneknight',
     name: '망자 기병 데스나이트',
     cost: 2,
-    traits: ['UNDEAD_SCOURGE', 'VANGUARD'],
+    traits: ['UNDEAD_SCOURGE', 'VANGUARD', 'BERSERKER'],
     icon: '💀',
     stats: {
       hp: 820,
@@ -1202,7 +1229,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u3_drake',
     name: '적염의 용기병 드레이크',
     cost: 3,
-    traits: ['DRAGONKIN', 'BERSERKER'],
+    traits: ['DRAGONKIN', 'BERSERKER', 'VANGUARD'],
     icon: '🔱',
     stats: {
       hp: 1020,
@@ -1250,7 +1277,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u3_kazu',
     name: '환영의 검객 카즈',
     cost: 3,
-    traits: ['ELVEN_SYLVAN', 'SHADOW_ASSASSIN'],
+    traits: ['ELVEN_SYLVAN', 'SHADOW_ASSASSIN', 'BERSERKER'],
     icon: '🗡️',
     stats: {
       hp: 760,
@@ -1344,7 +1371,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u3_orion',
     name: '별자리 명궁 오리온',
     cost: 3,
-    traits: ['ARCANE_TOWER', 'RANGER'],
+    traits: ['ARCANE_TOWER', 'RANGER', 'ARCHMAGE'],
     icon: '🌠',
     stats: {
       hp: 680,
@@ -1368,7 +1395,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u3_nyx',
     name: '심연의 밤마녀 닉스',
     cost: 3,
-    traits: ['ABYSSAL_DEMON', 'SHADOW_ASSASSIN'],
+    traits: ['ABYSSAL_DEMON', 'SHADOW_ASSASSIN', 'ARCHMAGE'],
     icon: '🌙',
     stats: {
       hp: 700,
@@ -1562,7 +1589,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u4_valkyrie',
     name: '천상의 발키리 브륜힐드',
     cost: 4,
-    traits: ['HOLY_EMPIRE', 'PALADIN'],
+    traits: ['HOLY_EMPIRE', 'PALADIN', 'RANGER'],
     icon: '🪽',
     stats: {
       hp: 1120,
@@ -1633,7 +1660,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u4_midas',
     name: '황금 연금술사 미다스',
     cost: 4,
-    traits: ['GOLDEN_GOBLIN', 'ARCHMAGE'],
+    traits: ['GOLDEN_GOBLIN', 'ARCHMAGE', 'ARCANE_TOWER'],
     icon: '🪙',
     stats: {
       hp: 940,
@@ -1657,7 +1684,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u4_artemis',
     name: '용사냥꾼 아르테미스',
     cost: 4,
-    traits: ['DRAGONKIN', 'RANGER'],
+    traits: ['DRAGONKIN', 'RANGER', 'BERSERKER'],
     icon: '🏹',
     stats: {
       hp: 860,
@@ -1709,7 +1736,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u5_ignis',
     name: '고대 종말룡 이그니스',
     cost: 5,
-    traits: ['DRAGONKIN', 'ABYSSAL_DEMON'],
+    traits: ['DRAGONKIN', 'ABYSSAL_DEMON', 'BERSERKER'],
     icon: '🔥',
     stats: {
       hp: 1450,
@@ -1733,7 +1760,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u5_goldtooth',
     name: '황금 고블린 왕 골드투스',
     cost: 5,
-    traits: ['GOLDEN_GOBLIN', 'PALADIN'],
+    traits: ['GOLDEN_GOBLIN', 'PALADIN', 'VANGUARD'],
     icon: '👑',
     stats: {
       hp: 1380,
@@ -1830,7 +1857,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     id: 'u5_chronos',
     name: '시간의 지배자 크로노스',
     cost: 5,
-    traits: ['ARCANE_TOWER', 'ARCHMAGE'],
+    traits: ['ARCANE_TOWER', 'ARCHMAGE', 'UNDEAD_SCOURGE'],
     icon: '⏳',
     stats: {
       hp: 1260,
