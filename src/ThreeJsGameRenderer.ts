@@ -29,6 +29,147 @@ export type ChampionArchetype =
   | 'SKELETON'     // 언데드, 사령술사 (Skeleton.glb)
   | 'BEAST_GOLEM'; // 용족, 몬스터, PVE 크립 (Dragon.glb)
 
+export interface Champion3DVisualConfig {
+  modelKey: 'Knight' | 'Mage' | 'Rogue' | 'Rogue_Hooded' | 'Barbarian' | 'Skeleton_Warrior' | 'Skeleton_Mage' | 'Skeleton_Rogue' | 'Wolf' | 'Dragon';
+  scale: number;
+  offsetY?: number;
+  primaryColor?: number;
+  emissiveColor?: number;
+  attackAnim?: string;
+  skillAnim?: string;
+  idleAnim?: string;
+  walkAnim?: string;
+  hitAnim?: string;
+  deathAnim?: string;
+  stunAnim?: string;
+  aura?: 'HOLY_GOLD' | 'ARCANE_BLUE' | 'SHADOW_PURPLE' | 'FROST_CYAN' | 'FIRE_RED' | 'GOBLIN_GOLD' | 'POISON_GREEN' | 'NONE';
+}
+
+/**
+ * 10대 핵심 우선 챔피언 및 시너지/의도에 직결된 맞춤형 3D 비주얼 설정
+ */
+export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> = {
+  // 1. 가렌 (제국 보병 가렌) - 1코 Holy Empire / Vanguard (신성 제국 판금 갑주 & 방패검)
+  u1_garen: {
+    modelKey: 'Knight',
+    scale: 1.15,
+    primaryColor: 0x94a3b8,
+    emissiveColor: 0x334155,
+    attackAnim: '1H_Melee_Attack_Slice_Horizontal',
+    skillAnim: '2H_Melee_Attack_Spin',
+    stunAnim: 'Lie_Idle',
+    aura: 'HOLY_GOLD',
+  },
+  // 2. 핍 (고블린 소매치기 핍) - 1코 Golden Goblin / Shadow Assassin (날렵한 녹색/황금 단검 암살자)
+  u1_pip: {
+    modelKey: 'Rogue',
+    scale: 0.95,
+    primaryColor: 0x16a34a,
+    emissiveColor: 0xca8a04,
+    attackAnim: 'Dualwield_Melee_Attack_Slice',
+    skillAnim: '1H_Melee_Attack_Stab',
+    stunAnim: 'Lie_Idle',
+    aura: 'GOBLIN_GOLD',
+  },
+  // 3. 스켈 (해골 전사 스켈) - 1코 Undead Scourge / Berserker (언데드 녹슨 장검 & 도골 해골병)
+  u1_skel: {
+    modelKey: 'Skeleton_Warrior',
+    scale: 1.12,
+    primaryColor: 0x94a3b8,
+    attackAnim: '1H_Melee_Attack_Chop',
+    skillAnim: '1H_Melee_Attack_Jump_Chop',
+    deathAnim: 'Death_C_Skeletons',
+    stunAnim: 'Skeleton_Inactive_Standing_Pose',
+    aura: 'NONE',
+  },
+  // 4. 루미 (견습 마법사 루미) - 1코 Arcane Tower / Archmage (사파이어 로브 & 비전 지팡이)
+  u1_lumi: {
+    modelKey: 'Mage',
+    scale: 1.05,
+    primaryColor: 0x38bdf8,
+    emissiveColor: 0x0284c7,
+    attackAnim: 'Spellcast_Shoot',
+    skillAnim: 'Spellcast_Raise',
+    stunAnim: 'Lie_Idle',
+    aura: 'ARCANE_BLUE',
+  },
+  // 5. 데스나이트 (망자 기병 데스나이트) - 2코 Undead Scourge / Vanguard / Berserker (흑철 갑주 해골 챔피언)
+  u2_boneknight: {
+    modelKey: 'Skeleton_Warrior',
+    scale: 1.25,
+    primaryColor: 0x1e293b,
+    emissiveColor: 0x06b6d4,
+    attackAnim: '2H_Melee_Attack_Slice',
+    skillAnim: '2H_Melee_Attack_Spin',
+    deathAnim: 'Death_B',
+    stunAnim: 'Lie_Idle',
+    aura: 'FROST_CYAN',
+  },
+  // 6. 펜리르 (서리송곳니 광전사 펜리르) - 3코 Undead Scourge / Berserker (서리 늑대 맹수)
+  u3_fenrir: {
+    modelKey: 'Wolf',
+    scale: 1.22,
+    primaryColor: 0x93c5fd,
+    emissiveColor: 0x38bdf8,
+    idleAnim: 'AnimalArmature|Idle',
+    walkAnim: 'AnimalArmature|Gallop',
+    attackAnim: 'AnimalArmature|Attack',
+    skillAnim: 'AnimalArmature|Gallop_Jump',
+    hitAnim: 'AnimalArmature|Idle_HitReact_Left',
+    deathAnim: 'AnimalArmature|Death',
+    stunAnim: 'AnimalArmature|Idle_HitReact_Right',
+    aura: 'FROST_CYAN',
+  },
+  // 7. 아서 (성검의 집행자 아서) - 4코 Holy Empire / Berserker / Paladin (황금 성검 & 군주 망토)
+  u4_arthur: {
+    modelKey: 'Knight',
+    scale: 1.30,
+    primaryColor: 0xfacc15,
+    emissiveColor: 0xeab308,
+    attackAnim: '2H_Melee_Attack_Chop',
+    skillAnim: '2H_Melee_Attack_Spin',
+    stunAnim: 'Lie_Idle',
+    aura: 'HOLY_GOLD',
+  },
+  // 8. 타나토스 (칠흑의 사신 타나토스) - 4코 Undead Scourge / Shadow Assassin (칠흑 후드 망토 & 영혼 수확도)
+  u4_thanatos: {
+    modelKey: 'Rogue_Hooded',
+    scale: 1.22,
+    primaryColor: 0x1e1b4b,
+    emissiveColor: 0x8b5cf6,
+    attackAnim: 'Dualwield_Melee_Attack_Stab',
+    skillAnim: 'Dualwield_Melee_Attack_Slice',
+    stunAnim: 'Lie_Idle',
+    aura: 'SHADOW_PURPLE',
+  },
+  // 9. 멀린 (대마도사 멀린) - 4코 Arcane Tower / Archmage (신비의 대마도사 & 유성 낙하 주술)
+  u4_merlin: {
+    modelKey: 'Mage',
+    scale: 1.25,
+    primaryColor: 0x6366f1,
+    emissiveColor: 0xa855f7,
+    attackAnim: 'Spellcast_Shoot',
+    skillAnim: 'Spellcast_Long',
+    stunAnim: 'Lie_Idle',
+    aura: 'ARCANE_BLUE',
+  },
+  // 10. 이그니스 (고대 종말룡 이그니스) - 5코 Dragonkin / Abyssal Demon / Berserker (거대 고대 화염룡)
+  u5_ignis: {
+    modelKey: 'Dragon',
+    scale: 1.35,
+    primaryColor: 0xef4444,
+    emissiveColor: 0xf97316,
+    idleAnim: 'Idle',
+    walkAnim: 'Idle',
+    attackAnim: 'DragonArmature|DragonArmature|Dragon_Attack2',
+    skillAnim: '2H_Melee_Attack_Chop',
+    hitAnim: 'DragonArmature|DragonArmature|Dragon_Hit',
+    deathAnim: 'Death_A',
+    stunAnim: 'DragonArmature|DragonArmature|Dragon_Hit',
+    aura: 'FIRE_RED',
+  },
+};
+
 export interface RenderState3D {
   inCombat: boolean;
   viewedParticipant: Participant;
@@ -118,9 +259,9 @@ export class ThreeJsGameRenderer {
   private unitJuiceMap: Map<string, UnitJuice3D> = new Map();
   private unitAnimControllers: Map<string, UnitAnimController> = new Map();
 
-  // GLB 모델 에셋 캐시
-  private glbLoadedTemplates: Map<ChampionArchetype, THREE.Group> = new Map();
-  private glbAnimations: Map<ChampionArchetype, THREE.AnimationClip[]> = new Map();
+  // GLB 모델 에셋 캐시 (10종 판타지 전용 모델 및 골격 애니메이션)
+  private glbLoadedTemplates: Map<string, THREE.Group> = new Map();
+  private glbAnimations: Map<string, THREE.AnimationClip[]> = new Map();
   private glbLoader: GLTFLoader = new GLTFLoader();
 
   // 횃불 조명들 (Flickering Torches)
@@ -211,16 +352,20 @@ export class ThreeJsGameRenderer {
   }
 
   /**
-   * 외부 GLB 모델 파일 6종 비동기 사전 로딩
+   * 외부 GLB 모델 파일 10종 비동기 사전 로딩
    */
   private loadGlbCharacterModels(): void {
-    const modelSources: { archetype: ChampionArchetype; url: string; scale: number; offsetY: number }[] = [
-      { archetype: 'WARRIOR', url: './models/Knight.glb', scale: 1.15, offsetY: 0 },
-      { archetype: 'MAGE', url: './models/Mage.glb', scale: 1.15, offsetY: 0 },
-      { archetype: 'ROGUE', url: './models/Rogue.glb', scale: 1.12, offsetY: 0 },
-      { archetype: 'BRAWLER', url: './models/Barbarian.glb', scale: 1.22, offsetY: 0 },
-      { archetype: 'SKELETON', url: './models/Skeleton.glb', scale: 1.15, offsetY: 0 },
-      { archetype: 'BEAST_GOLEM', url: './models/Dragon.glb', scale: 0.95, offsetY: 0 },
+    const modelSources: { key: string; url: string; scale: number; offsetY: number }[] = [
+      { key: 'Knight', url: './models/Knight.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Mage', url: './models/Mage.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Rogue', url: './models/Rogue.glb', scale: 1.10, offsetY: 0 },
+      { key: 'Rogue_Hooded', url: './models/Rogue_Hooded.glb', scale: 1.12, offsetY: 0 },
+      { key: 'Barbarian', url: './models/Barbarian.glb', scale: 1.20, offsetY: 0 },
+      { key: 'Skeleton_Warrior', url: './models/Skeleton_Warrior.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Skeleton_Mage', url: './models/Skeleton_Mage.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Skeleton_Rogue', url: './models/Skeleton_Rogue.glb', scale: 1.10, offsetY: 0 },
+      { key: 'Wolf', url: './models/Wolf.glb', scale: 1.22, offsetY: 0 },
+      { key: 'Dragon', url: './models/Dragon.glb', scale: 0.95, offsetY: 0 },
     ];
 
     modelSources.forEach((src) => {
@@ -245,15 +390,15 @@ export class ThreeJsGameRenderer {
             }
           });
 
-          this.glbLoadedTemplates.set(src.archetype, root);
+          this.glbLoadedTemplates.set(src.key, root);
           if (gltf.animations && gltf.animations.length > 0) {
-            this.glbAnimations.set(src.archetype, gltf.animations);
+            this.glbAnimations.set(src.key, gltf.animations);
           }
-          this.upgradeActiveUnitsToGlb(src.archetype);
+          this.upgradeActiveUnitsToGlb(src.key);
         },
         undefined,
         (err) => {
-          console.warn(`[ThreeJsGameRenderer] Model load fallback for ${src.archetype}:`, err);
+          console.warn(`[ThreeJsGameRenderer] Model load fallback for ${src.key}:`, err);
         }
       );
     });
@@ -262,33 +407,52 @@ export class ThreeJsGameRenderer {
   /**
    * GLB 로딩 완료 시 현재 씬에 있는 fallback 유닛들을 고품질 GLB 메시와 실제 골격 애니메이션으로 핫스왑
    */
-  private upgradeActiveUnitsToGlb(archetype: ChampionArchetype): void {
-    const glbTemplate = this.glbLoadedTemplates.get(archetype);
+  private upgradeActiveUnitsToGlb(loadedModelKey: string): void {
+    const glbTemplate = this.glbLoadedTemplates.get(loadedModelKey);
     if (!glbTemplate) return;
 
     for (const [instanceId, group] of this.unitMeshesMap) {
-      if (group.userData?.archetype === archetype) {
+      const unitId = group.userData?.unitId;
+      if (!unitId) continue;
+      const cfg = this.getChampion3DConfig(unitId);
+      if (cfg.modelKey === loadedModelKey) {
         const fallbackRoot = group.getObjectByName('FALLBACK_ROOT');
         if (fallbackRoot) {
           group.remove(fallbackRoot);
           const clonedModel = SkeletonUtils.clone(glbTemplate) as THREE.Group;
           clonedModel.name = 'GLB_MODEL_ROOT';
+
+          if (cfg.primaryColor) {
+            clonedModel.traverse((child) => {
+              if ((child as THREE.Mesh).isMesh) {
+                const mesh = child as THREE.Mesh;
+                if (mesh.material) {
+                  const mat = (mesh.material as THREE.Material).clone() as THREE.MeshStandardMaterial;
+                  if (mat.color && cfg.primaryColor) {
+                    mat.color.lerp(new THREE.Color(cfg.primaryColor), 0.3);
+                  }
+                  mesh.material = mat;
+                }
+              }
+            });
+          }
+
           group.add(clonedModel);
-          this.setupUnitAnimations(instanceId, clonedModel, archetype);
+          this.setupUnitAnimations(instanceId, clonedModel, cfg);
         }
       }
     }
   }
 
   /**
-   * 3D 기물 전용 실시간 스켈레탈 애니메이션(Idle/Walk/Attack/Spell/Hit/Death) 바인딩
+   * 3D 기물 전용 실시간 스켈레탈 애니메이션(Idle/Walk/Attack/Spell/Hit/Death/Stun) 바인딩
    */
   private setupUnitAnimations(
     instanceId: string,
     clonedModel: THREE.Group,
-    archetype: ChampionArchetype
+    cfg: Champion3DVisualConfig
   ): void {
-    const clips = this.glbAnimations.get(archetype);
+    const clips = this.glbAnimations.get(cfg.modelKey);
     if (!clips || clips.length === 0) return;
 
     const oldCtrl = this.unitAnimControllers.get(instanceId);
@@ -309,48 +473,59 @@ export class ThreeJsGameRenderer {
     };
 
     // 1. Idle (자연스럽게 서서 숨쉬는 전투 대기)
-    const idleClip = getClip(['Idle', 'Unarmed_Idle']);
+    const idleClip = cfg.idleAnim ? getClip([cfg.idleAnim]) : getClip(['Idle', 'Unarmed_Idle']);
     if (idleClip) actions.set('idle', mixer.clipAction(idleClip));
 
     // 2. Walk / Run (돌진 및 이동)
-    const walkClip = getClip(['Running_A', 'Walking_A', 'Run', 'Walk']);
+    const walkClip = cfg.walkAnim ? getClip([cfg.walkAnim]) : getClip(['Running_A', 'Walking_A', 'Gallop', 'Run', 'Walk']);
     if (walkClip) actions.set('walk', mixer.clipAction(walkClip));
 
-    // 3. Attack (일반 공격 - 직업별 베기, 찌르기, 마법 발사, 주먹)
+    // 3. Attack (일반 공격 - 직업별 베기, 찌르기, 마법 발사, 주먹, 깨물기)
     let attackClip: THREE.AnimationClip | undefined;
-    if (archetype === 'MAGE') {
-      attackClip = getClip(['Spellcast_Shoot', 'Spellcasting', '1H_Ranged_Shoot']);
-    } else if (archetype === 'ROGUE') {
-      attackClip = getClip(['Dualwield_Melee_Attack_Slice', '1H_Melee_Attack_Slice_Horizontal', '1H_Melee_Attack_Stab']);
-    } else if (archetype === 'BRAWLER') {
-      attackClip = getClip(['Unarmed_Melee_Attack_Punch_A', 'Unarmed_Melee_Attack_Punch_B', '1H_Melee_Attack_Chop']);
-    } else if (archetype === 'BEAST_GOLEM') {
-      attackClip = getClip(['Dragon_Attack2', 'Attack2', 'Chop', 'Attack']);
-    } else {
-      attackClip = getClip(['1H_Melee_Attack_Slice_Horizontal', '1H_Melee_Attack_Chop', '2H_Melee_Attack_Chop']);
+    if (cfg.attackAnim) {
+      attackClip = getClip([cfg.attackAnim]);
     }
-    if (!attackClip) attackClip = getClip(['Attack', 'Slice', 'Chop', 'Shoot']);
+    if (!attackClip) {
+      attackClip = getClip([
+        'Dualwield_Melee_Attack_Slice',
+        '1H_Melee_Attack_Slice_Horizontal',
+        '1H_Melee_Attack_Chop',
+        '2H_Melee_Attack_Chop',
+        'Spellcast_Shoot',
+        'Attack'
+      ]);
+    }
     if (attackClip) actions.set('attack', mixer.clipAction(attackClip));
 
-    // 4. Skill / Spell (궁극기 및 특수 스킬 모션)
+    // 4. Skill / Spell (궁극기 및 특수 스킬 모션 - 휠윈드 회전참, 유성낙하, 도약물어뜯기 등)
     let spellClip: THREE.AnimationClip | undefined;
-    if (archetype === 'MAGE') {
-      spellClip = getClip(['Spellcast_Raise', 'Spellcast_Long', 'Spellcasting']);
-    } else if (archetype === 'BRAWLER') {
-      spellClip = getClip(['Unarmed_Melee_Attack_Kick', '2H_Melee_Attack_Spin']);
-    } else {
-      spellClip = getClip(['2H_Melee_Attack_Spin', '1H_Melee_Attack_Jump_Chop', 'Cheer']);
+    if (cfg.skillAnim) {
+      spellClip = getClip([cfg.skillAnim]);
+    }
+    if (!spellClip) {
+      spellClip = getClip([
+        '2H_Melee_Attack_Spin',
+        'Spellcast_Raise',
+        'Spellcast_Long',
+        '1H_Melee_Attack_Jump_Chop',
+        'Dualwield_Melee_Attack_Slice',
+        'Gallop_Jump'
+      ]);
     }
     if (!spellClip) spellClip = attackClip;
     if (spellClip) actions.set('spell', mixer.clipAction(spellClip));
 
-    // 5. Hit (피격)
-    const hitClip = getClip(['Hit_A', 'Hit_B', 'Block_Hit', 'Dragon_Hit']);
+    // 5. Hit (피격 리액션)
+    const hitClip = cfg.hitAnim ? getClip([cfg.hitAnim]) : getClip(['Hit_A', 'Hit_B', 'Block_Hit', 'Dragon_Hit', 'Idle_HitReact_Left']);
     if (hitClip) actions.set('hit', mixer.clipAction(hitClip));
 
-    // 6. Death (사망)
-    const deathClip = getClip(['Death_A', 'Death_B', 'Death']);
+    // 6. Death (사망 쓰러짐)
+    const deathClip = cfg.deathAnim ? getClip([cfg.deathAnim]) : getClip(['Death_A', 'Death_B', 'Death_C_Skeletons', 'Death']);
     if (deathClip) actions.set('death', mixer.clipAction(deathClip));
+
+    // 7. Stun (기절/상태이상 쓰러짐 및 기절 포즈)
+    const stunClip = cfg.stunAnim ? getClip([cfg.stunAnim]) : getClip(['Lie_Idle', 'Lie_Pose', 'Lie_Down', 'Skeleton_Inactive_Standing_Pose', 'Idle_HitReact_Right', 'Hit_A']);
+    if (stunClip) actions.set('stun', mixer.clipAction(stunClip));
 
     const idleAction = actions.get('idle');
     if (idleAction) {
@@ -368,7 +543,11 @@ export class ThreeJsGameRenderer {
 
     mixer.addEventListener('finished', (e: unknown) => {
       const evt = e as { action: THREE.AnimationAction };
-      if (controller.currentAction === evt.action && controller.currentActionName !== 'death') {
+      if (
+        controller.currentAction === evt.action &&
+        controller.currentActionName !== 'death' &&
+        controller.currentActionName !== 'stun'
+      ) {
         const nextIdle = controller.actions.get('idle');
         if (nextIdle) {
           evt.action.fadeOut(0.12);
@@ -383,20 +562,21 @@ export class ThreeJsGameRenderer {
   }
 
   /**
-   * 지정된 유닛의 애니메이션 부드러운 전환 재생
+   * 지정된 유닛의 애니메이션 부드러운 전환 재생 (idle/walk/attack/spell/hit/death/stun)
    */
   public playUnitAnimation(
     instanceId: string,
-    actionName: 'idle' | 'walk' | 'attack' | 'spell' | 'hit' | 'death'
+    actionName: 'idle' | 'walk' | 'attack' | 'spell' | 'hit' | 'death' | 'stun'
   ): void {
     const ctrl = this.unitAnimControllers.get(instanceId);
     if (!ctrl) return;
-    if (ctrl.currentActionName === actionName && (actionName === 'walk' || actionName === 'idle')) return;
+    if (ctrl.currentActionName === actionName && (actionName === 'walk' || actionName === 'idle' || actionName === 'stun')) return;
     if (ctrl.currentActionName === 'death') return;
 
     let targetAction = ctrl.actions.get(actionName);
     if (!targetAction && actionName === 'spell') targetAction = ctrl.actions.get('attack');
     if (!targetAction && actionName === 'walk') targetAction = ctrl.actions.get('idle');
+    if (!targetAction && actionName === 'stun') targetAction = ctrl.actions.get('hit');
     if (!targetAction) return;
 
     const isOneShot = actionName === 'attack' || actionName === 'spell' || actionName === 'hit' || actionName === 'death';
@@ -416,6 +596,136 @@ export class ThreeJsGameRenderer {
 
     ctrl.currentAction = targetAction;
     ctrl.currentActionName = actionName;
+  }
+
+  /**
+   * 챔피언 맞춤형 3D 비주얼 설정 (10대 우선 챔피언 및 시너지/역할군 지능형 매핑)
+   */
+  public getChampion3DConfig(unitId: string): Champion3DVisualConfig {
+    if (DEDICATED_CHAMPION_3D_MAP[unitId]) {
+      return DEDICATED_CHAMPION_3D_MAP[unitId];
+    }
+
+    const tpl = UNIT_TEMPLATES[unitId];
+    const traits = tpl?.traits || [];
+    const range = tpl?.stats?.range ?? 1;
+
+    // 크립 및 용족
+    if (unitId.startsWith('creep_') || traits.includes('DRAGONKIN')) {
+      return {
+        modelKey: 'Dragon',
+        scale: 1.05,
+        attackAnim: 'DragonArmature|DragonArmature|Dragon_Attack2',
+        skillAnim: '2H_Melee_Attack_Chop',
+        hitAnim: 'DragonArmature|DragonArmature|Dragon_Hit',
+        deathAnim: 'Death_A',
+        stunAnim: 'DragonArmature|DragonArmature|Dragon_Hit',
+        aura: 'FIRE_RED',
+      };
+    }
+
+    // 언데드 진영 세분화 (마법사: Skeleton_Mage, 암살자: Skeleton_Rogue, 전사: Skeleton_Warrior)
+    if (traits.includes('UNDEAD_SCOURGE')) {
+      if (traits.includes('ARCHMAGE') || range >= 3) {
+        return {
+          modelKey: 'Skeleton_Mage',
+          scale: 1.15,
+          attackAnim: 'Spellcast_Shoot',
+          skillAnim: 'Spellcast_Raise',
+          stunAnim: 'Skeleton_Inactive_Standing_Pose',
+          aura: 'SHADOW_PURPLE',
+        };
+      }
+      if (traits.includes('SHADOW_ASSASSIN')) {
+        return {
+          modelKey: 'Skeleton_Rogue',
+          scale: 1.12,
+          attackAnim: 'Dualwield_Melee_Attack_Slice',
+          skillAnim: '1H_Melee_Attack_Stab',
+          stunAnim: 'Skeleton_Inactive_Standing_Pose',
+          aura: 'SHADOW_PURPLE',
+        };
+      }
+      return {
+        modelKey: 'Skeleton_Warrior',
+        scale: 1.15,
+        attackAnim: '1H_Melee_Attack_Chop',
+        skillAnim: '2H_Melee_Attack_Spin',
+        deathAnim: 'Death_C_Skeletons',
+        stunAnim: 'Skeleton_Inactive_Standing_Pose',
+        aura: 'NONE',
+      };
+    }
+
+    // 원거리 궁수 / 정찰대 (활 조준 사격 모션)
+    if (traits.includes('RANGER')) {
+      return {
+        modelKey: 'Rogue',
+        scale: 1.12,
+        attackAnim: '2H_Ranged_Shoot',
+        skillAnim: '1H_Ranged_Shoot',
+        stunAnim: 'Lie_Idle',
+        aura: traits.includes('ELVEN_SYLVAN') ? 'POISON_GREEN' : 'ARCANE_BLUE',
+      };
+    }
+
+    // 마법사 및 사제 (마법 지팡이 및 주문 시전)
+    if (traits.includes('ARCHMAGE') || traits.includes('ARCANE_TOWER') || range >= 3) {
+      return {
+        modelKey: 'Mage',
+        scale: 1.15,
+        attackAnim: 'Spellcast_Shoot',
+        skillAnim: 'Spellcast_Raise',
+        stunAnim: 'Lie_Idle',
+        aura: 'ARCANE_BLUE',
+      };
+    }
+
+    // 암살자 (후드 쓴 어둠의 자객)
+    if (traits.includes('SHADOW_ASSASSIN')) {
+      return {
+        modelKey: 'Rogue_Hooded',
+        scale: 1.12,
+        attackAnim: 'Dualwield_Melee_Attack_Slice',
+        skillAnim: '1H_Melee_Attack_Stab',
+        stunAnim: 'Lie_Idle',
+        aura: 'SHADOW_PURPLE',
+      };
+    }
+
+    // 황금 고블린
+    if (traits.includes('GOLDEN_GOBLIN')) {
+      return {
+        modelKey: 'Rogue',
+        scale: 0.98,
+        attackAnim: 'Dualwield_Melee_Attack_Slice',
+        skillAnim: '1H_Melee_Attack_Slice_Horizontal',
+        stunAnim: 'Lie_Idle',
+        aura: 'GOBLIN_GOLD',
+      };
+    }
+
+    // 광전사
+    if (traits.includes('BERSERKER')) {
+      return {
+        modelKey: 'Barbarian',
+        scale: 1.22,
+        attackAnim: '1H_Melee_Attack_Chop',
+        skillAnim: '2H_Melee_Attack_Spin',
+        stunAnim: 'Lie_Idle',
+        aura: 'FIRE_RED',
+      };
+    }
+
+    // 기본: 신성 기사 / 보병
+    return {
+      modelKey: 'Knight',
+      scale: 1.15,
+      attackAnim: '1H_Melee_Attack_Slice_Horizontal',
+      skillAnim: '2H_Melee_Attack_Spin',
+      stunAnim: 'Lie_Idle',
+      aura: traits.includes('HOLY_EMPIRE') ? 'HOLY_GOLD' : 'NONE',
+    };
   }
 
   /**
@@ -817,8 +1127,9 @@ export class ThreeJsGameRenderer {
   ): THREE.Group {
     const group = new THREE.Group();
     group.name = `UNIT_${unitId}`;
+    const cfg = this.getChampion3DConfig(unitId);
     const archetype = this.getChampionArchetype(unitId);
-    group.userData = { type: 'UNIT', instanceId, unitId, archetype };
+    group.userData = { type: 'UNIT', instanceId, unitId, archetype, modelKey: cfg.modelKey };
 
     // 코스트별 팔레트 (1코: 실버/아이언, 2코: 에메랄드, 3코: 사파이어, 4코: 자수정, 5코: 황금)
     const costColors: Record<CostTier, { primary: number; trim: number; emissive: number }> = {
@@ -832,12 +1143,12 @@ export class ThreeJsGameRenderer {
     const scaleMultiplier = starLevel === 3 ? 1.55 : starLevel === 2 ? 1.25 : 1.0;
 
     // A. 만약 고품질 외부 GLB 모델이 로드되어 있다면 실제 3D 모델 복제 사용!
-    const glbTemplate = this.glbLoadedTemplates.get(archetype);
+    const glbTemplate = this.glbLoadedTemplates.get(cfg.modelKey);
     if (glbTemplate) {
       const clonedModel = SkeletonUtils.clone(glbTemplate) as THREE.Group;
       clonedModel.name = 'GLB_MODEL_ROOT';
 
-      // 코스트별 톤 미세 틴트 적용
+      // 챔피언 맞춤형 틴트 및 코스트 틴트 적용
       clonedModel.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
@@ -845,8 +1156,14 @@ export class ThreeJsGameRenderer {
           mesh.receiveShadow = true;
           if (mesh.material) {
             const mat = (mesh.material as THREE.Material).clone() as THREE.MeshStandardMaterial;
-            if (mat.color && cost >= 3) {
+            if (mat.color && cfg.primaryColor) {
+              mat.color.lerp(new THREE.Color(cfg.primaryColor), 0.3);
+            } else if (mat.color && cost >= 3) {
               mat.color.lerp(new THREE.Color(palette.primary), 0.25);
+            }
+            if (cfg.emissiveColor) {
+              mat.emissive = new THREE.Color(cfg.emissiveColor);
+              mat.emissiveIntensity = 0.25;
             }
             mesh.material = mat;
           }
@@ -855,7 +1172,7 @@ export class ThreeJsGameRenderer {
 
       group.add(clonedModel);
       if (instanceId) {
-        this.setupUnitAnimations(instanceId, clonedModel, archetype);
+        this.setupUnitAnimations(instanceId, clonedModel, cfg);
       }
     } else {
       // B. GLB 모델 로딩 전 또는 폴백용 세련된 판타지 미니어처 피규어 조형
@@ -986,6 +1303,48 @@ export class ThreeJsGameRenderer {
       group.add(circle);
     }
 
+    // 시너지 / 전설 챔피언 전용 고유 아우라 링 (AURA_RING)
+    if (cfg.aura && cfg.aura !== 'NONE') {
+      const auraColors: Record<string, number> = {
+        HOLY_GOLD: 0xfacc15,
+        ARCANE_BLUE: 0x38bdf8,
+        SHADOW_PURPLE: 0xa855f7,
+        FROST_CYAN: 0x22d3ee,
+        FIRE_RED: 0xef4444,
+        GOBLIN_GOLD: 0xeab308,
+        POISON_GREEN: 0x10b981,
+      };
+      const color = auraColors[cfg.aura] || 0x38bdf8;
+      const auraGeo = new THREE.RingGeometry(0.85, 1.15, 8);
+      const auraMat = new THREE.MeshBasicMaterial({
+        color,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.75,
+      });
+      const auraMesh = new THREE.Mesh(auraGeo, auraMat);
+      auraMesh.name = 'AURA_RING';
+      auraMesh.rotation.x = Math.PI / 2;
+      auraMesh.position.y = 0.04;
+      group.add(auraMesh);
+    }
+
+    // 상태이상 기절(Stun) 회전하는 별 이펙트 (STUN_STARS)
+    const stunStarsGroup = new THREE.Group();
+    stunStarsGroup.name = 'STUN_STARS';
+    stunStarsGroup.position.set(0, 2.2, 0);
+    stunStarsGroup.visible = false;
+
+    const stunStarGeo = new THREE.OctahedronGeometry(0.09, 0);
+    const stunStarMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+    for (let i = 0; i < 3; i++) {
+      const star = new THREE.Mesh(stunStarGeo, stunStarMat);
+      const angle = (i * Math.PI * 2) / 3;
+      star.position.set(Math.cos(angle) * 0.45, Math.sin(angle * 2) * 0.06, Math.sin(angle) * 0.45);
+      stunStarsGroup.add(star);
+    }
+    group.add(stunStarsGroup);
+
     group.scale.set(scaleMultiplier, scaleMultiplier, scaleMultiplier);
     return group;
   }
@@ -1095,6 +1454,20 @@ export class ThreeJsGameRenderer {
             const color = isHeal ? '#22c55e' : '#38bdf8';
             this.spawn3DFloatingPopup(new THREE.Vector3(p.x, 2.5, p.z), text, color, false);
           }
+        }
+      } else if (ev.type === 'STUN') {
+        if (ev.targetId) {
+          this.playUnitAnimation(ev.targetId, 'stun');
+          const targetUnit = unitMap.get(ev.targetId);
+          if (targetUnit) {
+            const p = this.hexToWorldPos(targetUnit.row, targetUnit.col);
+            this.spawn3DFloatingPopup(new THREE.Vector3(p.x, 2.8, p.z), '💫 기절!', '#facc15', true);
+            this.spawnSparks(p.x, 2.2, p.z, 0xfacc15, 8);
+          }
+        }
+      } else if (ev.type === 'DEATH') {
+        if (ev.targetId) {
+          this.playUnitAnimation(ev.targetId, 'death');
         }
       } else if (ev.type === 'FIVE_COST_3STAR_CATACLYSM') {
         this.triggerImpactShake(18, 600);
@@ -1449,16 +1822,37 @@ export class ThreeJsGameRenderer {
           group.position.z += (targetPos.z + lungeOffsetZ - group.position.z) * 0.3;
           group.position.y = 0.2 + Math.sin(this.animClockMs * 0.005 + cu.row) * 0.05;
 
+          // 기절(Stun) 상태 확인
+          const isStunned = (cu.stunTimerMs ?? 0) > 0;
           const distMoved = Math.hypot(group.position.x - prevX, group.position.z - prevZ);
           const distToTarget = Math.hypot(targetPos.x - group.position.x, targetPos.z - group.position.z);
-          if (distToTarget > 0.18 && distMoved > 0.02) {
+
+          if (isStunned) {
+            this.playUnitAnimation(cu.instanceId, 'stun');
+          } else if (distToTarget > 0.18 && distMoved > 0.02) {
             this.playUnitAnimation(cu.instanceId, 'walk');
           } else {
             const ctrl = this.unitAnimControllers.get(cu.instanceId);
-            if (ctrl && ctrl.currentActionName === 'walk') {
+            if (ctrl && (ctrl.currentActionName === 'walk' || ctrl.currentActionName === 'stun')) {
               this.playUnitAnimation(cu.instanceId, 'idle');
             }
           }
+        }
+
+        // 기절(Stun) 회전하는 별 이펙트 제어
+        const isStunned = (cu.stunTimerMs ?? 0) > 0;
+        const stunStars = group.getObjectByName('STUN_STARS');
+        if (stunStars) {
+          stunStars.visible = isStunned;
+          if (isStunned) {
+            stunStars.rotation.y += dtMs * 0.008;
+          }
+        }
+
+        // 고유 아우라 링 회전
+        const auraRing = group.getObjectByName('AURA_RING');
+        if (auraRing) {
+          auraRing.rotation.z += dtMs * 0.002;
         }
 
         const targetRotY = cu.team === 'HOME' ? Math.PI : 0;
@@ -1520,6 +1914,11 @@ export class ThreeJsGameRenderer {
           }
           group.rotation.y = Math.PI;
 
+          const auraRing = group.getObjectByName('AURA_RING');
+          if (auraRing) auraRing.rotation.z += dtMs * 0.002;
+          const star3Ring = group.getObjectByName('STAR3_RING');
+          if (star3Ring) star3Ring.rotation.z += 0.03;
+
           const overhead = group.getObjectByName('OVERHEAD_BAR');
           if (overhead) {
             overhead.quaternion.copy(this.camera.quaternion);
@@ -1555,6 +1954,11 @@ export class ThreeJsGameRenderer {
           this.playUnitAnimation(u.instanceId, 'idle');
         }
         group.rotation.y = Math.PI;
+
+        const auraRing = group.getObjectByName('AURA_RING');
+        if (auraRing) auraRing.rotation.z += dtMs * 0.002;
+        const star3Ring = group.getObjectByName('STAR3_RING');
+        if (star3Ring) star3Ring.rotation.z += 0.03;
 
         const overhead = group.getObjectByName('OVERHEAD_BAR');
         if (overhead) {
