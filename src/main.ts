@@ -532,7 +532,7 @@ class FantasyAutoBattlerApp {
 
     const viewed = this.game.getViewedParticipant();
     const hit3D = this.is3DViewMode
-      ? this.threeRenderer.screenPointTo3DTarget(e.clientX, e.clientY)
+      ? this.threeRenderer.screenPointTo3DTarget(px, py)
       : null;
 
     // 1. 전투 페이즈 중이면 가장 가까운 전투 기물 탭 선택 및 툴팁 조회
@@ -776,8 +776,8 @@ class FantasyAutoBattlerApp {
       }
 
       if (this.is3DViewMode) {
-        this.threeRenderer.updateDragPointerWorldPos(e.clientX, e.clientY);
-        const hit3D = this.threeRenderer.screenPointTo3DTarget(e.clientX, e.clientY);
+        this.threeRenderer.updateDragPointerWorldPos(px, py);
+        const hit3D = this.threeRenderer.screenPointTo3DTarget(px, py);
         if (hit3D?.kind === 'BENCH') {
           this.hoveredBenchIndex = hit3D.index;
           this.hoveredHex = null;
@@ -1044,7 +1044,7 @@ class FantasyAutoBattlerApp {
           targetRow = hoveredHexSnap.row - 4;
           targetCol = hoveredHexSnap.col;
         } else {
-          const hit3D = this.threeRenderer.screenPointTo3DTarget(clientX, clientY);
+          const hit3D = this.threeRenderer.screenPointTo3DTarget(px, py);
           if (hit3D?.kind === 'BENCH') {
             benchIdx = hit3D.index;
           } else if (hit3D?.kind === 'HEX' && hit3D.row >= 4) {
@@ -1141,7 +1141,7 @@ class FantasyAutoBattlerApp {
       } else if (hoveredHexSnap && hoveredHexSnap.row >= 4) {
         targetInstanceId = player.board[hoveredHexSnap.row - 4]?.[hoveredHexSnap.col]?.instanceId;
       } else {
-        const hit3D = this.threeRenderer.screenPointTo3DTarget(clientX, clientY);
+        const hit3D = this.threeRenderer.screenPointTo3DTarget(px, py);
         if (hit3D?.kind === 'BENCH') {
           targetInstanceId = player.bench[hit3D.index]?.instanceId;
         } else if (hit3D?.kind === 'HEX' && hit3D.row >= 4) {

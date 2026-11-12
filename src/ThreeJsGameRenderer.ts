@@ -80,6 +80,13 @@ interface Active3DSpark {
   maxLifeMs: number;
 }
 
+interface UnitAnimController {
+  mixer: THREE.AnimationMixer;
+  actions: Map<string, THREE.AnimationAction>;
+  currentAction: THREE.AnimationAction | null;
+  currentActionName: string;
+}
+
 export class ThreeJsGameRenderer {
   public scene: THREE.Scene;
   public camera: THREE.PerspectiveCamera;
@@ -109,7 +116,7 @@ export class ThreeJsGameRenderer {
   // 유닛 3D 메시 및 쥬스 상태
   private unitMeshesMap: Map<string, THREE.Group> = new Map();
   private unitJuiceMap: Map<string, UnitJuice3D> = new Map();
-  private unitMixers: Map<string, THREE.AnimationMixer> = new Map();
+  private unitAnimControllers: Map<string, UnitAnimController> = new Map();
 
   // GLB 모델 에셋 캐시
   private glbLoadedTemplates: Map<ChampionArchetype, THREE.Group> = new Map();
@@ -147,11 +154,11 @@ export class ThreeJsGameRenderer {
     this.scene.background = new THREE.Color(0x60a5fa);
     this.scene.fog = new THREE.FogExp2(0x93c5fd, 0.012);
 
-    // 1. TFT 쿼터뷰 3D 카메라 설정
+    // 1. TFT 스타일 탑다운 쿼터뷰 3D 카메라 설정 (더 위에서 내려다보는 직관적인 하이 앵글 시점)
     const aspect = (window.innerWidth || 800) / (window.innerHeight || 600);
-    this.camera = new THREE.PerspectiveCamera(44, aspect, 0.5, 120);
-    this.camera.position.set(0, 15.5, 18.0);
-    this.camera.lookAt(0, 0, 2.2);
+    this.camera = new THREE.PerspectiveCamera(40, aspect, 0.5, 140);
+    this.camera.position.set(0, 24.5, 13.8);
+    this.camera.lookAt(0, 0, 1.8);
 
     // 2. WebGL 렌더러
     this.renderer = new THREE.WebGLRenderer({
@@ -242,6 +249,7 @@ export class ThreeJsGameRenderer {
           if (gltf.animations && gltf.animations.length > 0) {
             this.glbAnimations.set(src.archetype, gltf.animations);
           }
+          this.upgradeActiveUnitsToGlb(src.archetype);
         },
         undefined,
         (err) => {
@@ -249,6 +257,165 @@ export class ThreeJsGameRenderer {
         }
       );
     });
+  }
+
+  /**
+   * GLB 로딩 완료 시 현재 씬에 있는 fallback 유닛들을 고품질 GLB 메시와 실제 골격 애니메이션으로 핫스왑
+   */
+  private upgradeActiveUnitsToGlb(archetype: ChampionArchetype): void {
+    const glbTemplate = this.glbLoadedTemplates.get(archetype);
+    if (!glbTemplate) return;
+
+    for (const [instanceId, group] of this.unitMeshesMap) {
+      if (group.userData?.archetype === archetype) {
+        const fallbackRoot = group.getObjectByName('FALLBACK_ROOT');
+        if (fallbackRoot) {
+          group.remove(fallbackRoot);
+          const clonedModel = SkeletonUtils.clone(glbTemplate) as THREE.Group;
+          clonedModel.name = 'GLB_MODEL_ROOT';
+          group.add(clonedModel);
+          this.setupUnitAnimations(instanceId, clonedModel, archetype);
+        }
+      }
+    }
+  }
+
+  /**
+   * 3D 기물 전용 실시간 스켈레탈 애니메이션(Idle/Walk/Attack/Spell/Hit/Death) 바인딩
+   */
+  private setupUnitAnimations(
+    instanceId: string,
+    clonedModel: THREE.Group,
+    archetype: ChampionArchetype
+  ): void {
+    const clips = this.glbAnimations.get(archetype);
+    if (!clips || clips.length === 0) return;
+
+    const oldCtrl = this.unitAnimControllers.get(instanceId);
+    if (oldCtrl) {
+      oldCtrl.mixer.stopAllAction();
+      this.unitAnimControllers.delete(instanceId);
+    }
+
+    const mixer = new THREE.AnimationMixer(clonedModel);
+    const actions = new Map<string, THREE.AnimationAction>();
+
+    const getClip = (names: string[]): THREE.AnimationClip | undefined => {
+      for (const name of names) {
+        const c = clips.find((clip) => clip.name === name || clip.name.includes(name));
+        if (c) return c;
+      }
+      return undefined;
+    };
+
+    // 1. Idle (자연스럽게 서서 숨쉬는 전투 대기)
+    const idleClip = getClip(['Idle', 'Unarmed_Idle']);
+    if (idleClip) actions.set('idle', mixer.clipAction(idleClip));
+
+    // 2. Walk / Run (돌진 및 이동)
+    const walkClip = getClip(['Running_A', 'Walking_A', 'Run', 'Walk']);
+    if (walkClip) actions.set('walk', mixer.clipAction(walkClip));
+
+    // 3. Attack (일반 공격 - 직업별 베기, 찌르기, 마법 발사, 주먹)
+    let attackClip: THREE.AnimationClip | undefined;
+    if (archetype === 'MAGE') {
+      attackClip = getClip(['Spellcast_Shoot', 'Spellcasting', '1H_Ranged_Shoot']);
+    } else if (archetype === 'ROGUE') {
+      attackClip = getClip(['Dualwield_Melee_Attack_Slice', '1H_Melee_Attack_Slice_Horizontal', '1H_Melee_Attack_Stab']);
+    } else if (archetype === 'BRAWLER') {
+      attackClip = getClip(['Unarmed_Melee_Attack_Punch_A', 'Unarmed_Melee_Attack_Punch_B', '1H_Melee_Attack_Chop']);
+    } else if (archetype === 'BEAST_GOLEM') {
+      attackClip = getClip(['Dragon_Attack2', 'Attack2', 'Chop', 'Attack']);
+    } else {
+      attackClip = getClip(['1H_Melee_Attack_Slice_Horizontal', '1H_Melee_Attack_Chop', '2H_Melee_Attack_Chop']);
+    }
+    if (!attackClip) attackClip = getClip(['Attack', 'Slice', 'Chop', 'Shoot']);
+    if (attackClip) actions.set('attack', mixer.clipAction(attackClip));
+
+    // 4. Skill / Spell (궁극기 및 특수 스킬 모션)
+    let spellClip: THREE.AnimationClip | undefined;
+    if (archetype === 'MAGE') {
+      spellClip = getClip(['Spellcast_Raise', 'Spellcast_Long', 'Spellcasting']);
+    } else if (archetype === 'BRAWLER') {
+      spellClip = getClip(['Unarmed_Melee_Attack_Kick', '2H_Melee_Attack_Spin']);
+    } else {
+      spellClip = getClip(['2H_Melee_Attack_Spin', '1H_Melee_Attack_Jump_Chop', 'Cheer']);
+    }
+    if (!spellClip) spellClip = attackClip;
+    if (spellClip) actions.set('spell', mixer.clipAction(spellClip));
+
+    // 5. Hit (피격)
+    const hitClip = getClip(['Hit_A', 'Hit_B', 'Block_Hit', 'Dragon_Hit']);
+    if (hitClip) actions.set('hit', mixer.clipAction(hitClip));
+
+    // 6. Death (사망)
+    const deathClip = getClip(['Death_A', 'Death_B', 'Death']);
+    if (deathClip) actions.set('death', mixer.clipAction(deathClip));
+
+    const idleAction = actions.get('idle');
+    if (idleAction) {
+      idleAction.setLoop(THREE.LoopRepeat, Infinity);
+      idleAction.play();
+      idleAction.time = Math.random() * 2.0;
+    }
+
+    const controller: UnitAnimController = {
+      mixer,
+      actions,
+      currentAction: idleAction || null,
+      currentActionName: 'idle',
+    };
+
+    mixer.addEventListener('finished', (e: unknown) => {
+      const evt = e as { action: THREE.AnimationAction };
+      if (controller.currentAction === evt.action && controller.currentActionName !== 'death') {
+        const nextIdle = controller.actions.get('idle');
+        if (nextIdle) {
+          evt.action.fadeOut(0.12);
+          nextIdle.reset().fadeIn(0.12).play();
+          controller.currentAction = nextIdle;
+          controller.currentActionName = 'idle';
+        }
+      }
+    });
+
+    this.unitAnimControllers.set(instanceId, controller);
+  }
+
+  /**
+   * 지정된 유닛의 애니메이션 부드러운 전환 재생
+   */
+  public playUnitAnimation(
+    instanceId: string,
+    actionName: 'idle' | 'walk' | 'attack' | 'spell' | 'hit' | 'death'
+  ): void {
+    const ctrl = this.unitAnimControllers.get(instanceId);
+    if (!ctrl) return;
+    if (ctrl.currentActionName === actionName && (actionName === 'walk' || actionName === 'idle')) return;
+    if (ctrl.currentActionName === 'death') return;
+
+    let targetAction = ctrl.actions.get(actionName);
+    if (!targetAction && actionName === 'spell') targetAction = ctrl.actions.get('attack');
+    if (!targetAction && actionName === 'walk') targetAction = ctrl.actions.get('idle');
+    if (!targetAction) return;
+
+    const isOneShot = actionName === 'attack' || actionName === 'spell' || actionName === 'hit' || actionName === 'death';
+
+    if (ctrl.currentAction && ctrl.currentAction !== targetAction) {
+      ctrl.currentAction.fadeOut(0.12);
+    }
+
+    targetAction.reset();
+    if (isOneShot) {
+      targetAction.setLoop(THREE.LoopOnce, 1);
+      targetAction.clampWhenFinished = true;
+    } else {
+      targetAction.setLoop(THREE.LoopRepeat, Infinity);
+    }
+    targetAction.fadeIn(0.12).play();
+
+    ctrl.currentAction = targetAction;
+    ctrl.currentActionName = actionName;
   }
 
   /**
@@ -578,14 +745,16 @@ export class ThreeJsGameRenderer {
   }
 
   /**
-   * 화면 2D 터치 좌표 -> 3D 헥사곤 / 대기석 타일 레이캐스팅 검출
+   * 화면 2D 논리 캔버스 좌표 (px, py) -> 3D 헥사곤 / 대기석 타일 / 유닛 레이캐스팅 검출
    */
   public screenPointTo3DTarget(
-    clientX: number,
-    clientY: number
+    px: number,
+    py: number
   ): { kind: 'HEX'; row: number; col: number } | { kind: 'BENCH'; index: number } | null {
-    this.mouseVec.x = (clientX / window.innerWidth) * 2 - 1;
-    this.mouseVec.y = -(clientY / window.innerHeight) * 2 + 1;
+    const w = this.renderer.domElement.clientWidth || this.canvas.clientWidth || window.innerWidth;
+    const h = this.renderer.domElement.clientHeight || this.canvas.clientHeight || window.innerHeight;
+    this.mouseVec.x = (px / w) * 2 - 1;
+    this.mouseVec.y = -(py / h) * 2 + 1;
 
     this.raycaster.setFromCamera(this.mouseVec, this.camera);
     const allMeshes = [
@@ -643,11 +812,13 @@ export class ThreeJsGameRenderer {
   public create3DChampionMesh(
     unitId: string,
     cost: CostTier,
-    starLevel: StarLevel
+    starLevel: StarLevel,
+    instanceId?: string
   ): THREE.Group {
     const group = new THREE.Group();
     group.name = `UNIT_${unitId}`;
     const archetype = this.getChampionArchetype(unitId);
+    group.userData = { type: 'UNIT', instanceId, unitId, archetype };
 
     // 코스트별 팔레트 (1코: 실버/아이언, 2코: 에메랄드, 3코: 사파이어, 4코: 자수정, 5코: 황금)
     const costColors: Record<CostTier, { primary: number; trim: number; emissive: number }> = {
@@ -683,6 +854,9 @@ export class ThreeJsGameRenderer {
       });
 
       group.add(clonedModel);
+      if (instanceId) {
+        this.setupUnitAnimations(instanceId, clonedModel, archetype);
+      }
     } else {
       // B. GLB 모델 로딩 전 또는 폴백용 세련된 판타지 미니어처 피규어 조형
       const fallbackRoot = new THREE.Group();
@@ -817,11 +991,13 @@ export class ThreeJsGameRenderer {
   }
 
   /**
-   * 포인터 위치를 3D 지면 평면(y=0)과 교차시켜 3D 월드 좌표 계산 (드래그 실시간 추적용)
+   * 포인터 위치(논리 캔버스 px, py)를 3D 지면 평면(y=0)과 교차시켜 3D 월드 좌표 계산 (드래그 실시간 추적용)
    */
-  public updateDragPointerWorldPos(clientX: number, clientY: number): void {
-    this.mouseVec.x = (clientX / window.innerWidth) * 2 - 1;
-    this.mouseVec.y = -(clientY / window.innerHeight) * 2 + 1;
+  public updateDragPointerWorldPos(px: number, py: number): void {
+    const w = this.renderer.domElement.clientWidth || this.canvas.clientWidth || window.innerWidth;
+    const h = this.renderer.domElement.clientHeight || this.canvas.clientHeight || window.innerHeight;
+    this.mouseVec.x = (px / w) * 2 - 1;
+    this.mouseVec.y = -(py / h) * 2 + 1;
     this.raycaster.setFromCamera(this.mouseVec, this.camera);
     this.raycaster.ray.intersectPlane(this.groundPlane, this.currentDragWorldPos);
   }
@@ -847,6 +1023,7 @@ export class ThreeJsGameRenderer {
           if (Math.abs(dx) > 0.01 || Math.abs(dz) > 0.01) {
             juice.facingY = Math.atan2(dx, dz);
           }
+          this.playUnitAnimation(ev.sourceId, 'walk');
 
           if (ev.type === 'LEAP') {
             juice.leapProgress = 0.01;
@@ -864,6 +1041,7 @@ export class ThreeJsGameRenderer {
 
           juice.lungeMaxMs = isSkill ? 240 : 160;
           juice.lungeTimerMs = juice.lungeMaxMs;
+          this.playUnitAnimation(ev.sourceId, isSkill ? 'spell' : 'attack');
 
           if (ev.fromRow !== undefined && ev.toRow !== undefined) {
             const pFrom = this.hexToWorldPos(ev.fromRow, ev.fromCol ?? 0);
@@ -887,6 +1065,7 @@ export class ThreeJsGameRenderer {
         if (ev.targetId) {
           const juice = this.getOrInitJuice(ev.targetId);
           juice.hitFlashTimerMs = 180;
+          this.playUnitAnimation(ev.targetId, 'hit');
 
           const targetUnit = unitMap.get(ev.targetId);
           if (targetUnit) {
@@ -1086,7 +1265,13 @@ export class ThreeJsGameRenderer {
   public renderFrame(dtMs: number, state: RenderState3D): void {
     this.animClockMs += dtMs;
 
-    // 1. 카메라 쉐이크 연산
+    // 0. 실시간 스켈레탈 골격 애니메이션 믹서 갱신
+    const dtSec = dtMs * 0.001;
+    for (const ctrl of this.unitAnimControllers.values()) {
+      ctrl.mixer.update(dtSec);
+    }
+
+    // 1. 카메라 쉐이크 연산 (직관적인 고각 탑다운 쿼터뷰 앵글 유지)
     let shakeOffsetX = 0;
     let shakeOffsetY = 0;
     if (this.shakeRemainingMs > 0) {
@@ -1096,9 +1281,9 @@ export class ThreeJsGameRenderer {
       shakeOffsetY = (Math.random() - 0.5) * this.shakeIntensity * decay;
     }
     this.camera.position.x = shakeOffsetX;
-    this.camera.position.y = 15.5 + shakeOffsetY;
-    this.camera.position.z = 18.0;
-    this.camera.lookAt(0, 0, 2.2);
+    this.camera.position.y = 24.5 + shakeOffsetY;
+    this.camera.position.z = 13.8;
+    this.camera.lookAt(0, 0, 1.8);
 
     // 2. 판타지 횃불 깜빡임 (Flickering Torches)
     this.torchLights.forEach((t) => {
@@ -1232,7 +1417,7 @@ export class ThreeJsGameRenderer {
 
         let group = this.unitMeshesMap.get(cu.instanceId);
         if (!group) {
-          group = this.create3DChampionMesh(cu.unitId, cu.cost, cu.starLevel);
+          group = this.create3DChampionMesh(cu.unitId, cu.cost, cu.starLevel, cu.instanceId);
           this.unitMeshesMap.set(cu.instanceId, group);
           this.unitsGroup.add(group);
         }
@@ -1256,10 +1441,24 @@ export class ThreeJsGameRenderer {
           const lz = juice.leapStartPos.z + (juice.leapTargetPos.z - juice.leapStartPos.z) * lp;
           const ly = juice.leapStartPos.y + Math.sin(lp * Math.PI) * 2.8;
           group.position.set(lx, ly, lz);
+          this.playUnitAnimation(cu.instanceId, 'walk');
         } else {
+          const prevX = group.position.x;
+          const prevZ = group.position.z;
           group.position.x += (targetPos.x + lungeOffsetX - group.position.x) * 0.3;
           group.position.z += (targetPos.z + lungeOffsetZ - group.position.z) * 0.3;
           group.position.y = 0.2 + Math.sin(this.animClockMs * 0.005 + cu.row) * 0.05;
+
+          const distMoved = Math.hypot(group.position.x - prevX, group.position.z - prevZ);
+          const distToTarget = Math.hypot(targetPos.x - group.position.x, targetPos.z - group.position.z);
+          if (distToTarget > 0.18 && distMoved > 0.02) {
+            this.playUnitAnimation(cu.instanceId, 'walk');
+          } else {
+            const ctrl = this.unitAnimControllers.get(cu.instanceId);
+            if (ctrl && ctrl.currentActionName === 'walk') {
+              this.playUnitAnimation(cu.instanceId, 'idle');
+            }
+          }
         }
 
         const targetRotY = cu.team === 'HOME' ? Math.PI : 0;
@@ -1299,7 +1498,7 @@ export class ThreeJsGameRenderer {
 
           let group = this.unitMeshesMap.get(u.instanceId);
           if (!group) {
-            group = this.create3DChampionMesh(u.unitId, u.cost, u.starLevel);
+            group = this.create3DChampionMesh(u.unitId, u.cost, u.starLevel, u.instanceId);
             this.unitMeshesMap.set(u.instanceId, group);
             this.unitsGroup.add(group);
           }
@@ -1312,10 +1511,12 @@ export class ThreeJsGameRenderer {
             group.position.x += (this.currentDragWorldPos.x - group.position.x) * 0.45;
             group.position.z += (this.currentDragWorldPos.z - group.position.z) * 0.45;
             group.position.y += (1.45 - group.position.y) * 0.35;
+            this.playUnitAnimation(u.instanceId, 'walk');
           } else {
             group.position.x += (targetPos.x - group.position.x) * 0.28;
             group.position.z += (targetPos.z - group.position.z) * 0.28;
             group.position.y += (0.2 - group.position.y) * 0.28;
+            this.playUnitAnimation(u.instanceId, 'idle');
           }
           group.rotation.y = Math.PI;
 
@@ -1334,7 +1535,7 @@ export class ThreeJsGameRenderer {
 
         let group = this.unitMeshesMap.get(u.instanceId);
         if (!group) {
-          group = this.create3DChampionMesh(u.unitId, u.cost, u.starLevel);
+          group = this.create3DChampionMesh(u.unitId, u.cost, u.starLevel, u.instanceId);
           this.unitMeshesMap.set(u.instanceId, group);
           this.unitsGroup.add(group);
         }
@@ -1346,10 +1547,12 @@ export class ThreeJsGameRenderer {
           group.position.x += (this.currentDragWorldPos.x - group.position.x) * 0.45;
           group.position.z += (this.currentDragWorldPos.z - group.position.z) * 0.45;
           group.position.y += (1.45 - group.position.y) * 0.35;
+          this.playUnitAnimation(u.instanceId, 'walk');
         } else {
           group.position.x += (targetPos.x - group.position.x) * 0.28;
           group.position.z += (targetPos.z - group.position.z) * 0.28;
           group.position.y += (0.25 - group.position.y) * 0.28;
+          this.playUnitAnimation(u.instanceId, 'idle');
         }
         group.rotation.y = Math.PI;
 
@@ -1360,12 +1563,17 @@ export class ThreeJsGameRenderer {
       }
     }
 
-    // 소멸된 기물 제거
+    // 소멸된 기물 제거 및 믹서 정리
     for (const [id, group] of this.unitMeshesMap) {
       if (!activeIds.has(id)) {
         this.unitsGroup.remove(group);
         this.unitMeshesMap.delete(id);
         this.unitJuiceMap.delete(id);
+        const ctrl = this.unitAnimControllers.get(id);
+        if (ctrl) {
+          ctrl.mixer.stopAllAction();
+          this.unitAnimControllers.delete(id);
+        }
       }
     }
   }
