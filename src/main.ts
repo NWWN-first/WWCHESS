@@ -171,6 +171,7 @@ class FantasyAutoBattlerApp {
       'pointerdown',
       () => {
         this.tryLockNativeLandscape();
+        this.enableImmersiveFullscreen();
       },
       { once: true }
     );
@@ -194,6 +195,24 @@ class FantasyAutoBattlerApp {
           btn.textContent = isMuted ? '🔇' : '🔊';
         }
       });
+
+    document
+      .getElementById('fullscreen-toggle-btn')
+      ?.addEventListener('pointerup', () => {
+        if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+          this.enableImmersiveFullscreen();
+        } else {
+          this.exitFullscreen();
+        }
+      });
+
+    const updateFullscreenBtn = () => {
+      const isFull = Boolean(document.fullscreenElement || (document as any).webkitFullscreenElement);
+      const btn = document.getElementById('fullscreen-toggle-btn');
+      if (btn) btn.textContent = isFull ? '✖' : '⛶';
+    };
+    document.addEventListener('fullscreenchange', updateFullscreenBtn);
+    document.addEventListener('webkitfullscreenchange', updateFullscreenBtn);
 
     document
       .getElementById('pool-inspector-btn')
@@ -227,7 +246,10 @@ class FantasyAutoBattlerApp {
     // 메인 로비 화면 및 설정 모달 이벤트 바인딩
     document
       .getElementById('lobby-start-btn')
-      ?.addEventListener('pointerup', () => this.startNewGameFromLobby());
+      ?.addEventListener('pointerup', () => {
+        this.enableImmersiveFullscreen();
+        this.startNewGameFromLobby();
+      });
 
     document
       .getElementById('lobby-compendium-btn')
@@ -2018,6 +2040,50 @@ class FantasyAutoBattlerApp {
     };
 
     requestAnimationFrame(frame);
+  }
+
+  private enableImmersiveFullscreen(): void {
+    const docEl = document.documentElement as HTMLElement & {
+      requestFullscreen?: (options?: { navigationUI?: string }) => Promise<void>;
+      webkitRequestFullscreen?: () => Promise<void>;
+      mozRequestFullScreen?: () => Promise<void>;
+      msRequestFullscreen?: () => Promise<void>;
+    };
+
+    try {
+      if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+        if (docEl.requestFullscreen) {
+          docEl.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+        } else if (docEl.webkitRequestFullscreen) {
+          docEl.webkitRequestFullscreen();
+        } else if (docEl.mozRequestFullScreen) {
+          docEl.mozRequestFullScreen();
+        } else if (docEl.msRequestFullscreen) {
+          docEl.msRequestFullscreen();
+        }
+      }
+    } catch {
+      // Ignore user gesture restrictions
+    }
+  }
+
+  private exitFullscreen(): void {
+    const doc = document as Document & {
+      exitFullscreen?: () => Promise<void>;
+      webkitExitFullscreen?: () => Promise<void>;
+      mozCancelFullScreen?: () => Promise<void>;
+      msExitFullscreen?: () => Promise<void>;
+    };
+    try {
+      if (document.fullscreenElement || (document as any).webkitFullscreenElement) {
+        if (doc.exitFullscreen) doc.exitFullscreen().catch(() => {});
+        else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+        else if (doc.mozCancelFullScreen) doc.mozCancelFullScreen();
+        else if (doc.msExitFullscreen) doc.msExitFullscreen();
+      }
+    } catch {
+      // Ignore
+    }
   }
 
   /**
