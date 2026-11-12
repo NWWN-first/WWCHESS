@@ -111,9 +111,17 @@ class FantasyAutoBattlerApp {
     this.threeRenderer = new ThreeJsGameRenderer(this.threeCanvas);
     this.pixiVfx.init();
 
-    // 3D 모드가 기본이므로 2D 캔버스는 반투명 HUD/파티클 레이어로 동작
+    // 3D 모드가 기본이므로 2D 캔버스는 완전 숨김 (화면 겹침 및 반투명 잔상 방지)
     if (this.is3DViewMode) {
-      this.fxCanvas.style.opacity = '0.35';
+      this.threeCanvas.classList.remove('hidden');
+      this.threeCanvas.style.display = 'block';
+      this.fxCanvas.classList.add('hidden');
+      this.fxCanvas.style.display = 'none';
+    } else {
+      this.threeCanvas.classList.add('hidden');
+      this.threeCanvas.style.display = 'none';
+      this.fxCanvas.classList.remove('hidden');
+      this.fxCanvas.style.display = 'block';
     }
 
     // 로비 화면 대기 상태로 초기화 (autoStart = false)
@@ -198,10 +206,14 @@ class FantasyAutoBattlerApp {
         }
         if (this.is3DViewMode) {
           this.threeCanvas.classList.remove('hidden');
-          this.fxCanvas.style.opacity = '0.35';
+          this.threeCanvas.style.display = 'block';
+          this.fxCanvas.classList.add('hidden');
+          this.fxCanvas.style.display = 'none';
         } else {
           this.threeCanvas.classList.add('hidden');
-          this.fxCanvas.style.opacity = '1.0';
+          this.threeCanvas.style.display = 'none';
+          this.fxCanvas.classList.remove('hidden');
+          this.fxCanvas.style.display = 'block';
         }
       });
 
@@ -504,6 +516,9 @@ class FantasyAutoBattlerApp {
     this.fxCanvas.addEventListener('pointerdown', (e) =>
       this.handleCanvasPointerDown(e)
     );
+    this.threeCanvas.addEventListener('pointerdown', (e) =>
+      this.handleCanvasPointerDown(e)
+    );
 
     window.addEventListener('pointermove', (e) => this.handlePointerMove(e));
     window.addEventListener('pointerup', (e) => this.handlePointerUp(e));
@@ -516,31 +531,43 @@ class FantasyAutoBattlerApp {
     const py = pt.y;
 
     const viewed = this.game.getViewedParticipant();
+    const hit3D = this.is3DViewMode
+      ? this.threeRenderer.screenPointTo3DTarget(e.clientX, e.clientY)
+      : null;
 
     // 1. 전투 페이즈 중이면 가장 가까운 전투 기물 탭 선택 및 툴팁 조회
     if (this.game.phase === 'COMBAT_PHASE') {
       const viewedCombat = this.game.getViewedCombatContext();
       const combatUnits = viewedCombat ? viewedCombat.engine.units : this.game.playerCombatEngine.units;
-      const hitHex = HexGridMath.screenPointToHex(
-        px,
-        py,
-        this.pixelRenderer.hexMetrics,
-        8,
-        7,
-        1.5
-      );
-      if (hitHex) {
-        const cu = combatUnits.find(
-          (u) =>
-            u.currentHp > 0 && u.row === hitHex.row && u.col === hitHex.col
+      
+      let cu: CombatUnit | undefined;
+      if (hit3D && hit3D.kind === 'HEX') {
+        cu = combatUnits.find(
+          (u) => u.currentHp > 0 && u.row === hit3D.row && u.col === hit3D.col
         );
-        if (cu) {
-          this.selectedUnitInstanceId = cu.instanceId;
-          this.startPointerInteraction(e, null, () => {
-            this.showCombatUnitTooltip(cu);
-          });
-          return;
+      } else {
+        const hitHex = HexGridMath.screenPointToHex(
+          px,
+          py,
+          this.pixelRenderer.hexMetrics,
+          8,
+          7,
+          1.5
+        );
+        if (hitHex) {
+          cu = combatUnits.find(
+            (u) =>
+              u.currentHp > 0 && u.row === hitHex.row && u.col === hitHex.col
+          );
         }
+      }
+
+      if (cu) {
+        this.selectedUnitInstanceId = cu.instanceId;
+        this.startPointerInteraction(e, null, () => {
+          this.showCombatUnitTooltip(cu!);
+        });
+        return;
       }
       this.selectedUnitInstanceId = null;
       document.getElementById('tap-tooltip-bar')?.classList.add('hidden');
@@ -548,8 +575,11 @@ class FantasyAutoBattlerApp {
     }
 
     // 2. 하단 1x9 대기석(Bench) 슬롯 히트 검사
-    const benchIdx = this.pixelRenderer.screenPointToBenchIndex(px, py);
-    if (benchIdx !== null) {
+    const benchIdx = hit3D && hit3D.kind === 'BENCH'
+      ? hit3D.index
+      : this.pixelRenderer.screenPointToBenchIndex(px, py);
+
+    if (benchIdx !== null && benchIdx >= 0 && benchIdx < 9) {
       const benchUnit = viewed.bench[benchIdx];
       if (benchUnit) {
         this.selectedUnitInstanceId = benchUnit.instanceId;
@@ -576,17 +606,30 @@ class FantasyAutoBattlerApp {
     }
 
     // 3. 육각형 전장 타일(row 0~7, col 0~6) 히트 검사
-    const hitHex = HexGridMath.screenPointToHex(
-      px,
-      py,
-      this.pixelRenderer.hexMetrics,
-      8,
-      7,
-      1.5
-    );
-    if (hitHex && hitHex.row >= 4) {
-      const boardRow = hitHex.row - 4;
-      const boardCol = hitHex.col;
+    let hexRow: number | null = null;
+    let hexCol: number | null = null;
+
+    if (hit3D && hit3D.kind === 'HEX') {
+      hexRow = hit3D.row;
+      hexCol = hit3D.col;
+    } else {
+      const hitHex = HexGridMath.screenPointToHex(
+        px,
+        py,
+        this.pixelRenderer.hexMetrics,
+        8,
+        7,
+        1.5
+      );
+      if (hitHex) {
+        hexRow = hitHex.row;
+        hexCol = hitHex.col;
+      }
+    }
+
+    if (hexRow !== null && hexCol !== null && hexRow >= 4) {
+      const boardRow = hexRow - 4;
+      const boardCol = hexCol;
       const boardUnit = viewed.board[boardRow]?.[boardCol];
       if (boardUnit) {
         this.selectedUnitInstanceId = boardUnit.instanceId;
@@ -728,11 +771,25 @@ class FantasyAutoBattlerApp {
       const py = pt.y;
       this.updateDragGhostPosition(e.clientX, e.clientY, px, py);
 
-      this.hoveredBenchIndex = this.pixelRenderer.screenPointToBenchIndex(px, py);
-      this.hoveredHex =
-        this.hoveredBenchIndex === null
-          ? HexGridMath.screenPointToHex(px, py, this.pixelRenderer.hexMetrics, 8, 7, 1.4)
-          : null;
+      if (this.is3DViewMode) {
+        const hit3D = this.threeRenderer.screenPointTo3DTarget(e.clientX, e.clientY);
+        if (hit3D?.kind === 'BENCH') {
+          this.hoveredBenchIndex = hit3D.index;
+          this.hoveredHex = null;
+        } else if (hit3D?.kind === 'HEX') {
+          this.hoveredBenchIndex = null;
+          this.hoveredHex = { row: hit3D.row, col: hit3D.col };
+        } else {
+          this.hoveredBenchIndex = null;
+          this.hoveredHex = null;
+        }
+      } else {
+        this.hoveredBenchIndex = this.pixelRenderer.screenPointToBenchIndex(px, py);
+        this.hoveredHex =
+          this.hoveredBenchIndex === null
+            ? HexGridMath.screenPointToHex(px, py, this.pixelRenderer.hexMetrics, 8, 7, 1.4)
+            : null;
+      }
     }
   }
 
@@ -960,7 +1017,42 @@ class FantasyAutoBattlerApp {
               col: payload.fromCol!,
             } as const);
 
-      const benchIdx = this.pixelRenderer.screenPointToBenchIndex(px, py);
+      let benchIdx: number | null = null;
+      let targetRow: number | null = null;
+      let targetCol: number | null = null;
+
+      if (this.is3DViewMode) {
+        const hit3D = this.threeRenderer.screenPointTo3DTarget(clientX, clientY);
+        if (hit3D?.kind === 'BENCH') {
+          benchIdx = hit3D.index;
+        } else if (hit3D?.kind === 'HEX' && hit3D.row >= 4) {
+          targetRow = hit3D.row - 4;
+          targetCol = hit3D.col;
+        }
+      } else {
+        benchIdx = this.pixelRenderer.screenPointToBenchIndex(px, py);
+        if (benchIdx === null) {
+          let hitHex = HexGridMath.screenPointToHex(
+            px,
+            py,
+            this.pixelRenderer.hexMetrics,
+            8,
+            7,
+            1.5
+          );
+          if (!hitHex || hitHex.row < 4) {
+            const m = this.pixelRenderer.hexMetrics;
+            if (py >= m.originY + 3.0 * m.rowStepY && py <= m.boardBottomY + 25) {
+              hitHex = HexGridMath.screenPointToHex(px, py, m, 8, 7, 2.2);
+            }
+          }
+          if (hitHex && hitHex.row >= 4) {
+            targetRow = hitHex.row - 4;
+            targetCol = hitHex.col;
+          }
+        }
+      }
+
       if (benchIdx !== null) {
         player.moveUnit(fromLoc, { area: 'BENCH', index: benchIdx });
         soundFX.playPlaceThud();
@@ -970,38 +1062,17 @@ class FantasyAutoBattlerApp {
         return;
       }
 
-      let hitHex = HexGridMath.screenPointToHex(
-        px,
-        py,
-        this.pixelRenderer.hexMetrics,
-        8,
-        7,
-        1.5
-      );
-      if (!hitHex || hitHex.row < 4) {
-        const m = this.pixelRenderer.hexMetrics;
-        if (py >= m.originY + 3.0 * m.rowStepY && py <= m.boardBottomY + 25) {
-          hitHex = HexGridMath.screenPointToHex(px, py, m, 8, 7, 2.2);
-        }
-      }
-      if (hitHex && hitHex.row >= 4) {
-        const boardRow = hitHex.row - 4;
-        const boardCol = hitHex.col;
+      if (targetRow !== null && targetCol !== null) {
         if (
           player.moveUnit(fromLoc, {
             area: 'BOARD',
-            row: boardRow,
-            col: boardCol,
+            row: targetRow,
+            col: targetCol,
           })
         ) {
-          const center = HexGridMath.hexToScreenCenter(
-            hitHex.row,
-            hitHex.col,
-            this.pixelRenderer.hexMetrics
-          );
           soundFX.playPlaceThud();
-          this.pixiVfx.triggerPlacementShockwave(center.x, center.y, 0x4cc9f0);
-          this.pixelRenderer.spawnPixelSparks(center.x, center.y, '#4cc9f0', 14);
+          this.pixiVfx.triggerPlacementShockwave(px, py, 0x4cc9f0);
+          this.pixelRenderer.spawnPixelSparks(px, py, '#4cc9f0', 14);
         } else if (player.lastActionMessage) {
           this.game.pushBannerNotification(player.lastActionMessage);
         }
@@ -2023,9 +2094,8 @@ class FantasyAutoBattlerApp {
             ? viewedCombat.isCreepMatch
             : this.game.getCurrentRoundType() !== 'PVP',
         });
-      }
-
-      this.pixelRenderer.renderFrame(dt, {
+      } else {
+        this.pixelRenderer.renderFrame(dt, {
         inCombat,
         viewedParticipant: viewedCombat
           ? viewedCombat.viewedParticipant
@@ -2047,6 +2117,7 @@ class FantasyAutoBattlerApp {
           ? viewedCombat.isCreepMatch
           : this.game.getCurrentRoundType() !== 'PVP',
       });
+    }
 
       // 내 아바타가 전장을 이동하다가 ? / ! 미스터리 상자와 접촉(거리 36px 이내)하면 상자 폭발 & 획득!
       if (

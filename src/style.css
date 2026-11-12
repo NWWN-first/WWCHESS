@@ -120,6 +120,10 @@ img {
   display: block;
 }
 
+.game-viewport-canvas.hidden {
+  display: none !important;
+}
+
 .pixi-viewport-canvas {
   position: absolute;
   inset: 0;

@@ -135,17 +135,17 @@ export class ThreeJsGameRenderer {
     this.scene.background = new THREE.Color(0x070a14);
     this.scene.fog = new THREE.FogExp2(0x070a14, 0.022);
 
-    // 1. TFT 쿼터뷰 3D 카메라 설정
+    // 1. TFT 쿼터뷰 3D 카메라 설정 (전장 + 대기석이 시원하게 가시 영역에 꽉 차도록 최적화)
     const aspect = (window.innerWidth || 800) / (window.innerHeight || 600);
-    this.camera = new THREE.PerspectiveCamera(40, aspect, 0.5, 120);
-    this.camera.position.set(0, 16.5, 20.5);
-    this.camera.lookAt(0, -0.5, 1.2);
+    this.camera = new THREE.PerspectiveCamera(44, aspect, 0.5, 120);
+    this.camera.position.set(0, 15.5, 18.0);
+    this.camera.lookAt(0, 0, 2.2);
 
-    // 2. WebGL 렌더러
+    // 2. WebGL 렌더러 (완전 불투명 다크 판타지 배경으로 2D 화면과 확실히 분리)
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
       antialias: true,
-      alpha: true,
+      alpha: false,
       powerPreference: 'high-performance',
     });
     this.renderer.setSize(window.innerWidth || 800, window.innerHeight || 600);
@@ -153,11 +153,14 @@ export class ThreeJsGameRenderer {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // 3. 다크 판타지 전장 조명
-    this.hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e1b4b, 1.35);
+    // 3. 다크 판타지 전장 조명 & 앰비언트 라이트 (기물들이 어둡게 묻히지 않도록 선명한 조명 보강)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+    this.scene.add(ambientLight);
+
+    this.hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e1b4b, 1.5);
     this.scene.add(this.hemiLight);
 
-    this.dirLight = new THREE.DirectionalLight(0xffedd5, 2.2);
+    this.dirLight = new THREE.DirectionalLight(0xffedd5, 2.8);
     this.dirLight.position.set(10, 24, 14);
     this.dirLight.castShadow = true;
     this.dirLight.shadow.mapSize.width = 1024;
@@ -1266,7 +1269,9 @@ export class ThreeJsGameRenderer {
       shakeOffsetY = (Math.random() - 0.5) * this.shakeIntensity * decay;
     }
     this.camera.position.x = shakeOffsetX;
-    this.camera.position.y = 16.5 + shakeOffsetY;
+    this.camera.position.y = 15.5 + shakeOffsetY;
+    this.camera.position.z = 18.0;
+    this.camera.lookAt(0, 0, 2.2);
 
     // 2. 호버링된 타일 하이라이트
     for (const [key, mesh] of this.hexTileMeshes) {
