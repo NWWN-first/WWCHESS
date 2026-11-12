@@ -153,8 +153,19 @@ class FantasyAutoBattlerApp {
     );
 
     document
+      .getElementById('map-theme-btn')
+      ?.addEventListener('pointerup', () => {
+        const nextTheme = this.pixelRenderer.toggleMapTheme();
+        const btn = document.getElementById('map-theme-btn');
+        if (btn) {
+          btn.textContent = nextTheme === 'FOREST' ? '🌲숲맵' : '🏰도시맵';
+        }
+      });
+
+    document
       .getElementById('pool-inspector-btn')
       ?.addEventListener('pointerup', () => this.openPoolInspectorModal());
+
     document
       .getElementById('close-inspector-btn')
       ?.addEventListener('pointerup', () =>

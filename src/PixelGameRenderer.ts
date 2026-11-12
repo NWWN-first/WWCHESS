@@ -962,6 +962,15 @@ export class PixelGameRenderer {
   }
 
 
+  // 전장 맵 테마 ('FOREST' = 요정의 숲 공터, 'CASTLE_TOWN' = 제국 왕도 성벽 광장)
+  public currentMapTheme: 'FOREST' | 'CASTLE_TOWN' = 'FOREST';
+
+  public toggleMapTheme(): 'FOREST' | 'CASTLE_TOWN' {
+    this.currentMapTheme =
+      this.currentMapTheme === 'FOREST' ? 'CASTLE_TOWN' : 'FOREST';
+    return this.currentMapTheme;
+  }
+
   // ==========================================================================
   // 메인 프레임 렌더링 루프
   // ==========================================================================
@@ -1007,20 +1016,23 @@ export class PixelGameRenderer {
     ctx.save();
     ctx.clearRect(0, 0, w, h);
 
-    // 1. 다크 판타지 던전 배경 석판 렌더링
-    this.drawDungeonArenaBackground(ctx, w, h);
-
     ctx.translate(shakeX, shakeY);
 
-    // 2. 8x7 2.5D 육각형(Pointy-top Odd-R Hex, perspectiveRatio=0.78, gap=2px, 4px 3D Bevel Edge) 렌더링
-    this.drawHexagonalBattlefieldGrid(
-      ctx,
-      params.inCombat,
-      params.hoveredHex,
-      params.isDraggingUnit
-    );
+    // 1. 판타지 숲 / 왕도 성채 도시 2D 도트 월드 맵 렌더링
+    this.drawFantasyBiomeWorldMap(ctx, w, h);
 
-    // 3. 하단 1x9 대기석(Bench Row: 64px) 슬롯 및 기물 렌더링
+    // 2. 육각형 바닥 타일은 대기(정비 페이즈, !inCombat)일 때만 반투명 배치 가이드로 표시하고,
+    //    전투가 시작되면(inCombat === true) 완전히 숨겨서 실제 필드 위에서 싸우는 현장감을 극대화!
+    if (!params.inCombat) {
+      this.drawHexagonalBattlefieldGrid(
+        ctx,
+        params.inCombat,
+        params.hoveredHex,
+        params.isDraggingUnit
+      );
+    }
+
+    // 3. 하단 1x9 대기석(Bench Row) 슬롯 및 기물 렌더링
     this.drawBenchSlotsAndUnits(
       ctx,
       params.viewedParticipant,
@@ -1030,7 +1042,7 @@ export class PixelGameRenderer {
       params.hasPandoraBench
     );
 
-    // 4. 육각형 전장 위 기물들 렌더링 (Y-Sorting: screenY 오름차순 정렬)
+    // 4. 전장 위 기물들 렌더링 (Y-Sorting: screenY 오름차순 정렬)
     if (params.inCombat) {
       this.updateAndDrawCombatUnits(
         ctx,
@@ -1053,81 +1065,344 @@ export class PixelGameRenderer {
     ctx.restore();
   }
 
-  private drawDungeonArenaBackground(
+  /**
+   * 가상공간 느낌을 완전히 없애고 생동감 넘치는 판타지 숲 공터(FOREST) & 왕도 성채 광장(CASTLE_TOWN) 도트 배경을 렌더링
+   */
+  private drawFantasyBiomeWorldMap(
     ctx: CanvasRenderingContext2D,
     w: number,
     h: number
   ): void {
     const m = this.hexMetrics;
-
-    // 1) 심연의 마법 공간 배경 그라데이션
-    const grad = ctx.createRadialGradient(
-      m.centerX,
-      m.centerY,
-      20,
-      m.centerX,
-      m.centerY,
-      Math.max(w, h) * 0.78
-    );
-    grad.addColorStop(0, '#1e2742');
-    grad.addColorStop(0.55, '#0c1222');
-    grad.addColorStop(1, '#05070e');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-
-    // 2) 공중 부양 고대 결투장 석판(Floating Arena Sanctuary Slab)
     const boardSpanW = m.hexWidth * 7.65;
-    const slabLeft = Math.floor(m.centerX - boardSpanW * 0.5 - 12);
-    const slabRight = Math.ceil(m.centerX + boardSpanW * 0.5 + 12);
+    const slabLeft = Math.floor(m.centerX - boardSpanW * 0.5 - 14);
+    const slabRight = Math.ceil(m.centerX + boardSpanW * 0.5 + 14);
     const slabW = slabRight - slabLeft;
     const slabTop = Math.floor(m.boardTopY - 12);
     const slabBottom = Math.ceil(m.benchTopY + m.benchHeight + 12);
     const slabH = slabBottom - slabTop;
 
-    // 석판 하단 절벽 3D 두께 그림자
-    ctx.fillStyle = '#060913';
-    this.fillBeveledRect(ctx, slabLeft - 3, slabTop + 8, slabW + 6, slabH + 6, 12);
+    if (this.currentMapTheme === 'CASTLE_TOWN') {
+      this.drawImperialCastleTownMap(
+        ctx,
+        w,
+        h,
+        slabLeft,
+        slabTop,
+        slabRight,
+        slabBottom,
+        slabW,
+        slabH
+      );
+    } else {
+      this.drawElvenForestClearingMap(
+        ctx,
+        w,
+        h,
+        slabLeft,
+        slabTop,
+        slabRight,
+        slabBottom,
+        slabW,
+        slabH
+      );
+    }
+  }
 
-    ctx.fillStyle = '#11182b';
-    this.fillBeveledRect(ctx, slabLeft, slabTop, slabW, slabH, 10);
+  /**
+   * 테마 1: 🌲 판타지 요정의 숲 & 고대 왕도 가도 (햇살 비치는 잔디 공터, 시냇물, 아름드리 나무, 들꽃, 모닥불)
+   */
+  private drawElvenForestClearingMap(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    slabLeft: number,
+    slabTop: number,
+    slabRight: number,
+    slabBottom: number,
+    slabW: number,
+    slabH: number
+  ): void {
+    const m = this.hexMetrics;
 
-    // 석판 황금/룬 외곽 테두리
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(212, 175, 55, 0.45)';
-    this.strokeBeveledRect(ctx, slabLeft, slabTop, slabW, slabH, 10);
+    // 1) 외곽 깊은 숲 잔디 배경
+    const outerGrad = ctx.createRadialGradient(
+      m.centerX,
+      m.centerY,
+      30,
+      m.centerX,
+      m.centerY,
+      Math.max(w, h) * 0.75
+    );
+    outerGrad.addColorStop(0, '#35662d');
+    outerGrad.addColorStop(0.6, '#23471e');
+    outerGrad.addColorStop(1, '#142b12');
+    ctx.fillStyle = outerGrad;
+    ctx.fillRect(0, 0, w, h);
 
-    // 3) 적군(상단 0~3행)과 아군(하단 4~7행) 경계선 마법 균열 라인
-    const midY = m.originY + 3.5 * m.rowStepY;
-    const lineGrad = ctx.createLinearGradient(slabLeft + 14, midY, slabRight - 14, midY);
-    lineGrad.addColorStop(0, 'rgba(244, 63, 94, 0)');
-    lineGrad.addColorStop(0.25, 'rgba(244, 63, 94, 0.55)');
-    lineGrad.addColorStop(0.5, 'rgba(250, 204, 21, 0.85)');
-    lineGrad.addColorStop(0.75, 'rgba(56, 189, 248, 0.55)');
-    lineGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
-    ctx.strokeStyle = lineGrad;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(slabLeft + 16, midY);
-    ctx.lineTo(slabRight - 16, midY);
-    ctx.stroke();
+    // 2) 좌측/우측 숲속 맑은 시냇물(Stream)과 통나무 다리
+    const waterShimmer = Math.sin(this.globalAnimClockMs * 0.004) * 3;
+    const streamX = Math.max(48, slabLeft - 26);
+    ctx.fillStyle = '#1e6091';
+    ctx.fillRect(streamX - 10, 0, 18, h);
+    ctx.fillStyle = '#38a3a5';
+    for (let wy = 10; wy < h; wy += 28) {
+      ctx.fillRect(streamX - 6 + Math.round(waterShimmer * 0.4), wy, 8, 10);
+    }
+    // 시냇물 위 통나무 다리
+    ctx.fillStyle = '#7f4f24';
+    ctx.fillRect(streamX - 13, Math.floor(m.centerY - 18), 24, 36);
+    ctx.fillStyle = '#582f0e';
+    for (let by = -14; by <= 14; by += 7) {
+      ctx.fillRect(streamX - 13, Math.floor(m.centerY + by), 24, 2);
+    }
 
-    // 4) 결투장 4대 모서리 도트 횃불 화로(Animated Pixel Braziers)
-    const flicker = Math.sin(this.globalAnimClockMs * 0.015) * 2;
-    const corners = [
-      { x: slabLeft + 10, y: slabTop + 10, color: '#f43f5e' },
-      { x: slabRight - 10, y: slabTop + 10, color: '#f43f5e' },
-      { x: slabLeft + 10, y: slabBottom - 10, color: '#38bdf8' },
-      { x: slabRight - 10, y: slabBottom - 10, color: '#38bdf8' },
+    // 3) 중앙 전투 결투장: 따사로운 햇살이 내려앉은 숲속 공터(Sunlit Grass Clearing) + 돌담/통나무 경계
+    ctx.fillStyle = '#4a3520';
+    this.fillBeveledRect(ctx, slabLeft - 4, slabTop - 3, slabW + 8, slabH + 8, 14);
+
+    const fieldGrad = ctx.createRadialGradient(
+      m.centerX,
+      m.centerY,
+      15,
+      m.centerX,
+      m.centerY,
+      slabW * 0.65
+    );
+    fieldGrad.addColorStop(0, '#4f8a42');
+    fieldGrad.addColorStop(0.55, '#3d7033');
+    fieldGrad.addColorStop(1, '#2f5927');
+    ctx.fillStyle = fieldGrad;
+    this.fillBeveledRect(ctx, slabLeft, slabTop, slabW, slabH, 12);
+
+    // 공터 가장자리 자연스러운 황토 흙길 & 이끼 낀 돌담 테두리
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#8c6d46';
+    this.strokeBeveledRect(ctx, slabLeft + 2, slabTop + 2, slabW - 4, slabH - 4, 10);
+
+    // 4) 잔디밭 위 자연스러운 도트 잔디 결과 들꽃(노란/흰/하늘색 야생화), 조약돌 패치
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 7; c++) {
+        const seed = (r * 13 + c * 29) % 17;
+        const cx = m.originX + c * m.hexWidth + (r % 2 === 1 ? m.hexWidth * 0.5 : 0);
+        const cy = m.originY + r * m.rowStepY;
+
+        // 연한 잔디 패치
+        if (seed % 3 === 0) {
+          ctx.fillStyle = 'rgba(132, 204, 22, 0.16)';
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, m.hexRadius * 0.55, m.hexRadius * 0.35, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // 작은 도트 잔디 잎
+        ctx.fillStyle = '#284b20';
+        ctx.fillRect(cx - 10 + seed, cy + 4, 2, 4);
+        ctx.fillRect(cx - 8 + seed, cy + 3, 2, 5);
+
+        // 야생 들꽃 도트
+        if (seed === 2 || seed === 9 || seed === 14) {
+          const fx = Math.round(cx + (seed - 8) * 1.6);
+          const fy = Math.round(cy - 5 + (seed % 5));
+          ctx.fillStyle =
+            seed === 2 ? '#fef08a' : seed === 9 ? '#ffffff' : '#93c5fd';
+          ctx.fillRect(fx, fy, 3, 3);
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillRect(fx + 1, fy + 1, 1, 1);
+        }
+      }
+    }
+
+    // 5) 아군/적군 진영을 가르는 숲속 오솔길 & 작은 돌다리 경계선
+    const midY = Math.round(m.originY + 3.5 * m.rowStepY);
+    ctx.fillStyle = 'rgba(166, 124, 82, 0.38)';
+    ctx.fillRect(slabLeft + 10, midY - 3, slabW - 20, 6);
+    ctx.fillStyle = 'rgba(214, 184, 140, 0.45)';
+    for (let sx = slabLeft + 22; sx < slabRight - 22; sx += 26) {
+      ctx.fillRect(sx, midY - 2, 12, 4);
+    }
+
+    // 6) 상단(적 진영 뒤편) 고대 석조 성문 아치 & 전장 외곽 아름드리 도트 나무(Swaying Pixel Trees)
+    const sway = Math.round(Math.sin(this.globalAnimClockMs * 0.003) * 1.5);
+    const treePositions = [
+      { x: slabLeft - 8, y: slabTop + 18, scale: 1.0 },
+      { x: slabLeft - 12, y: slabTop + slabH * 0.48, scale: 1.1 },
+      { x: slabLeft - 8, y: slabBottom - 22, scale: 0.95 },
+      { x: slabRight + 10, y: slabTop + 20, scale: 1.05 },
+      { x: slabRight + 14, y: slabTop + slabH * 0.5, scale: 1.1 },
+      { x: slabRight + 10, y: slabBottom - 20, scale: 0.95 },
     ];
-    for (const c of corners) {
-      ctx.fillStyle = '#334155';
-      ctx.fillRect(c.x - 5, c.y - 3, 10, 7);
-      ctx.fillStyle = c.color;
+    for (const tp of treePositions) {
+      this.drawPixelForestTree(ctx, tp.x, tp.y, tp.scale, sway);
+    }
+
+    // 7) 결투장 네 모서리 따뜻한 야영지 모닥불(Campfire Lanterns)
+    const flicker = Math.sin(this.globalAnimClockMs * 0.015) * 1.8;
+    const campfires = [
+      { x: slabLeft + 12, y: slabTop + 12 },
+      { x: slabRight - 12, y: slabTop + 12 },
+      { x: slabLeft + 12, y: slabBottom - 12 },
+      { x: slabRight - 12, y: slabBottom - 12 },
+    ];
+    for (const cf of campfires) {
+      // 따뜻한 모닥불 불빛 후광
+      const glow = ctx.createRadialGradient(cf.x, cf.y, 2, cf.x, cf.y, 22);
+      glow.addColorStop(0, 'rgba(251, 191, 36, 0.45)');
+      glow.addColorStop(1, 'rgba(251, 191, 36, 0)');
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(c.x, c.y - 4, 4.5 + flicker * 0.35, 0, Math.PI * 2);
+      ctx.arc(cf.x, cf.y, 22, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 통나무 장작
+      ctx.fillStyle = '#582f0e';
+      ctx.fillRect(cf.x - 5, cf.y, 10, 4);
+      // 불꽃 도트
+      ctx.fillStyle = '#f97316';
+      ctx.beginPath();
+      ctx.arc(cf.x, cf.y - 3, 4 + flicker * 0.3, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#fef08a';
-      ctx.fillRect(c.x - 2, c.y - 6 - Math.round(flicker * 0.5), 4, 4);
+      ctx.fillRect(cf.x - 2, cf.y - 5 - Math.round(flicker * 0.4), 4, 4);
+    }
+  }
+
+  private drawPixelForestTree(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    scale: number,
+    sway: number
+  ): void {
+    const r = Math.round(14 * scale);
+    // 나무 그림자
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 6, r * 0.9, r * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 나무 기둥
+    ctx.fillStyle = '#5c3a21';
+    ctx.fillRect(x - 4, y - 6, 8, 12);
+
+    // 풍성한 3단 도트 수관(Foliage)
+    ctx.fillStyle = '#1b4332';
+    ctx.beginPath();
+    ctx.arc(x + sway * 0.5, y - 10, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#2d6a4f';
+    ctx.beginPath();
+    ctx.arc(x - 3 + sway, y - 13, r * 0.82, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#52b788';
+    ctx.beginPath();
+    ctx.arc(x - 4 + sway, y - 16, r * 0.48, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /**
+   * 테마 2: 🏰 신성 제국 왕도 대광장 (중세 판타지 성벽, 보도블록 광장, 왕국 깃발, 가로등 화로)
+   */
+  private drawImperialCastleTownMap(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    slabLeft: number,
+    slabTop: number,
+    slabRight: number,
+    slabBottom: number,
+    slabW: number,
+    slabH: number
+  ): void {
+    const m = this.hexMetrics;
+
+    // 1) 왕도 성곽 외곽 포장도로 및 해자 배경
+    const cityGrad = ctx.createRadialGradient(
+      m.centerX,
+      m.centerY,
+      30,
+      m.centerX,
+      m.centerY,
+      Math.max(w, h) * 0.78
+    );
+    cityGrad.addColorStop(0, '#4a443c');
+    cityGrad.addColorStop(0.65, '#2c2824');
+    cityGrad.addColorStop(1, '#1a1815');
+    ctx.fillStyle = cityGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    // 2) 상단 중세 왕도 성벽(Castle Battlements)과 왕국 깃발
+    const wallY = Math.max(30, slabTop - 16);
+    ctx.fillStyle = '#645d54';
+    ctx.fillRect(slabLeft - 20, wallY, slabW + 40, 16);
+    ctx.fillStyle = '#82796e';
+    for (let bx = slabLeft - 18; bx < slabRight + 16; bx += 18) {
+      ctx.fillRect(bx, wallY - 5, 11, 6);
+    }
+
+    // 3) 중앙 왕도 대광장 사암/화강암 보도블록 바닥
+    ctx.fillStyle = '#332e2a';
+    this.fillBeveledRect(ctx, slabLeft - 4, slabTop - 2, slabW + 8, slabH + 8, 12);
+
+    const plazaGrad = ctx.createRadialGradient(
+      m.centerX,
+      m.centerY,
+      15,
+      m.centerX,
+      m.centerY,
+      slabW * 0.65
+    );
+    plazaGrad.addColorStop(0, '#786f63');
+    plazaGrad.addColorStop(0.6, '#5e564c');
+    plazaGrad.addColorStop(1, '#474139');
+    ctx.fillStyle = plazaGrad;
+    this.fillBeveledRect(ctx, slabLeft, slabTop, slabW, slabH, 10);
+
+    // 보도블록 벽돌 결
+    ctx.strokeStyle = 'rgba(35, 30, 25, 0.32)';
+    ctx.lineWidth = 1;
+    const tileStepX = 28;
+    const tileStepY = 16;
+    for (let py = slabTop + 8; py < slabBottom - 8; py += tileStepY) {
+      const shift = ((Math.floor(py / tileStepY) % 2) * tileStepX) / 2;
+      for (let px = slabLeft + 10; px < slabRight - 18; px += tileStepX) {
+        ctx.strokeRect(px + shift, py, tileStepX - 2, tileStepY - 2);
+      }
+    }
+
+    // 광장 중앙 왕실 문장 카펫 라인 & 황금 테두리
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#eab308';
+    this.strokeBeveledRect(ctx, slabLeft + 2, slabTop + 2, slabW - 4, slabH - 4, 9);
+
+    const midY = Math.round(m.originY + 3.5 * m.rowStepY);
+    ctx.fillStyle = 'rgba(185, 28, 28, 0.35)';
+    ctx.fillRect(slabLeft + 14, midY - 4, slabW - 28, 8);
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.65)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(slabLeft + 14, midY);
+    ctx.lineTo(slabRight - 14, midY);
+    ctx.stroke();
+
+    // 4) 좌우 왕도 화단 & 성벽 깃발/황금 가로등 화로
+    const flicker = Math.sin(this.globalAnimClockMs * 0.015) * 1.8;
+    const braziers = [
+      { x: slabLeft + 12, y: slabTop + 12, bannerColor: '#dc2626' },
+      { x: slabRight - 12, y: slabTop + 12, bannerColor: '#dc2626' },
+      { x: slabLeft + 12, y: slabBottom - 12, bannerColor: '#2563eb' },
+      { x: slabRight - 12, y: slabBottom - 12, bannerColor: '#2563eb' },
+    ];
+    for (const bz of braziers) {
+      ctx.fillStyle = bz.bannerColor;
+      ctx.fillRect(bz.x - 4, bz.y - 2, 8, 12);
+      ctx.fillStyle = '#facc15';
+      ctx.fillRect(bz.x - 5, bz.y - 4, 10, 3);
+      ctx.fillStyle = '#fb923c';
+      ctx.beginPath();
+      ctx.arc(bz.x, bz.y - 6, 4 + flicker * 0.3, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 
@@ -1174,8 +1449,10 @@ export class PixelGameRenderer {
   }
 
   /**
-   * 5. 8x7 육각형(Odd-R Pointy-top) 2.5D 원근 비율(perspectiveRatio = 0.78),
-   *    타일 간 간격(gap = 2px), 하단 모서리 4px 두께 석재 입체 단면(3D Bevel Edge) 렌더링
+   * 대기(정비) 페이즈 전용 반투명 육각형 타일 가이드:
+   * - 아래에 깔린 판타지 숲 잔디밭/왕도 보도블록이 그대로 투과되어 보이도록 불투명 채우기를 제거하고
+   *   아군 진영(4~7행)은 은은한 마법진 라인으로, 적군 진영(0~3행)은 옅은 위치 표시선으로만 렌더링한다.
+   * - 전투 시작 시에는 호출되지 않아 바닥 타일이 완전히 사라진다.
    */
   private drawHexagonalBattlefieldGrid(
     ctx: CanvasRenderingContext2D,
@@ -1183,8 +1460,9 @@ export class PixelGameRenderer {
     hoveredHex: HexCoord | null,
     isDraggingUnit: boolean
   ): void {
+    if (inCombat) return;
+
     const m = this.hexMetrics;
-    const bevelDepth = 4;
     const innerRadius = Math.max(7, m.hexRadius - m.gapPx);
 
     for (let r = 0; r < HexGridMath.ROWS; r++) {
@@ -1192,29 +1470,11 @@ export class PixelGameRenderer {
       for (let c = 0; c < HexGridMath.COLS; c++) {
         const center = HexGridMath.hexToScreenCenter(r, c, m);
         const isHoveredAllySlot =
-          !inCombat &&
           hoveredHex !== null &&
           hoveredHex.row === r &&
           hoveredHex.col === c &&
           !isEnemyRow;
 
-        // 1) 하단 4px 두께의 어두운 석재 입체 단면(3D Bevel Edge)
-        const bottomPts = HexGridMath.getHexPolygonVertices(
-          center.x,
-          center.y + bevelDepth,
-          innerRadius,
-          m.perspectiveRatio
-        );
-        ctx.beginPath();
-        ctx.moveTo(bottomPts[0].x, bottomPts[0].y);
-        for (let i = 1; i < 6; i++) {
-          ctx.lineTo(bottomPts[i].x, bottomPts[i].y);
-        }
-        ctx.closePath();
-        ctx.fillStyle = isEnemyRow ? '#120810' : '#08111e';
-        ctx.fill();
-
-        // 2) 상단 2.5D 육각형 석판 표면 (perspectiveRatio = 0.78 적용)
         const topPts = HexGridMath.getHexPolygonVertices(
           center.x,
           center.y,
@@ -1228,52 +1488,36 @@ export class PixelGameRenderer {
         }
         ctx.closePath();
 
+        // 배경 잔디/돌바닥이 훤히 비치도록 아주 옅은 반투명 하이라이트만 적용
         if (isHoveredAllySlot) {
-          ctx.fillStyle = '#2d4b6e';
-        } else if (isEnemyRow) {
-          ctx.fillStyle = (r + c) % 2 === 0 ? '#271726' : '#20121f';
-        } else {
-          ctx.fillStyle = (r + c) % 2 === 0 ? '#1a2a44' : '#152238';
+          ctx.fillStyle = 'rgba(250, 204, 21, 0.35)';
+          ctx.fill();
+        } else if (!isEnemyRow) {
+          ctx.fillStyle = isDraggingUnit
+            ? 'rgba(56, 189, 248, 0.16)'
+            : 'rgba(15, 23, 42, 0.14)';
+          ctx.fill();
         }
-        ctx.fill();
 
-        // 3) 육각형 룬 테두리
-        ctx.lineWidth = isHoveredAllySlot ? 2.5 : 1.4;
+        // 육각형 테두리 가이드
+        ctx.lineWidth = isHoveredAllySlot ? 2.5 : isEnemyRow ? 1.0 : 1.5;
         if (isHoveredAllySlot) {
           ctx.strokeStyle = '#ffea00';
         } else if (isEnemyRow) {
-          ctx.strokeStyle = 'rgba(220, 60, 90, 0.48)';
-        } else if (isDraggingUnit && !inCombat) {
-          ctx.strokeStyle = 'rgba(76, 201, 240, 0.85)';
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+        } else if (isDraggingUnit) {
+          ctx.strokeStyle = 'rgba(125, 211, 252, 0.85)';
         } else {
           ctx.strokeStyle =
             r === 4
-              ? 'rgba(244, 196, 48, 0.62)'
-              : 'rgba(64, 196, 255, 0.45)';
+              ? 'rgba(253, 224, 71, 0.52)'
+              : 'rgba(255, 255, 255, 0.35)';
         }
-        ctx.stroke();
-
-        // 4) 타일 내부 미세 고대 룬 문양 내곽선
-        const runePts = HexGridMath.getHexPolygonVertices(
-          center.x,
-          center.y,
-          innerRadius * 0.68,
-          m.perspectiveRatio
-        );
-        ctx.beginPath();
-        ctx.moveTo(runePts[0].x, runePts[0].y);
-        for (let i = 1; i < 6; i++) {
-          ctx.lineTo(runePts[i].x, runePts[i].y);
-        }
-        ctx.closePath();
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = isEnemyRow
-          ? 'rgba(255, 100, 120, 0.12)'
-          : 'rgba(120, 220, 255, 0.14)';
         ctx.stroke();
       }
     }
   }
+
 
   /**
    * 아군 7행 바로 아래에 연결된 '석조 대기석 단상(1x9 Bench Sanctuary)' 및 기물 렌더링
