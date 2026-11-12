@@ -1,6 +1,7 @@
 // src/CombatEngine.ts
 
 import { ITEM_DEFINITIONS, TraitId, UNIT_TEMPLATES } from './GameData';
+import { HexGridMath } from './HexGridMath';
 import { Participant, UnitInstance } from './Participant';
 import {
   CombatDamageType,
@@ -448,23 +449,12 @@ export class CombatEngine implements SkillCombatContext {
       row: unit.row,
       col: unit.col,
       g: 0,
-      h: this.chebyshevDistance(unit.row, unit.col, target.row, target.col),
+      h: HexGridMath.hexDistance(unit.row, unit.col, target.row, target.col),
       f: 0,
       parent: null,
     };
     startNode.f = startNode.g + startNode.h;
     openList.push(startNode);
-
-    const directions = [
-      [-1, 0],
-      [1, 0],
-      [0, -1],
-      [0, 1],
-      [-1, -1],
-      [-1, 1],
-      [1, -1],
-      [1, 1],
-    ];
 
     let bestGoalNode: AStarNode | null = null;
 
@@ -476,8 +466,8 @@ export class CombatEngine implements SkillCombatContext {
       if (closedSet.has(currentKey)) continue;
       closedSet.add(currentKey);
 
-      // 현재 노드가 타겟을 공격할 수 있는 사거리 내에 도달했다면 경로 완성
-      const distToTarget = this.chebyshevDistance(
+      // 현재 노드가 타겟을 공격할 수 있는 육각형 사거리(Hex Distance) 내에 도달했다면 경로 완성
+      const distToTarget = HexGridMath.hexDistance(
         current.row,
         current.col,
         target.row,
@@ -488,19 +478,15 @@ export class CombatEngine implements SkillCombatContext {
         break;
       }
 
-      for (const [dr, dc] of directions) {
-        const nr = current.row + dr;
-        const nc = current.col + dc;
+      // 육각형 6방향 인접 이웃 탐색 (짝수/홀수 행 오프셋 자동 반영)
+      const hexNeighbors = HexGridMath.getHexNeighbors(
+        current.row,
+        current.col,
+        CombatEngine.GRID_ROWS,
+        CombatEngine.GRID_COLS
+      );
 
-        if (
-          nr < 0 ||
-          nr >= CombatEngine.GRID_ROWS ||
-          nc < 0 ||
-          nc >= CombatEngine.GRID_COLS
-        ) {
-          continue;
-        }
-
+      for (const { row: nr, col: nc } of hexNeighbors) {
         const neighborKey = `${nr},${nc}`;
         if (closedSet.has(neighborKey)) continue;
 
@@ -509,9 +495,11 @@ export class CombatEngine implements SkillCombatContext {
           continue;
         }
 
-        const stepCost = dr !== 0 && dc !== 0 ? 1.15 : 1.0; // 직선 이동을 미세하게 선호
+        const stepCost = 1.0;
         const gScore = current.g + stepCost;
-        const hScore = this.chebyshevDistance(nr, nc, target.row, target.col);
+        const hScore =
+          HexGridMath.hexDistance(nr, nc, target.row, target.col) +
+          HexGridMath.hexEuclideanDistance(nr, nc, target.row, target.col) * 0.05;
         const fScore = gScore + hScore;
 
         const existing = openList.find((n) => n.row === nr && n.col === nc);
@@ -535,7 +523,7 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // 만약 A*로 사거리 내 빈 타일을 찾았다면 첫 번째 이동 스텝 추출
+    // 만약 6방향 A*로 사거리 내 빈 육각형 타일을 찾았다면 첫 번째 이동 스텝 추출
     if (bestGoalNode) {
       let stepNode: AStarNode = bestGoalNode;
       while (stepNode.parent && stepNode.parent.parent !== null) {
@@ -548,32 +536,40 @@ export class CombatEngine implements SkillCombatContext {
       return { row: stepNode.row, col: stepNode.col };
     }
 
-    // 사거리 타일이 모두 둘러싸여 막혀있는 경우: 인접 8방향 중 타겟과 가장 가까워지는 빈 칸으로 1보 전진
+    // 사거리 타일이 모두 둘러싸여 막혀있는 경우: 인접 6방향 육각형 중 타겟과 가장 가까워지는 빈 칸으로 포위 이동
     let fallbackStep: { row: number; col: number } | null = null;
-    let bestFallbackDist = this.chebyshevDistance(
+    let bestFallbackHexDist = HexGridMath.hexDistance(
+      unit.row,
+      unit.col,
+      target.row,
+      target.col
+    );
+    let bestFallbackEuclid = HexGridMath.hexEuclideanDistance(
       unit.row,
       unit.col,
       target.row,
       target.col
     );
 
-    for (const [dr, dc] of directions) {
-      const nr = unit.row + dr;
-      const nc = unit.col + dc;
-      if (
-        nr < 0 ||
-        nr >= CombatEngine.GRID_ROWS ||
-        nc < 0 ||
-        nc >= CombatEngine.GRID_COLS
-      ) {
-        continue;
-      }
+    const directNeighbors = HexGridMath.getHexNeighbors(
+      unit.row,
+      unit.col,
+      CombatEngine.GRID_ROWS,
+      CombatEngine.GRID_COLS
+    );
+
+    for (const { row: nr, col: nc } of directNeighbors) {
       const key = `${nr},${nc}`;
       if (occupiedTiles.has(key) || reservedTiles.has(key)) continue;
 
-      const d = this.chebyshevDistance(nr, nc, target.row, target.col);
-      if (d < bestFallbackDist) {
-        bestFallbackDist = d;
+      const dHex = HexGridMath.hexDistance(nr, nc, target.row, target.col);
+      const dEuc = HexGridMath.hexEuclideanDistance(nr, nc, target.row, target.col);
+      if (
+        dHex < bestFallbackHexDist ||
+        (dHex === bestFallbackHexDist && dEuc < bestFallbackEuclid)
+      ) {
+        bestFallbackHexDist = dHex;
+        bestFallbackEuclid = dEuc;
         fallbackStep = { row: nr, col: nc };
       }
     }
@@ -1221,25 +1217,19 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    const candidates = [
-      [target.row + (mover.team === 'HOME' ? -1 : 1), target.col],
-      [target.row, target.col - 1],
-      [target.row, target.col + 1],
-      [target.row + (mover.team === 'HOME' ? 1 : -1), target.col],
-      [target.row - 1, target.col - 1],
-      [target.row - 1, target.col + 1],
-      [target.row + 1, target.col - 1],
-      [target.row + 1, target.col + 1],
-    ];
+    // 타겟 주변 6방향 육각형 이웃 중 적진 깊숙한 방향(HOME이면 row가 작은 쪽, AWAY이면 row가 큰 쪽) 우선 정렬
+    const hexNeighbors = HexGridMath.getHexNeighbors(
+      target.row,
+      target.col,
+      CombatEngine.GRID_ROWS,
+      CombatEngine.GRID_COLS
+    );
+    hexNeighbors.sort((a, b) =>
+      mover.team === 'HOME' ? a.row - b.row : b.row - a.row
+    );
 
-    for (const [r, c] of candidates) {
-      if (
-        r >= 0 &&
-        r < CombatEngine.GRID_ROWS &&
-        c >= 0 &&
-        c < CombatEngine.GRID_COLS &&
-        !occupied.has(`${r},${c}`)
-      ) {
+    for (const { row: r, col: c } of hexNeighbors) {
+      if (!occupied.has(`${r},${c}`)) {
         return { row: r, col: c };
       }
     }
@@ -1406,20 +1396,31 @@ export class CombatEngine implements SkillCombatContext {
 
   private findNearestEnemy(unit: CombatUnit): CombatUnit | null {
     let bestTarget: CombatUnit | null = null;
-    let bestDist = 9999;
+    let bestHexDist = 9999;
+    let bestEuclidDist = 9999;
 
     for (const other of this.units) {
       if (other.team === unit.team) continue;
       if (other.currentHp <= 0 || other.isReviving) continue;
 
-      const dist = this.chebyshevDistance(
+      const hexDist = HexGridMath.hexDistance(
         unit.row,
         unit.col,
         other.row,
         other.col
       );
-      if (dist < bestDist) {
-        bestDist = dist;
+      const euclidDist = HexGridMath.hexEuclideanDistance(
+        unit.row,
+        unit.col,
+        other.row,
+        other.col
+      );
+      if (
+        hexDist < bestHexDist ||
+        (hexDist === bestHexDist && euclidDist < bestEuclidDist)
+      ) {
+        bestHexDist = hexDist;
+        bestEuclidDist = euclidDist;
         bestTarget = other;
       }
     }
@@ -1433,7 +1434,7 @@ export class CombatEngine implements SkillCombatContext {
     r2: number,
     c2: number
   ): number {
-    return Math.max(Math.abs(r1 - r2), Math.abs(c1 - c2));
+    return HexGridMath.hexDistance(r1, c1, r2, c2);
   }
 
   private checkCombatEndCondition(): void {

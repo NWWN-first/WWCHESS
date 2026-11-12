@@ -6,221 +6,203 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#0d0f18" />
+    <meta name="theme-color" content="#070911" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <title>WWCHESS - 판타지 오토배틀러 (8인 공유 풀 & 도파민 엔진)</title>
+    <title>WWCHESS - 헥사곤 도트 판타지 오토배틀러</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div id="app" class="app-root">
-      <!-- 상단 HUD 바: 라운드/스테이지, 페이즈 상태, 랭크/LP 뱃지, 배너 알림, 공유 풀 & 3성 차단 인스펙터 버튼 -->
+      <!-- 100vw x 100vh 전체화면 픽셀 아트 + 육각형 전장 단일 게임 뷰포트 캔버스 -->
+      <canvas id="fx-canvas" class="game-viewport-canvas"></canvas>
+
+      <!-- 전장 위 드랍된 전리품 구슬(Loot Orbs) 오버레이 레이어 -->
+      <div id="loot-orb-layer" class="loot-orb-layer"></div>
+
+      <!-- 상단 바 (Top HUD): 메탈릭 골드 베젤 & 보석 질감 UI -->
       <header id="top-hud" class="top-hud">
         <div class="hud-left">
-          <div id="rank-badge-btn" class="rank-badge" title="터치하여 랭크/AI 난이도 설정">
-            <span id="rank-icon">🥈</span>
-            <span id="rank-text">실버 20 LP</span>
+          <div id="rank-badge-btn" class="gem-pill rank-emblem" role="button" tabindex="0">
+            <span id="rank-icon" class="gem-icon">🥈</span>
+            <span id="rank-text" class="gem-text">실버 20 LP</span>
           </div>
-          <div id="round-badge" class="round-badge">
-            <span id="round-label">1-1</span>
-            <span id="phase-label" class="phase-tag">정비 페이즈</span>
+
+          <div id="round-badge" class="gem-pill stage-emblem">
+            <span id="round-label" class="stage-num">1-1</span>
+            <span id="phase-label" class="phase-ribbon">🛠️ 정비</span>
+          </div>
+
+          <div id="deploy-counter" class="gem-pill deploy-emblem">
+            ⚔️ 1 / 1
           </div>
         </div>
 
-        <div id="banner-ticker" class="banner-ticker">
-          판타지 오토배틀러 8인 로비에 오신 것을 환영합니다!
+        <!-- 중앙 라운드 상태 & 알림 배너 -->
+        <div class="hud-center">
+          <div id="banner-ticker" class="banner-ticker">
+            판타지 헥사곤 오토배틀러 8인 로비에 오신 것을 환영합니다!
+          </div>
+          <div id="opponent-indicator" class="opponent-sub">대기 중</div>
         </div>
 
+        <!-- 우측 공유 풀 도감 & 전투 배속/스킵 & 새 게임 보석 아이콘 버튼 -->
         <div class="hud-right">
-          <button id="pool-inspector-btn" class="hud-btn inspector-btn" type="button">
-            📊 공유 풀 &amp; 3성 차단 인스펙터
-          </button>
-          <button id="new-game-btn" class="hud-btn restart-btn" type="button">
-            🔄 새 게임
-          </button>
+          <div id="combat-speed-controls" class="speed-gem-group hidden">
+            <div id="speed-1x-btn" class="rune-icon-btn active" role="button" tabindex="0">
+              1x
+            </div>
+            <div id="speed-2x-btn" class="rune-icon-btn" role="button" tabindex="0">
+              2x
+            </div>
+            <div id="skip-combat-btn" class="rune-icon-btn skip-gem" role="button" tabindex="0">
+              ⚡스킵
+            </div>
+          </div>
+
+          <div id="pool-inspector-btn" class="rune-icon-btn gold-gem" role="button" tabindex="0" title="공유 풀 & 3성 차단 도감">
+            📊 풀 도감
+          </div>
+
+          <div id="new-game-btn" class="rune-icon-btn ruby-gem" role="button" tabindex="0" title="새 게임 시작">
+            🔄
+          </div>
         </div>
       </header>
 
-      <!-- 상단 단기 터치(Tap) 상세 툴팁 팝업 바 -->
-      <div id="tap-tooltip-bar" class="tap-tooltip-bar hidden">
-        <div id="tap-tooltip-content" class="tap-tooltip-content"></div>
-        <button id="tap-tooltip-close" class="tooltip-close-btn" type="button">✕</button>
+      <!-- AI 봇 정찰(Scouting) 카메라 활성 배너 -->
+      <div id="scouting-banner" class="scouting-banner hidden">
+        <span id="scouting-target-text">🔍 AI 봇 육각형 전장 정찰 중</span>
+        <div id="return-home-btn" class="rune-action-pill return-pill" role="button" tabindex="0">
+          🏠 내 진영 복귀
+        </div>
       </div>
 
-      <!-- 중앙 메인 워크스페이스: 좌측(시너지/금고/아이템/복제기) + 중앙(8x7 전장 & 구슬 & 1x9 대기석) + 우측(8인 순위표 & 정찰) -->
-      <main class="main-arena-layout">
-        <!-- 좌측 패널: 활성화 시너지, 황금 고블린 금고 스택, 보유 증강체, 아이템 보관함, 챔피언 복제기 -->
-        <aside class="left-panel">
-          <div id="goblin-vault-box" class="goblin-vault-box">
-            <div class="vault-title">🪙 황금 고블린 금고</div>
-            <div id="goblin-vault-stacks" class="vault-stacks">0 스택</div>
-            <div class="vault-sub">패배 시 누적 · 승리 시 대폭발!</div>
-          </div>
+      <!-- 단기 터치(Short Tap) 상세 툴팁 플로팅 팝업 -->
+      <div id="tap-tooltip-bar" class="tap-tooltip-bar hidden">
+        <div id="tap-tooltip-content" class="tap-tooltip-content"></div>
+        <div id="tap-tooltip-close" class="tooltip-close-gem" role="button" tabindex="0">✕</div>
+      </div>
 
-          <div class="panel-section">
-            <div class="section-header">✨ 활성 시너지 (탭하여 상세)</div>
-            <div id="synergy-list" class="synergy-list"></div>
-          </div>
+      <!-- 좌측 플로팅 시너지 독 (Floating Synergy Dock - 반투명 블러 육각형 뱃지) & 아이템/고블린 금고 독 -->
+      <aside class="left-floating-dock">
+        <div id="goblin-vault-box" class="goblin-vault-gem">
+          <span class="vault-icon">🪙</span>
+          <span id="goblin-vault-stacks" class="vault-stacks">0</span>
+        </div>
 
-          <div class="panel-section">
-            <div class="section-header">🔮 보유 증강체</div>
-            <div id="augment-list" class="augment-list"></div>
-          </div>
+        <!-- 육각형 시너지 뱃지 리스트 -->
+        <div id="synergy-list" class="hex-synergy-dock"></div>
 
-          <div class="panel-section item-section">
-            <div class="section-header">
-              🎒 아이템 &amp; 복제기 (기물로 드래그)
+        <!-- 보유 증강체 미니 룬 아이콘 -->
+        <div id="augment-list" class="mini-augment-dock"></div>
+
+        <!-- 챔피언 복제기 & 아이템 슬롯 (드래그하여 기물에 장착) -->
+        <div class="item-orb-rack">
+          <div id="duplicator-slot-wrap" class="duplicator-slot-wrap"></div>
+          <div id="item-bench-grid" class="item-bench-grid"></div>
+        </div>
+      </aside>
+
+      <!-- 우측 8인 로비 컴팩트 미니 탭 (Collapsible Player List & Scouting Camera Switch) -->
+      <aside class="right-player-dock">
+        <div id="leaderboard-list" class="compact-player-tabs"></div>
+      </aside>
+
+      <!-- 판도라의 대기석 활성 안내 뱃지 -->
+      <div id="pandora-indicator" class="pandora-floating-tag hidden">
+        🎲 우측 3칸: 판도라 변신 슬롯
+      </div>
+
+      <!-- 하단 상점 드로어 (Bottom Shop Dock) -->
+      <footer id="bottom-shop-bar" class="bottom-shop-dock">
+        <!-- 좌측 레벨/XP 게이지 & 큼직한 [경험치 구매], [리롤] 황금/룬석 버튼 -->
+        <div class="dock-left-controls">
+          <div class="econ-status-strip">
+            <div class="level-gem-box">
+              <span id="player-level-text" class="lvl-title">Lv.1</span>
+              <span id="player-xp-text" class="xp-caption">XP 0/2</span>
             </div>
-            <div id="duplicator-slot-wrap" class="duplicator-slot-wrap"></div>
-            <div id="item-bench-grid" class="item-bench-grid"></div>
-          </div>
-        </aside>
-
-        <!-- 중앙 전장 영역: 정찰 배너 + 8x7 그리드(적 4x7 + 아군 4x7) + Canvas 파티클/이펙트 레이어 + 1x9 대기석 -->
-        <section class="center-board-section">
-          <div id="scouting-banner" class="scouting-banner hidden">
-            <span id="scouting-target-text">🔍 AI 봇 보드 정찰 중</span>
-            <button id="return-home-btn" class="return-home-btn" type="button">
-              🏠 내 보드로 복귀
-            </button>
-          </div>
-
-          <div id="board-stage-wrapper" class="board-stage-wrapper">
-            <div class="board-status-row">
-              <span id="deploy-counter" class="deploy-counter">배치 인원: 1 / 1</span>
-              <span id="opponent-indicator" class="opponent-indicator">대기 중</span>
+            <div class="gold-gem-box">
+              <span id="player-gold-text" class="gold-title">🪙 10G</span>
+              <span id="player-interest-text" class="interest-caption">+1G</span>
             </div>
-
-            <!-- 8행 x 7열 직교 그리드 + 전리품 구슬 레이어 + Canvas VFX 오버레이 -->
-            <div id="battlefield-container" class="battlefield-container">
-              <div id="board-grid" class="board-grid"></div>
-              <div id="loot-orb-layer" class="loot-orb-layer"></div>
-              <canvas id="fx-canvas" class="fx-canvas"></canvas>
-            </div>
-
-            <!-- 1x9 대기석 (우측 3칸 판도라의 대기석 표시 지원) -->
-            <div class="bench-wrapper">
-              <div class="bench-label-row">
-                <span>대기석 (1x9) — 기물을 드래그하여 배치/교체 또는 상점으로 끌어 판매</span>
-                <span id="pandora-indicator" class="pandora-indicator hidden">
-                  🎲 우측 3칸: 판도라의 대기석 변신 슬롯
-                </span>
-              </div>
-              <div id="bench-grid" class="bench-grid"></div>
-            </div>
-          </div>
-        </section>
-
-        <!-- 우측 패널: 8인 실시간 순위표 & AI 페르소나 뱃지 & 보드 정찰(Scouting) 스위치 -->
-        <aside class="right-panel">
-          <div class="section-header">🏆 8인 생존 현황 (터치하여 정찰)</div>
-          <div id="leaderboard-list" class="leaderboard-list"></div>
-        </aside>
-      </main>
-
-      <!-- 하단 상점 및 컨트롤 바 -->
-      <footer id="bottom-shop-bar" class="bottom-shop-bar">
-        <!-- 좌측 경제/레벨업/리롤 컨트롤 -->
-        <div class="shop-controls-left">
-          <div class="player-econ-stats">
-            <div class="stat-pill level-pill">
-              <span id="player-level-text">Lv.1</span>
-              <span id="player-xp-text" class="xp-sub">XP 0/2</span>
-            </div>
-            <div class="stat-pill gold-pill">
-              <span id="player-gold-text">🪙 10 G</span>
-              <span id="player-interest-text" class="interest-sub">(이자 +1G)</span>
+            <div id="lock-shop-btn" class="lock-gem-btn" role="button" tabindex="0" title="상점 잠금 전환">
+              🔓
             </div>
           </div>
 
-          <div class="econ-buttons-row">
-            <button id="buy-xp-btn" class="action-btn xp-btn" type="button">
-              ⬆️ 경험치 구매 (4G)
-            </button>
-            <button id="reroll-btn" class="action-btn reroll-btn" type="button">
-              🎲 상점 리롤 (2G)
-            </button>
-            <button id="lock-shop-btn" class="action-btn lock-btn" type="button">
-              🔓 잠금 해제됨
-            </button>
+          <div class="big-rune-buttons">
+            <div id="buy-xp-btn" class="rune-stone-btn sapphire-rune" role="button" tabindex="0">
+              <span class="btn-main-label">⬆️ 레벨업</span>
+              <span class="btn-sub-cost">4 골드</span>
+            </div>
+            <div id="reroll-btn" class="rune-stone-btn amber-rune" role="button" tabindex="0">
+              <span class="btn-main-label">🎲 리롤</span>
+              <span class="btn-sub-cost">2 골드</span>
+            </div>
           </div>
         </div>
 
-        <!-- 중앙 5칸 상점 슬롯 (기물 드래그 시 붉은색 판매 드롭존으로 전환) -->
-        <div id="shop-cards-wrapper" class="shop-cards-wrapper">
+        <!-- 중앙 5장 도트 일러스트 챔피언 카드 슬롯 (드래그 중 판매 드롭존으로 전환) -->
+        <div id="shop-cards-wrapper" class="dock-center-cards">
+          <div id="shop-odds-bar" class="shop-odds-strip"></div>
           <div id="shop-cards-container" class="shop-cards-container"></div>
           <div id="sell-dropzone-overlay" class="sell-dropzone-overlay hidden">
             <div id="sell-dropzone-text" class="sell-dropzone-text">
-              💰 여기에 놓아 기물 판매 (+1 골드)
+              💰 여기에 놓아 기물 판매 (+1G)
             </div>
           </div>
         </div>
 
-        <!-- 우측 전투 시작 & 배속/스킵 컨트롤 -->
-        <div class="shop-controls-right">
-          <div id="shop-odds-bar" class="shop-odds-bar"></div>
-          <button id="start-combat-btn" class="combat-main-btn" type="button">
-            ⚔️ 전투 시작!
-          </button>
-          <div id="combat-speed-controls" class="combat-speed-controls hidden">
-            <button id="speed-1x-btn" class="speed-btn active" type="button">
-              1x 속도
-            </button>
-            <button id="speed-2x-btn" class="speed-btn" type="button">
-              2x 속도
-            </button>
-            <button id="skip-combat-btn" class="speed-btn skip-btn" type="button">
-              ⚡ 즉시 결과 스킵
-            </button>
+        <!-- 우측 전투 시작 크리스탈 버튼 -->
+        <div class="dock-right-combat">
+          <div id="start-combat-btn" class="start-battle-crystal" role="button" tabindex="0">
+            <span class="sword-emblem">⚔️</span>
+            <span class="battle-label">전투 시작</span>
           </div>
         </div>
       </footer>
 
-      <!-- 모달 1: 증강체 선택 모달 (2-1, 3-2, 4-2) -->
+      <!-- 모달 1: 고대 증강체 선택 모달 (2-1, 3-2, 4-2) -->
       <div id="augment-modal" class="modal-backdrop hidden">
-        <div class="modal-card augment-modal-card">
-          <h2 id="augment-modal-title" class="modal-title">✨ 고대 증강체 선택</h2>
-          <p class="modal-subtitle">
-            덱의 운명을 바꿀 증강체 1개를 선택하세요 (카드별 1회 리롤 가능)
-          </p>
+        <div class="fantasy-modal-frame augment-modal-card">
+          <div class="modal-crown-title" id="augment-modal-title">✨ 고대 룬 증강체 선택</div>
+          <div class="modal-sub-caption">전장의 판도를 뒤흔들 룬 증강체 1개를 각인하세요 (카드별 1회 리롤)</div>
           <div id="augment-cards-row" class="augment-cards-row"></div>
         </div>
       </div>
 
       <!-- 모달 2: 운명의 모루 선택 모달 (2-4, 3-4, 4-4) -->
       <div id="anvil-modal" class="modal-backdrop hidden">
-        <div class="modal-card anvil-modal-card">
-          <h2 class="modal-title">⚒️ 운명의 모루 (무료 보물 선택)</h2>
-          <p class="modal-subtitle">원하는 보물 1개를 선택하여 즉시 획득하세요!</p>
+        <div class="fantasy-modal-frame anvil-modal-card">
+          <div class="modal-crown-title">⚒️ 운명의 황금 모루</div>
+          <div class="modal-sub-caption">원하는 유물 또는 고코스트 기물 1개를 무료로 제련하세요!</div>
           <div id="anvil-cards-row" class="augment-cards-row"></div>
         </div>
       </div>
 
-      <!-- 모달 3: 실시간 공유 기물 풀 & 3성 차단 인스펙터 모달 -->
+      <!-- 모달 3: 8인 공유 기물 풀 & 3성 차단 실시간 도감 모달 -->
       <div id="pool-inspector-modal" class="modal-backdrop hidden">
-        <div class="modal-card inspector-modal-card">
+        <div class="fantasy-modal-frame inspector-modal-card">
           <div class="modal-header-row">
-            <h2 class="modal-title">
-              📊 8인 단일 공유 기물 풀 &amp; 3성 차단 실시간 인스펙터
-            </h2>
-            <button id="close-inspector-btn" class="modal-close-btn" type="button">
-              닫기 ✕
-            </button>
+            <div class="modal-crown-title">📊 8인 공유 풀 &amp; 3성 차단 실시간 도감</div>
+            <div id="close-inspector-btn" class="rune-icon-btn ruby-gem" role="button" tabindex="0">닫기 ✕</div>
           </div>
-          <p class="modal-subtitle">
-            1코(22), 2코(20), 3코(17), 4코(10), 5코(9) 수학적 보존 법칙 및 3성 달성 시 상점 잠금 상태가 실시간으로 표시됩니다.
-          </p>
+          <div class="modal-sub-caption">
+            1코(22) · 2코(20) · 3코(17) · 4코(10) · 5코(9) 수학적 보존 법칙 및 3성 달성 시 상점 영구 차단 상태
+          </div>
           <div class="inspector-table-scroll">
             <table class="inspector-table">
               <thead>
                 <tr>
                   <th>코스트</th>
                   <th>기물명</th>
-                  <th>최대 재고</th>
-                  <th>현재 풀 잔여</th>
-                  <th>8인 보유 합계</th>
-                  <th>상점 예약 중</th>
-                  <th>내 3성 상점 차단</th>
+                  <th>최대 풀</th>
+                  <th>풀 잔여</th>
+                  <th>8인 보유</th>
+                  <th>상점 예약</th>
+                  <th>내 3성 차단</th>
                 </tr>
               </thead>
               <tbody id="pool-inspector-tbody"></tbody>
@@ -229,32 +211,30 @@
         </div>
       </div>
 
-      <!-- 모달 4: 랭크/AI 티어 설정 및 전적 모달 -->
+      <!-- 모달 4: 플레이어 티어 엠블럼 & AI 지능 설정 모달 -->
       <div id="rank-modal" class="modal-backdrop hidden">
-        <div class="modal-card rank-modal-card">
+        <div class="fantasy-modal-frame rank-modal-card">
           <div class="modal-header-row">
-            <h2 class="modal-title">👑 플레이어 랭크 &amp; AI 지능 연동 설정</h2>
-            <button id="close-rank-modal-btn" class="modal-close-btn" type="button">
-              닫기 ✕
-            </button>
+            <div class="modal-crown-title">👑 플레이어 티어 &amp; AI 지능 연동</div>
+            <div id="close-rank-modal-btn" class="rune-icon-btn ruby-gem" role="button" tabindex="0">닫기 ✕</div>
           </div>
           <div id="rank-profile-summary" class="rank-profile-summary"></div>
-          <div class="tier-selector-grid" id="tier-selector-grid"></div>
+          <div id="tier-selector-grid" class="tier-selector-grid"></div>
         </div>
       </div>
 
-      <!-- 모달 5: 게임 종료 및 LP 정산 모달 -->
+      <!-- 모달 5: 게임 종료 & 랭크 LP 정산 모달 -->
       <div id="gameover-modal" class="modal-backdrop hidden">
-        <div class="modal-card gameover-modal-card">
-          <h2 id="gameover-title" class="modal-title">🏆 게임 종료!</h2>
+        <div class="fantasy-modal-frame gameover-modal-card">
+          <div id="gameover-title" class="modal-crown-title">🏆 전장 정산 완료!</div>
           <div id="gameover-summary" class="gameover-summary"></div>
-          <button id="play-again-btn" class="combat-main-btn" type="button">
-            🔥 다음 판 시작하기
-          </button>
+          <div id="play-again-btn" class="start-battle-crystal" role="button" tabindex="0" style="margin: 12px auto 0; width: 200px; height: 48px;">
+            🔥 다음 매치 시작
+          </div>
         </div>
       </div>
 
-      <!-- 터치 드래그 고스트 엘리먼트 -->
+      <!-- 모바일 터치 드래그 고스트 아바타 -->
       <div id="drag-ghost" class="drag-ghost hidden"></div>
     </div>
 

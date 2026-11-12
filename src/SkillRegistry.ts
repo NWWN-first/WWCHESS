@@ -1,6 +1,7 @@
 // src/SkillRegistry.ts
 
 import { CostTier, ItemId, SkillType, StarLevel, TraitId, UNIT_TEMPLATES } from './GameData';
+import { HexGridMath } from './HexGridMath';
 
 export type CombatTeam = 'HOME' | 'AWAY';
 
@@ -153,7 +154,7 @@ function chebyshevDist(
   r2: number,
   c2: number
 ): number {
-  return Math.max(Math.abs(r1 - r2), Math.abs(c1 - c2));
+  return HexGridMath.hexDistance(r1, c1, r2, c2);
 }
 
 function getSkillPrimaryValue(caster: CombatUnit): number {

@@ -11,54 +11,17 @@ import {
   XP_REQUIRED_BY_LEVEL,
 } from './GameData';
 import { GameLoopManager } from './GameLoopManager';
+import { HexCoord, HexGridMath } from './HexGridMath';
 import { AIPersona, Participant, UnitInstance } from './Participant';
+import { PixelGameRenderer } from './PixelGameRenderer';
 import {
   RANK_TIER_BADGE_ICONS,
   RANK_TIER_KOREAN_NAMES,
   RANK_TIERS_ORDERED,
   RankTier,
 } from './RankManager';
-import { CombatEvent, CombatUnit } from './SkillRegistry';
+import { CombatUnit } from './SkillRegistry';
 import { SynergyEngine } from './SynergyEngine';
-
-// ============================================================================
-// 시각 이펙트(VFX) 파티클 & 플로팅 텍스트 인터페이스
-// ============================================================================
-
-interface FloatingTextFX {
-  x: number;
-  y: number;
-  vy: number;
-  text: string;
-  color: string;
-  fontSize: number;
-  alpha: number;
-  lifeMs: number;
-  maxLifeMs: number;
-}
-
-interface ParticleFX {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  radius: number;
-  color: string;
-  alpha: number;
-  lifeMs: number;
-  maxLifeMs: number;
-}
-
-interface BeamFX {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  color: string;
-  width: number;
-  lifeMs: number;
-  maxLifeMs: number;
-}
 
 type DragPayload =
   | {
@@ -80,27 +43,24 @@ type DragPayload =
     };
 
 const PERSONA_BADGE_LABELS: Record<AIPersona, string> = {
-  HYPER_ROLLER: '🎲 리롤 도박꾼',
-  LOW_COST_REROLLER: '🎲 리롤 도박꾼',
-  FAST_NINE_GREEDY: '👑 패스트9 황제',
-  FAST_NINE_ECONOMIST: '👑 패스트9 황제',
-  GOBLIN_GAMBLER: '🪙 고블린 코인충',
-  FLEX_MASTER: '⚖️ 유연 밸런스',
-  FLEX_BALANCED: '⚖️ 유연 밸런스',
+  HYPER_ROLLER: '🎲리롤꾼',
+  LOW_COST_REROLLER: '🎲리롤꾼',
+  FAST_NINE_GREEDY: '👑패스트9',
+  FAST_NINE_ECONOMIST: '👑패스트9',
+  GOBLIN_GAMBLER: '🪙고블린',
+  FLEX_MASTER: '⚖️유연덱',
+  FLEX_BALANCED: '⚖️유연덱',
 };
 
 class FantasyAutoBattlerApp {
   private game: GameLoopManager;
   private fxCanvas: HTMLCanvasElement;
-  private fxCtx: CanvasRenderingContext2D;
+  private pixelRenderer: PixelGameRenderer;
 
-  private floatingTexts: FloatingTextFX[] = [];
-  private particles: ParticleFX[] = [];
-  private beams: BeamFX[] = [];
   private lastProcessedCombatTick: number = -1;
   private knownThreeStarUnits: Set<string> = new Set();
 
-  // 모바일 포인터 드래그 앤 드롭 & 탭 판별 상태
+  // 모바일 포인터 드래그 앤 드롭 & 육각형 타일 스냅 상태
   private activePointerId: number | null = null;
   private pointerDownTime: number = 0;
   private pointerStartX: number = 0;
@@ -109,9 +69,12 @@ class FantasyAutoBattlerApp {
   private dragPayload: DragPayload | null = null;
   private tapCallback: (() => void) | null = null;
 
+  private hoveredHex: HexCoord | null = null;
+  private hoveredBenchIndex: number | null = null;
+
   constructor() {
     this.fxCanvas = document.getElementById('fx-canvas') as HTMLCanvasElement;
-    this.fxCtx = this.fxCanvas.getContext('2d')!;
+    this.pixelRenderer = new PixelGameRenderer(this.fxCanvas);
 
     this.game = new GameLoopManager();
     this.game.setOnStateChange(() => {
@@ -123,15 +86,15 @@ class FantasyAutoBattlerApp {
     window.addEventListener('resize', () => this.resizeCanvas());
 
     this.onGameStateUpdated();
-    this.startVFXAnimationLoop();
+    this.startRenderLoop();
   }
 
   // ==========================================================================
-  // 1. 전역 버튼 및 모바일 포인터(PointerEvents) 바인딩
+  // 1. 전역 버튼 및 모바일 포인터(PointerEvents) + 육각형 타일 히트박스 바인딩
   // ==========================================================================
 
   private bindGlobalDOMEvents(): void {
-    // 상단 버튼
+    // 상단 HUD 룬/보석 버튼
     document
       .getElementById('pool-inspector-btn')
       ?.addEventListener('pointerup', () => this.openPoolInspectorModal());
@@ -154,6 +117,7 @@ class FantasyAutoBattlerApp {
       .getElementById('new-game-btn')
       ?.addEventListener('pointerup', () => {
         this.knownThreeStarUnits.clear();
+        this.pixelRenderer.resetCombatJuiceStates();
         this.game.startNewGame();
       });
 
@@ -162,6 +126,7 @@ class FantasyAutoBattlerApp {
       ?.addEventListener('pointerup', () => {
         document.getElementById('gameover-modal')?.classList.add('hidden');
         this.knownThreeStarUnits.clear();
+        this.pixelRenderer.resetCombatJuiceStates();
         this.game.startNewGame();
       });
 
@@ -175,26 +140,38 @@ class FantasyAutoBattlerApp {
       .getElementById('return-home-btn')
       ?.addEventListener('pointerup', () => {
         this.game.viewedParticipantId = this.game.player.id;
-        this.renderAll();
+        this.renderAllHUD();
       });
 
-    // 하단 경제 및 전투 컨트롤 버튼
-    document.getElementById('buy-xp-btn')?.addEventListener('pointerup', () => {
+    document
+      .getElementById('goblin-vault-box')
+      ?.addEventListener('pointerup', () => {
+        const p = this.game.getViewedParticipant();
+        const estGold = p.goblinVaultStacks * 3 + Math.floor(p.goblinVaultStacks / 4) * 5;
+        this.showTapTooltip(
+          `<strong>🪙 황금 고블린 금고 (${p.goblinVaultStacks} 스택)</strong><br/>고블린 시너지 활성화 중 패배할 때마다 스택이 쌓이며, 다음 전투 승리 시 한꺼번에 캐시아웃 대폭발 보상을 드랍합니다! (현재 예상 가치: 약 ${estGold}G 상당)`
+        );
+      });
+
+    // 하단 경제 & 전투 컨트롤 버튼
+    document.getElementById('buy-xp-btn')?.addEventListener('pointerup', (e) => {
       if (this.game.player.buyXp()) {
-        this.renderAll();
+        this.pixelRenderer.spawnPixelSparks(e.clientX, e.clientY, '#38bdf8', 14);
+        this.renderAllHUD();
       } else if (this.game.player.lastActionMessage) {
         this.game.pushBannerNotification(this.game.player.lastActionMessage);
         this.renderTopHud();
       }
     });
 
-    document.getElementById('reroll-btn')?.addEventListener('pointerup', () => {
+    document.getElementById('reroll-btn')?.addEventListener('pointerup', (e) => {
       if (this.game.phase !== 'PREPARATION_PHASE') return;
       if (this.game.player.rerollShop(this.game.sharedPool)) {
+        this.pixelRenderer.spawnPixelSparks(e.clientX, e.clientY, '#facc15', 14);
         if (this.game.player.lastActionMessage) {
           this.game.pushBannerNotification(this.game.player.lastActionMessage);
         }
-        this.renderAll();
+        this.renderAllHUD();
       } else if (this.game.player.lastActionMessage) {
         this.game.pushBannerNotification(this.game.player.lastActionMessage);
         this.renderTopHud();
@@ -212,6 +189,7 @@ class FantasyAutoBattlerApp {
       .getElementById('start-combat-btn')
       ?.addEventListener('pointerup', () => {
         this.lastProcessedCombatTick = -1;
+        this.pixelRenderer.resetCombatJuiceStates();
         this.game.startCombatPhase();
       });
 
@@ -227,15 +205,113 @@ class FantasyAutoBattlerApp {
         this.game.skipCombatToResolution();
       });
 
-    // 전역 PointerMove / PointerUp (모바일 터치 드래그 앤 드롭 처리)
+    // 전체화면 게임 캔버스 위での 육각형 타일 & 대기석 터치/드래그 시작
+    this.fxCanvas.addEventListener('pointerdown', (e) =>
+      this.handleCanvasPointerDown(e)
+    );
+
+    // 전역 PointerMove / PointerUp
     window.addEventListener('pointermove', (e) => this.handlePointerMove(e));
     window.addEventListener('pointerup', (e) => this.handlePointerUp(e));
     window.addEventListener('pointercancel', (e) => this.handlePointerUp(e));
   }
 
   /**
-   * 기물, 아이템, 복제기 위에서 pointerdown 발생 시 호출
+   * 캔버스 위에서 pointerdown 발생 시:
+   * - 육각형 타일 히트박스(HexGridMath.screenPointToHex) 또는 하단 1x9 대기석 슬롯 히트 검사
    */
+  private handleCanvasPointerDown(e: PointerEvent): void {
+    const rect = this.fxCanvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+
+    const viewed = this.game.getViewedParticipant();
+
+    // 1. 전투 페이즈 중이면 가장 가까운 전투 기물 탭 툴팁 조회
+    if (
+      this.game.phase === 'COMBAT_PHASE' &&
+      viewed.id === this.game.player.id
+    ) {
+      const hitHex = HexGridMath.screenPointToHex(
+        px,
+        py,
+        this.pixelRenderer.hexMetrics
+      );
+      if (hitHex) {
+        const cu = this.game.playerCombatEngine.units.find(
+          (u) =>
+            u.currentHp > 0 && u.row === hitHex.row && u.col === hitHex.col
+        );
+        if (cu) {
+          this.startPointerInteraction(e, null, () => {
+            this.showCombatUnitTooltip(cu);
+          });
+          return;
+        }
+      }
+    }
+
+    // 2. 하단 1x9 대기석(Bench) 슬롯 히트 검사
+    const benchIdx = this.pixelRenderer.screenPointToBenchIndex(px, py);
+    if (benchIdx !== null) {
+      const benchUnit = viewed.bench[benchIdx];
+      if (benchUnit) {
+        const canDrag =
+          this.game.phase === 'PREPARATION_PHASE' &&
+          viewed.id === this.game.player.id;
+        this.startPointerInteraction(
+          e,
+          canDrag
+            ? {
+                kind: 'UNIT',
+                instanceId: benchUnit.instanceId,
+                unit: benchUnit,
+                fromArea: 'BENCH',
+                fromIndex: benchIdx,
+              }
+            : null,
+          () => {
+            this.showUnitDetailTooltip(benchUnit);
+          }
+        );
+        return;
+      }
+    }
+
+    // 3. 육각형 전장 타일(row 0~7, col 0~6) 히트 검사
+    const hitHex = HexGridMath.screenPointToHex(
+      px,
+      py,
+      this.pixelRenderer.hexMetrics
+    );
+    if (hitHex && hitHex.row >= 4) {
+      const boardRow = hitHex.row - 4;
+      const boardCol = hitHex.col;
+      const boardUnit = viewed.board[boardRow]?.[boardCol];
+      if (boardUnit) {
+        const canDrag =
+          this.game.phase === 'PREPARATION_PHASE' &&
+          viewed.id === this.game.player.id;
+        this.startPointerInteraction(
+          e,
+          canDrag
+            ? {
+                kind: 'UNIT',
+                instanceId: boardUnit.instanceId,
+                unit: boardUnit,
+                fromArea: 'BOARD',
+                fromRow: boardRow,
+                fromCol: boardCol,
+              }
+            : null,
+          () => {
+            this.showUnitDetailTooltip(boardUnit);
+          }
+        );
+      }
+    }
+  }
+
   private startPointerInteraction(
     e: PointerEvent,
     payload: DragPayload | null,
@@ -258,8 +334,7 @@ class FantasyAutoBattlerApp {
     const dy = e.clientY - this.pointerStartY;
     const dist = Math.hypot(dx, dy);
 
-    if (!this.isDragging && dist > 10 && this.dragPayload) {
-      // 정비 페이즈이고 내 보드를 보고 있을 때만 드래그 시작 허용
+    if (!this.isDragging && dist > 9 && this.dragPayload) {
       if (
         this.game.phase === 'PREPARATION_PHASE' &&
         this.game.viewedParticipantId === this.game.player.id
@@ -275,7 +350,15 @@ class FantasyAutoBattlerApp {
 
     if (this.isDragging) {
       this.updateDragGhostPosition(e.clientX, e.clientY);
-      this.highlightDropTargetAt(e.clientX, e.clientY);
+      const rect = this.fxCanvas.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+
+      this.hoveredBenchIndex = this.pixelRenderer.screenPointToBenchIndex(px, py);
+      this.hoveredHex =
+        this.hoveredBenchIndex === null
+          ? HexGridMath.screenPointToHex(px, py, this.pixelRenderer.hexMetrics)
+          : null;
     }
   }
 
@@ -291,18 +374,17 @@ class FantasyAutoBattlerApp {
     this.isDragging = false;
     this.dragPayload = null;
     this.tapCallback = null;
+    this.hoveredHex = null;
+    this.hoveredBenchIndex = null;
 
     this.hideDragGhost();
     this.hideSellDropzoneOverlay();
-    this.clearAllDropHighlights();
 
-    // 1. 짧은 터치(Short Tap)인 경우 상세 툴팁 표시
-    if (!wasDragging && elapsed < 350 && tapCb) {
+    if (!wasDragging && elapsed < 360 && tapCb) {
       tapCb();
       return;
     }
 
-    // 2. 드래그 앤 드롭 완료 처리
     if (wasDragging && payload) {
       this.completeDropAtPoint(payload, e.clientX, e.clientY);
     }
@@ -319,7 +401,7 @@ class FantasyAutoBattlerApp {
       const item = ITEM_DEFINITIONS[this.dragPayload.itemId];
       ghostEl.textContent = `${item.icon} ${item.name}`;
     } else {
-      ghostEl.textContent = `🧬 챔피언 복제기`;
+      ghostEl.textContent = `🌟 챔피언 복제기`;
     }
 
     ghostEl.style.left = `${x}px`;
@@ -343,144 +425,127 @@ class FantasyAutoBattlerApp {
     const textEl = document.getElementById('sell-dropzone-text');
     if (!overlay || !textEl) return;
 
-    const cost = unit.cost;
     const refund =
       unit.starLevel === 1
-        ? cost
+        ? unit.cost
         : unit.starLevel === 2
-        ? cost === 1
+        ? unit.cost === 1
           ? 3
-          : cost * 3 - 1
-        : cost === 1
+          : unit.cost * 3 - 1
+        : unit.cost === 1
         ? 9
-        : cost * 9 - 2;
+        : unit.cost * 9 - 2;
 
-    textEl.textContent = `💰 여기에 놓아 [${unit.name} ${unit.starLevel}성] 판매 (+${refund} 골드)`;
+    textEl.textContent = `💰 여기에 놓아 [${unit.name} ${'★'.repeat(
+      unit.starLevel
+    )}] 판매 (+${refund} 골드 & 공유 풀 복구)`;
     overlay.classList.remove('hidden');
   }
 
   private hideSellDropzoneOverlay(): void {
-    const overlay = document.getElementById('sell-dropzone-overlay');
-    overlay?.classList.add('hidden');
-    overlay?.classList.remove('sell-hover');
-  }
-
-  private clearAllDropHighlights(): void {
-    document
-      .querySelectorAll('.drop-highlight')
-      .forEach((el) => el.classList.remove('drop-highlight'));
-  }
-
-  private highlightDropTargetAt(x: number, y: number): void {
-    this.clearAllDropHighlights();
-    const targetEl = document.elementFromPoint(x, y) as HTMLElement | null;
-    if (!targetEl) return;
-
-    const sellOverlay = document.getElementById('sell-dropzone-overlay');
-    if (sellOverlay && !sellOverlay.classList.contains('hidden')) {
-      if (targetEl.closest('#shop-cards-wrapper')) {
-        sellOverlay.classList.add('sell-hover');
-        return;
-      } else {
-        sellOverlay.classList.remove('sell-hover');
-      }
-    }
-
-    const boardTile = targetEl.closest('.board-tile.ally-row') as HTMLElement | null;
-    if (boardTile) {
-      boardTile.classList.add('drop-highlight');
-      return;
-    }
-
-    const benchSlot = targetEl.closest('.bench-slot') as HTMLElement | null;
-    if (benchSlot) {
-      benchSlot.classList.add('drop-highlight');
-    }
+    document.getElementById('sell-dropzone-overlay')?.classList.add('hidden');
   }
 
   /**
-   * 포인터를 놓은 위치(x, y)의 DOM 엘리먼트를 분석하여 기물 배치/교체, 판매, 아이템 장착, 복제기 사용을 수행한다.
+   * 육각형 슬롯 스냅(HexGridMath.screenPointToHex) 또는 하단 1x9 대기석 슬롯, 상점 판매 드롭존 처리
    */
-  private completeDropAtPoint(payload: DragPayload, x: number, y: number): void {
-    const el = document.elementFromPoint(x, y) as HTMLElement | null;
-    if (!el) return;
-
+  private completeDropAtPoint(payload: DragPayload, clientX: number, clientY: number): void {
     const player = this.game.player;
+    const domTarget = document.elementFromPoint(clientX, clientY);
 
-    // A. 기물 드래그 앤 드롭 처리
+    // 1) 기물 드래그 앤 드롭 처리
     if (payload.kind === 'UNIT') {
-      // 1) 하단 상점 영역에 드롭 시 즉시 기물 판매(Drag-to-Sell)
-      if (el.closest('#shop-cards-wrapper') || el.closest('#bottom-shop-bar')) {
-        const refund = player.sellUnit(payload.instanceId, this.game.sharedPool);
-        if (refund > 0) {
-          this.spawnParticleBurst(x, y, '#ffd54f', 22);
+      // a. 하단 상점 영역에 드롭 시 즉시 기물 판매
+      if (
+        domTarget?.closest('#shop-cards-wrapper') ||
+        domTarget?.closest('#bottom-shop-bar')
+      ) {
+        const earned = player.sellUnit(payload.instanceId, this.game.sharedPool);
+        if (earned > 0) {
+          this.pixelRenderer.spawnPixelSparks(clientX, clientY, '#facc15', 26);
+          this.pixelRenderer.spawnArcadePopupText(
+            clientX,
+            clientY - 20,
+            `+${earned}G`,
+            '#ffea00',
+            18
+          );
           this.game.pushBannerNotification(player.lastActionMessage);
-          this.renderAll();
+          this.renderAllHUD();
         }
         return;
       }
 
-      // 2) 아군 전투 보드 타일(하단 4행: combatRow 4~7 -> boardRow 0~3)에 드롭
-      const boardTile = el.closest('.board-tile.ally-row') as HTMLElement | null;
-      if (boardTile) {
-        const boardRow = Number(boardTile.dataset.boardRow);
-        const boardCol = Number(boardTile.dataset.boardCol);
-        if (!Number.isNaN(boardRow) && !Number.isNaN(boardCol)) {
-          const fromLoc =
-            payload.fromArea === 'BENCH'
-              ? ({ area: 'BENCH', index: payload.fromIndex! } as const)
-              : ({
-                  area: 'BOARD',
-                  row: payload.fromRow!,
-                  col: payload.fromCol!,
-                } as const);
+      const rect = this.fxCanvas.getBoundingClientRect();
+      const px = clientX - rect.left;
+      const py = clientY - rect.top;
 
-          if (!player.moveUnit(fromLoc, { area: 'BOARD', row: boardRow, col: boardCol })) {
-            if (player.lastActionMessage) {
-              this.game.pushBannerNotification(player.lastActionMessage);
-            }
-          }
-          this.renderAll();
-          return;
-        }
+      const fromLoc =
+        payload.fromArea === 'BENCH'
+          ? ({ area: 'BENCH', index: payload.fromIndex! } as const)
+          : ({
+              area: 'BOARD',
+              row: payload.fromRow!,
+              col: payload.fromCol!,
+            } as const);
+
+      // b. 하단 1x9 대기석 슬롯에 스냅
+      const benchIdx = this.pixelRenderer.screenPointToBenchIndex(px, py);
+      if (benchIdx !== null) {
+        player.moveUnit(fromLoc, { area: 'BENCH', index: benchIdx });
+        this.pixelRenderer.spawnPixelSparks(px, py, '#38bdf8', 10);
+        this.renderAllHUD();
+        return;
       }
 
-      // 3) 대기석 슬롯(0~8)에 드롭
-      const benchSlot = el.closest('.bench-slot') as HTMLElement | null;
-      if (benchSlot) {
-        const benchIdx = Number(benchSlot.dataset.benchIndex);
-        if (!Number.isNaN(benchIdx)) {
-          const fromLoc =
-            payload.fromArea === 'BENCH'
-              ? ({ area: 'BENCH', index: payload.fromIndex! } as const)
-              : ({
-                  area: 'BOARD',
-                  row: payload.fromRow!,
-                  col: payload.fromCol!,
-                } as const);
-
-          player.moveUnit(fromLoc, { area: 'BENCH', index: benchIdx });
-          this.renderAll();
+      // c. 아군 육각형 전장 타일(row 4~7 -> boardRow 0~3, col 0~6)에 스냅
+      const hitHex = HexGridMath.screenPointToHex(
+        px,
+        py,
+        this.pixelRenderer.hexMetrics
+      );
+      if (hitHex && hitHex.row >= 4) {
+        const boardRow = hitHex.row - 4;
+        const boardCol = hitHex.col;
+        if (
+          player.moveUnit(fromLoc, {
+            area: 'BOARD',
+            row: boardRow,
+            col: boardCol,
+          })
+        ) {
+          const center = HexGridMath.hexToScreenCenter(
+            hitHex.row,
+            hitHex.col,
+            this.pixelRenderer.hexMetrics
+          );
+          this.pixelRenderer.spawnPixelSparks(center.x, center.y, '#4cc9f0', 14);
+        } else if (player.lastActionMessage) {
+          this.game.pushBannerNotification(player.lastActionMessage);
         }
+        this.renderAllHUD();
       }
       return;
     }
 
-    // B. 아이템 또는 챔피언 복제기 드롭 처리 -> 대상 기물 탐색
-    const unitToken = el.closest('.unit-token') as HTMLElement | null;
-    let targetInstanceId = unitToken?.dataset.instanceId;
+    // 2) 아이템 또는 챔피언 복제기 드롭 -> 해당 육각형 타일 또는 대기석 기물 탐색
+    const rect = this.fxCanvas.getBoundingClientRect();
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
 
-    if (!targetInstanceId) {
-      const boardTile = el.closest('.board-tile.ally-row') as HTMLElement | null;
-      if (boardTile) {
-        const r = Number(boardTile.dataset.boardRow);
-        const c = Number(boardTile.dataset.boardCol);
-        targetInstanceId = player.board[r]?.[c]?.instanceId;
-      }
-      const benchSlot = el.closest('.bench-slot') as HTMLElement | null;
-      if (benchSlot) {
-        const idx = Number(benchSlot.dataset.benchIndex);
-        targetInstanceId = player.bench[idx]?.instanceId;
+    let targetInstanceId: string | undefined;
+
+    const benchIdx = this.pixelRenderer.screenPointToBenchIndex(px, py);
+    if (benchIdx !== null) {
+      targetInstanceId = player.bench[benchIdx]?.instanceId;
+    } else {
+      const hitHex = HexGridMath.screenPointToHex(
+        px,
+        py,
+        this.pixelRenderer.hexMetrics
+      );
+      if (hitHex && hitHex.row >= 4) {
+        targetInstanceId = player.board[hitHex.row - 4]?.[hitHex.col]?.instanceId;
       }
     }
 
@@ -488,19 +553,19 @@ class FantasyAutoBattlerApp {
 
     if (payload.kind === 'ITEM') {
       if (player.equipItemToUnit(payload.itemBenchIndex, targetInstanceId)) {
-        this.spawnParticleBurst(x, y, '#00e5ff', 20);
+        this.pixelRenderer.spawnPixelSparks(px, py, '#00f5d4', 22);
         this.game.pushBannerNotification(player.lastActionMessage);
-        this.renderAll();
+        this.renderAllHUD();
       } else if (player.lastActionMessage) {
         this.game.pushBannerNotification(player.lastActionMessage);
         this.renderTopHud();
       }
     } else if (payload.kind === 'DUPLICATOR') {
       if (player.useChampionDuplicator(targetInstanceId, this.game.sharedPool)) {
-        this.spawnParticleBurst(x, y, '#ffea00', 32);
+        this.pixelRenderer.spawnPixelSparks(px, py, '#ffea00', 34);
         this.checkNewStarUpgrades();
         this.game.pushBannerNotification(player.lastActionMessage);
-        this.renderAll();
+        this.renderAllHUD();
       } else if (player.lastActionMessage) {
         this.game.pushBannerNotification(player.lastActionMessage);
         this.renderTopHud();
@@ -509,30 +574,31 @@ class FantasyAutoBattlerApp {
   }
 
   // ==========================================================================
-  // 2. 상태 업데이트 콜백 및 화면 전체 렌더링
+  // 2. 상태 업데이트 콜백 및 네이티브 모바일 HUD 렌더링
   // ==========================================================================
 
   private onGameStateUpdated(): void {
-    // 전투 페이즈 중 새로운 틱 이벤트가 발생했다면 VFX(데미지 폰트, 투사체, 5코 3성 번개) 처리
     if (this.game.phase === 'COMBAT_PHASE') {
       const engine = this.game.playerCombatEngine;
       if (engine.currentTick === 0) {
         const initEvs = engine.consumeInitialEvents();
-        this.processCombatEventsForVFX(initEvs);
+        this.pixelRenderer.ingestCombatEvents(initEvs, engine.units);
       } else if (engine.currentTick !== this.lastProcessedCombatTick) {
         this.lastProcessedCombatTick = engine.currentTick;
-        this.processCombatEventsForVFX(engine.getLastTickEvents());
+        this.pixelRenderer.ingestCombatEvents(
+          engine.getLastTickEvents(),
+          engine.units
+        );
       }
     }
 
     this.checkNewStarUpgrades();
-    this.renderAll();
+    this.renderAllHUD();
   }
 
-  private renderAll(): void {
+  private renderAllHUD(): void {
     this.renderTopHud();
-    this.renderLeftPanel();
-    this.renderBoardAndBench();
+    this.renderLeftFloatingDock();
     this.renderLootOrbs();
     this.renderRightLeaderboard();
     this.renderShopAndControls();
@@ -545,7 +611,7 @@ class FantasyAutoBattlerApp {
     const rankText = document.getElementById('rank-text');
     if (rankIcon && rankText) {
       rankIcon.textContent = RANK_TIER_BADGE_ICONS[profile.tier];
-      rankText.textContent = `${RANK_TIER_KOREAN_NAMES[profile.tier]} ${profile.lp} LP`;
+      rankText.textContent = `${RANK_TIER_KOREAN_NAMES[profile.tier]} ${profile.lp}LP`;
     }
 
     const roundLabel = document.getElementById('round-label');
@@ -563,96 +629,137 @@ class FantasyAutoBattlerApp {
       phaseLabel.textContent = phaseNames[this.game.phase] ?? this.game.phase;
     }
 
-    const bannerTicker = document.getElementById('banner-ticker');
-    if (bannerTicker) {
-      bannerTicker.textContent =
-        this.game.bannerNotifications[0] ??
-        '기물을 드래그하여 전장에 배치하고 [전투 시작]을 누르세요!';
+    const viewed = this.game.getViewedParticipant();
+    const deployCounter = document.getElementById('deploy-counter');
+    if (deployCounter) {
+      deployCounter.textContent = `⚔️ 배치 ${viewed.getBoardUnitCount()} / ${viewed.level}`;
+    }
+
+    const oppIndicator = document.getElementById('opponent-indicator');
+    if (oppIndicator) {
+      if (this.game.phase === 'COMBAT_PHASE') {
+        oppIndicator.textContent = `VS ${this.game.playerCurrentOpponentName}`;
+      } else {
+        const rType = this.game.getCurrentRoundType();
+        oppIndicator.textContent =
+          rType === 'CREEP'
+            ? '예정: 몬스터 정찰병'
+            : rType === 'BOSS_CREEP'
+            ? '예정: 고대 보스 몬스터'
+            : '예정: 8인 로비 대인전(PvP)';
+      }
+    }
+
+    const ticker = document.getElementById('banner-ticker');
+    if (ticker && this.game.bannerNotifications.length > 0) {
+      ticker.textContent = this.game.bannerNotifications[0];
+    }
+
+    // 정찰(Scouting) 배너 표시/숨김
+    const scoutBanner = document.getElementById('scouting-banner');
+    const scoutText = document.getElementById('scouting-target-text');
+    if (scoutBanner && scoutText) {
+      if (viewed.id !== this.game.player.id) {
+        const personaLabel = viewed.persona
+          ? PERSONA_BADGE_LABELS[viewed.persona]
+          : '';
+        scoutText.textContent = `🔍 [${viewed.name}] ${personaLabel} 육각형 진영 정찰 중 (🪙${viewed.gold}G / Lv.${viewed.level})`;
+        scoutBanner.classList.remove('hidden');
+      } else {
+        scoutBanner.classList.add('hidden');
+      }
+    }
+
+    // 판도라의 대기석 표시
+    const pandoraTag = document.getElementById('pandora-indicator');
+    if (pandoraTag) {
+      pandoraTag.classList.toggle(
+        'hidden',
+        !viewed.augments.includes('AUG_PANDORA_BENCH')
+      );
     }
   }
 
-  private renderLeftPanel(): void {
+  private renderLeftFloatingDock(): void {
     const viewed = this.game.getViewedParticipant();
 
-    // 1. 황금 고블린 금고 스택 표시
-    const vaultStacksEl = document.getElementById('goblin-vault-stacks');
-    if (vaultStacksEl) {
-      vaultStacksEl.textContent = `${viewed.goblinVaultStacks} 스택`;
+    // 1. 황금 고블린 금고 스택
+    const vaultEl = document.getElementById('goblin-vault-stacks');
+    if (vaultEl) {
+      vaultEl.textContent = `${viewed.goblinVaultStacks}`;
     }
 
-    // 2. 활성화 시너지 목록
-    const synergyListEl = document.getElementById('synergy-list');
-    if (synergyListEl) {
-      synergyListEl.innerHTML = '';
-      const synergies = SynergyEngine.calculateActiveSynergies(viewed);
+    // 2. 반투명 블러 육각형 시너지 독
+    const synContainer = document.getElementById('synergy-list');
+    if (synContainer) {
+      synContainer.innerHTML = '';
+      const states = SynergyEngine.calculateActiveSynergies(viewed).filter(
+        (s) => s.count > 0
+      );
 
-      if (synergies.length === 0) {
-        synergyListEl.innerHTML = `<div style="color:#7f8c8d;font-size:11px;">보드에 기물을 배치하면 시너지가 활성화됩니다.</div>`;
-      } else {
-        for (const syn of synergies) {
-          const chip = document.createElement('div');
-          chip.className = `synergy-chip tier-${syn.styleTier}`;
-          const thresholdText = syn.definition.thresholds.join('/');
-          chip.innerHTML = `
-            <span>${syn.definition.icon} <strong>${syn.definition.name}</strong></span>
-            <span>${syn.count} <small style="color:#9aa5c4">(${thresholdText})</small></span>
-          `;
-          chip.addEventListener('pointerup', () => {
-            const activeDesc = syn.activeEffect
-              ? `<br/><span style="color:#ffd54f">현재 효과: ${syn.activeEffect.label}</span>`
-              : '';
-            this.showTapTooltip(
-              `<strong>${syn.definition.icon} ${syn.definition.name} (${syn.count})</strong>: ${syn.definition.description}${activeDesc}`
-            );
-          });
-          synergyListEl.appendChild(chip);
-        }
+      for (const st of states) {
+        const threshText = st.definition.thresholds
+          .map((t: number) => (st.count >= t ? `<b>${t}</b>` : `${t}`))
+          .join('/');
+
+        const badge = document.createElement('div');
+        badge.className = `synergy-badge style-${st.styleTier}`;
+        badge.innerHTML = `
+          <span>${st.definition.icon} ${st.count}</span>
+          <span style="font-size:8px;opacity:0.85;">${threshText}</span>
+        `;
+        badge.addEventListener('pointerup', () => {
+          this.showTapTooltip(
+            `<strong>${st.definition.icon} ${st.definition.name} (${st.count}명 활성)</strong><br/>${
+              st.definition.description
+            }<br/><span style="color:#fde047">${
+              st.activeEffect ? st.activeEffect.label : '아직 임계값 미달'
+            }</span>`
+          );
+        });
+        synContainer.appendChild(badge);
       }
     }
 
-    // 3. 보유 증강체 목록
-    const augListEl = document.getElementById('augment-list');
-    if (augListEl) {
-      augListEl.innerHTML = '';
-      if (viewed.augments.length === 0) {
-        augListEl.innerHTML = `<span style="color:#7f8c8d;font-size:11px;">2-1, 3-2, 4-2 라운드에 선택</span>`;
-      } else {
-        for (const augId of viewed.augments) {
-          const aug = AUGMENT_DEFINITIONS.find((a) => a.id === augId);
-          if (!aug) continue;
-          const pill = document.createElement('div');
-          pill.className = 'augment-pill';
-          pill.textContent = `${aug.icon} ${aug.name}`;
-          pill.addEventListener('pointerup', () => {
-            this.showTapTooltip(
-              `<strong>${aug.icon} ${aug.name} [${aug.tier}]</strong>: ${aug.description}`
-            );
-          });
-          augListEl.appendChild(pill);
-        }
+    // 3. 보유 증강체 미니 룬 아이콘
+    const augContainer = document.getElementById('augment-list');
+    if (augContainer) {
+      augContainer.innerHTML = '';
+      for (const augId of viewed.augments) {
+        const def = AUGMENT_DEFINITIONS.find((a) => a.id === augId);
+        if (!def) continue;
+        const iconEl = document.createElement('div');
+        iconEl.className = 'aug-gem-icon';
+        iconEl.textContent = def.icon;
+        iconEl.addEventListener('pointerup', () => {
+          this.showTapTooltip(
+            `<strong>${def.icon} ${def.name} [${def.tier}]</strong><br/>${def.description}`
+          );
+        });
+        augContainer.appendChild(iconEl);
       }
     }
 
-    // 4. 챔피언 복제기 슬롯 및 아이템 보관함
+    // 4. 챔피언 복제기 & 아이템 슬롯 (드래그 앤 드롭 장착)
     const dupWrap = document.getElementById('duplicator-slot-wrap');
     if (dupWrap) {
       dupWrap.innerHTML = '';
       if (viewed.duplicators > 0) {
-        const dupToken = document.createElement('div');
-        dupToken.className = 'duplicator-token';
-        dupToken.innerHTML = `<span>🧬 챔피언 복제기</span><span>x${viewed.duplicators}</span>`;
-        dupToken.addEventListener('pointerdown', (e) => {
+        const chip = document.createElement('div');
+        chip.className = 'duplicator-chip';
+        chip.innerHTML = `🌟x${viewed.duplicators}`;
+        chip.addEventListener('pointerdown', (e) => {
           this.startPointerInteraction(
             e,
-            { kind: 'DUPLICATOR' },
+            viewed.id === this.game.player.id ? { kind: 'DUPLICATOR' } : null,
             () => {
               this.showTapTooltip(
-                `<strong>🧬 챔피언 복제기 (보유: ${viewed.duplicators}개)</strong>: 원하는 아군 기물 위로 드래그하여 드롭하면 공유 풀에서 즉시 1성 복사본을 뽑아 합성합니다!`
+                `<strong>🌟 챔피언 복제기 (${viewed.duplicators}개)</strong><br/>아군 육각형 타일 또는 대기석의 기물 위로 드래그하여 놓으면 공유 풀 재고를 1개 소모하여 즉시 1성 복사본을 생성합니다.`
               );
             }
           );
         });
-        dupWrap.appendChild(dupToken);
+        dupWrap.appendChild(chip);
       }
     }
 
@@ -663,18 +770,17 @@ class FantasyAutoBattlerApp {
         const def = ITEM_DEFINITIONS[itemId];
         if (!def) return;
         const slot = document.createElement('div');
-        slot.className = `item-slot ${def.isCompleted ? 'completed-item' : ''}`;
-        slot.innerHTML = `
-          <span>${def.icon}</span>
-          <span class="item-slot-name">${def.name}</span>
-        `;
+        slot.className = 'item-slot';
+        slot.textContent = def.icon;
         slot.addEventListener('pointerdown', (e) => {
           this.startPointerInteraction(
             e,
-            { kind: 'ITEM', itemBenchIndex: idx, itemId },
+            viewed.id === this.game.player.id
+              ? { kind: 'ITEM', itemBenchIndex: idx, itemId }
+              : null,
             () => {
               this.showTapTooltip(
-                `<strong>${def.icon} ${def.name}</strong>: ${def.description} <span style="color:#ffd54f">(아군 기물 위로 드래그하여 장착/조합)</span>`
+                `<strong>${def.icon} ${def.name}</strong><br/>${def.description}<br/><span style="color:#7dd3fc">기물 위로 드래그하여 장착 (기본 아이템 2개는 자동 합체)</span>`
               );
             }
           );
@@ -684,240 +790,6 @@ class FantasyAutoBattlerApp {
     }
   }
 
-  /**
-   * 중앙 8x7 전장 그리드 및 하단 1x9 대기석 렌더링
-   */
-  private renderBoardAndBench(): void {
-    const viewed = this.game.getViewedParticipant();
-    const isScouting = viewed.id !== this.game.player.id;
-
-    // 정찰 배너 업데이트
-    const scoutingBanner = document.getElementById('scouting-banner');
-    const scoutingText = document.getElementById('scouting-target-text');
-    if (scoutingBanner && scoutingText) {
-      if (isScouting) {
-        const personaLabel = viewed.persona
-          ? PERSONA_BADGE_LABELS[viewed.persona]
-          : '';
-        scoutingText.textContent = `🔍 [${viewed.name}] ${personaLabel} 보드 정찰 중 (골드: ${viewed.gold}G / 레벨: Lv.${viewed.level})`;
-        scoutingBanner.classList.remove('hidden');
-      } else {
-        scoutingBanner.classList.add('hidden');
-      }
-    }
-
-    // 배치 인원 및 상대 표시
-    const deployCounter = document.getElementById('deploy-counter');
-    if (deployCounter) {
-      deployCounter.textContent = `배치 인원: ${viewed.getBoardUnitCount()} / ${viewed.level} (최대 Lv.${viewed.level})`;
-    }
-    const opponentIndicator = document.getElementById('opponent-indicator');
-    if (opponentIndicator) {
-      if (this.game.phase === 'COMBAT_PHASE') {
-        opponentIndicator.textContent = `⚔️ 상대: ${this.game.playerCurrentOpponentName}`;
-      } else {
-        const roundType = this.game.getCurrentRoundType();
-        opponentIndicator.textContent =
-          roundType === 'CREEP'
-            ? '🐺 크립 라운드'
-            : roundType === 'BOSS_CREEP'
-            ? '🐉 보스 크립 라운드'
-            : '⚔️ 8인 대인전 라운드';
-      }
-    }
-
-    // 8x7 그리드 렌더링
-    const boardGrid = document.getElementById('board-grid');
-    if (boardGrid) {
-      boardGrid.innerHTML = '';
-
-      const isCombatView =
-        this.game.phase === 'COMBAT_PHASE' && !isScouting;
-
-      for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 7; c++) {
-          const tile = document.createElement('div');
-          const isAllyRow = r >= 4;
-          tile.className = `board-tile ${isAllyRow ? 'ally-row' : 'enemy-row'} ${
-            r === 4 ? 'row-divider' : ''
-          }`;
-
-          if (isAllyRow) {
-            tile.dataset.boardRow = String(r - 4);
-            tile.dataset.boardCol = String(c);
-          }
-
-          if (isCombatView) {
-            // 실시간 전투 중인 유닛 표시
-            const combatUnit = this.game.playerCombatEngine.units.find(
-              (u) =>
-                u.row === r &&
-                u.col === c &&
-                (u.currentHp > 0 || u.isReviving)
-            );
-            if (combatUnit) {
-              tile.appendChild(this.createCombatUnitTokenElement(combatUnit));
-            }
-          } else {
-            // 정비 페이즈(또는 정찰 뷰): 하단 4~7행에 viewed.board[0..3][0..6] 표시
-            if (isAllyRow) {
-              const boardRow = r - 4;
-              const unit = viewed.board[boardRow][c];
-              if (unit) {
-                tile.appendChild(
-                  this.createPrepUnitTokenElement(unit, {
-                    area: 'BOARD',
-                    row: boardRow,
-                    col: c,
-                  })
-                );
-              }
-            }
-          }
-
-          boardGrid.appendChild(tile);
-        }
-      }
-    }
-
-    // 1x9 대기석 렌더링
-    const pandoraIndicator = document.getElementById('pandora-indicator');
-    const hasPandora = viewed.augments.includes('AUG_PANDORA_BENCH');
-    if (pandoraIndicator) {
-      pandoraIndicator.classList.toggle('hidden', !hasPandora);
-    }
-
-    const benchGrid = document.getElementById('bench-grid');
-    if (benchGrid) {
-      benchGrid.innerHTML = '';
-      for (let i = 0; i < 9; i++) {
-        const slot = document.createElement('div');
-        const isPandoraSlot = hasPandora && i >= 6;
-        slot.className = `bench-slot ${isPandoraSlot ? 'pandora-slot' : ''}`;
-        slot.dataset.benchIndex = String(i);
-
-        const unit = viewed.bench[i];
-        if (unit) {
-          slot.appendChild(
-            this.createPrepUnitTokenElement(unit, { area: 'BENCH', index: i })
-          );
-        }
-        benchGrid.appendChild(slot);
-      }
-    }
-  }
-
-  private createPrepUnitTokenElement(
-    unit: UnitInstance,
-    loc: { area: 'BOARD'; row: number; col: number } | { area: 'BENCH'; index: number }
-  ): HTMLElement {
-    const el = document.createElement('div');
-    el.className = `unit-token cost-${unit.cost} star-${unit.starLevel}`;
-    el.dataset.instanceId = unit.instanceId;
-
-    const starsText = '★'.repeat(unit.starLevel);
-    const itemsHtml = unit.items
-      .map((id) => `<span class="mini-item-icon">${ITEM_DEFINITIONS[id]?.icon ?? ''}</span>`)
-      .join('');
-    const manaPct =
-      unit.maxMana > 0 ? Math.round((unit.currentMana / unit.maxMana) * 100) : 0;
-
-    el.innerHTML = `
-      <div class="unit-bars">
-        <div class="hp-bar-track">
-          <div class="hp-bar-fill" style="width: 100%"></div>
-        </div>
-        <div class="mana-bar-track">
-          <div class="mana-bar-fill" style="width: ${manaPct}%"></div>
-        </div>
-      </div>
-      <div class="unit-center-row">
-        <span class="unit-icon">${unit.icon}</span>
-        <span class="unit-stars unit-star-${unit.starLevel}">${starsText}</span>
-      </div>
-      <div class="unit-bottom-row">
-        <span class="unit-name-label">${unit.name}</span>
-        <div class="unit-items-row">${itemsHtml}</div>
-      </div>
-    `;
-
-    const payload: DragPayload =
-      loc.area === 'BOARD'
-        ? {
-            kind: 'UNIT',
-            instanceId: unit.instanceId,
-            unit,
-            fromArea: 'BOARD',
-            fromRow: loc.row,
-            fromCol: loc.col,
-          }
-        : {
-            kind: 'UNIT',
-            instanceId: unit.instanceId,
-            unit,
-            fromArea: 'BENCH',
-            fromIndex: loc.index,
-          };
-
-    el.addEventListener('pointerdown', (e) => {
-      this.startPointerInteraction(e, payload, () => {
-        this.showUnitDetailTooltip(unit);
-      });
-    });
-
-    return el;
-  }
-
-  private createCombatUnitTokenElement(cu: CombatUnit): HTMLElement {
-    const el = document.createElement('div');
-    el.className = `unit-token cost-${cu.cost} star-${cu.starLevel} ${
-      cu.stunTimerMs > 0 ? 'stunned' : ''
-    } ${cu.isReviving ? 'reviving' : ''}`;
-
-    const hpPct = Math.max(0, Math.min(100, Math.round((cu.currentHp / cu.maxHp) * 100)));
-    const shieldPct = Math.min(100, Math.round((cu.shield / cu.maxHp) * 100));
-    const manaPct =
-      cu.maxMana > 0
-        ? Math.max(0, Math.min(100, Math.round((cu.currentMana / cu.maxMana) * 100)))
-        : 0;
-    const starsText = '★'.repeat(cu.starLevel);
-    const itemsHtml = cu.items
-      .map((id) => `<span class="mini-item-icon">${ITEM_DEFINITIONS[id]?.icon ?? ''}</span>`)
-      .join('');
-
-    el.innerHTML = `
-      <div class="unit-bars">
-        <div class="hp-bar-track">
-          <div class="hp-bar-fill ${cu.team === 'AWAY' ? 'enemy' : ''}" style="width: ${hpPct}%"></div>
-          ${shieldPct > 0 ? `<div class="shield-bar-fill" style="width: ${shieldPct}%"></div>` : ''}
-        </div>
-        <div class="mana-bar-track">
-          <div class="mana-bar-fill" style="width: ${manaPct}%"></div>
-        </div>
-      </div>
-      <div class="unit-center-row">
-        <span class="unit-icon">${cu.icon}</span>
-        <span class="unit-stars unit-star-${cu.starLevel}">${starsText}</span>
-      </div>
-      <div class="unit-bottom-row">
-        <span class="unit-name-label">${cu.name}</span>
-        <div class="unit-items-row">${itemsHtml}</div>
-      </div>
-    `;
-
-    el.addEventListener('pointerup', () => {
-      const template = UNIT_TEMPLATES[cu.unitId];
-      this.showTapTooltip(
-        `<strong>${cu.icon} ${cu.name} (${cu.starLevel}성)</strong> | 체력: ${cu.currentHp}/${cu.maxHp} (보호막 ${cu.shield}) | 공격력: ${cu.atk} | 방어력: ${cu.def} | 공속: ${cu.atkSpeed} | 누적 딜량: ${cu.totalDamageDealt}<br/><strong>스킬 [${template?.skill.name}]</strong>: ${template?.skill.description}`
-      );
-    });
-
-    return el;
-  }
-
-  /**
-   * 보드 위에 드랍된 전리품 구슬(Loot Orbs) 렌더링 및 터치 오픈 이벤트
-   */
   private renderLootOrbs(): void {
     const orbLayer = document.getElementById('loot-orb-layer');
     if (!orbLayer) return;
@@ -926,11 +798,10 @@ class FantasyAutoBattlerApp {
     if (this.game.viewedParticipantId !== this.game.player.id) return;
 
     for (const orb of this.game.playerLootOrbs) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
+      const btn = document.createElement('div');
       btn.className = `loot-orb-btn orb-${orb.tier}`;
-      btn.style.left = `${Math.round(orb.x * 100)}%`;
-      btn.style.top = `${Math.round(orb.y * 100)}%`;
+      btn.style.left = `${Math.round(18 + orb.x * 64)}%`;
+      btn.style.top = `${Math.round(22 + orb.y * 42)}%`;
 
       const icon =
         orb.tier === 'PRISMATIC'
@@ -940,32 +811,25 @@ class FantasyAutoBattlerApp {
           : orb.tier === 'BLUE'
           ? '🔹'
           : '🎁';
-      btn.innerHTML = `<span>${icon}</span><span>${orb.label ?? '전리품 구슬'} (터치!)</span>`;
+      btn.innerHTML = `<span>${icon}</span><span>${orb.label ?? '전리품 구슬'}</span>`;
 
       btn.addEventListener('pointerup', (e) => {
         e.stopPropagation();
-        const rect = this.fxCanvas.getBoundingClientRect();
-        const px = e.clientX - rect.left;
-        const py = e.clientY - rect.top;
-        this.spawnParticleBurst(
+        this.pixelRenderer.spawnPixelSparks(
           e.clientX,
           e.clientY,
-          orb.tier === 'PRISMATIC' ? '#00e5ff' : '#ffd54f',
-          36
+          orb.tier === 'PRISMATIC' ? '#4cc9f0' : '#ffea00',
+          32
         );
         const rewards = this.game.openPlayerLootOrb(orb.id);
         if (rewards.length > 0) {
-          this.floatingTexts.push({
-            x: px,
-            y: py,
-            vy: -45,
-            text: `🎁 ${rewards.join(' + ')}`,
-            color: '#ffea00',
-            fontSize: 15,
-            alpha: 1,
-            lifeMs: 0,
-            maxLifeMs: 1400,
-          });
+          this.pixelRenderer.spawnArcadePopupText(
+            e.clientX,
+            e.clientY - 15,
+            `🎁 ${rewards.join(' + ')}`,
+            '#ffea00',
+            15
+          );
         }
       });
 
@@ -973,9 +837,6 @@ class FantasyAutoBattlerApp {
     }
   }
 
-  /**
-   * 우측 8인 실시간 순위표 & AI 봇 보드 정찰(Scouting) 전환
-   */
   private renderRightLeaderboard(): void {
     const listEl = document.getElementById('leaderboard-list');
     if (!listEl) return;
@@ -992,41 +853,38 @@ class FantasyAutoBattlerApp {
         p.id === this.game.viewedParticipantId ? 'is-viewed' : ''
       } ${p.isEliminated ? 'eliminated' : ''}`;
 
-      const streakBadge =
-        p.winStreak >= 2
-          ? `🔥${p.winStreak}연승`
-          : p.loseStreak >= 2
-          ? `❄️${p.loseStreak}연패`
-          : '';
-      const personaText = p.persona ? PERSONA_BADGE_LABELS[p.persona] : '👤 플레이어';
-      const goblinBadge =
-        p.goblinVaultStacks > 0 ? ` | 🪙금고:${p.goblinVaultStacks}` : '';
+      const hpPct = Math.max(0, Math.min(100, Math.round((p.hp / p.maxHp) * 100)));
+      const personaText = p.persona
+        ? PERSONA_BADGE_LABELS[p.persona]
+        : '👤나';
 
       card.innerHTML = `
         <div class="leader-top-row">
-          <span>#${idx + 1} ${p.name}</span>
-          <span style="color:${p.hp > 35 ? '#2ecc71' : '#ff5252'}">${
-        p.isEliminated ? '💀 탈락' : `❤️ ${p.hp}`
+          <span>#${idx + 1} ${p.name.slice(0, 5)}</span>
+          <span style="color:${p.hp > 35 ? '#34d399' : '#fb7185'}">${
+        p.isEliminated ? '💀' : p.hp
       }</span>
         </div>
+        <div class="leader-hp-gauge">
+          <div class="leader-hp-fill" style="width:${hpPct}%;background:${
+        p.hp > 35 ? '#10b981' : '#f43f5e'
+      }"></div>
+        </div>
         <div class="leader-sub-row">
-          <span class="persona-tag">${personaText}</span>
-          <span>Lv.${p.level} · 🪙${p.gold}G ${streakBadge}${goblinBadge}</span>
+          <span>${personaText}</span>
+          <span>Lv.${p.level}·${p.gold}G</span>
         </div>
       `;
 
       card.addEventListener('pointerup', () => {
         this.game.viewedParticipantId = p.id;
-        this.renderAll();
+        this.renderAllHUD();
       });
 
       listEl.appendChild(card);
     });
   }
 
-  /**
-   * 하단 상점 5칸 카드(페어/2성/3성 임박 하이라이트 & 실시간 공유 풀 잔여량 표시) 및 컨트롤 바 렌더링
-   */
   private renderShopAndControls(): void {
     const player = this.game.player;
 
@@ -1043,36 +901,34 @@ class FantasyAutoBattlerApp {
     const intText = document.getElementById('player-interest-text');
     if (goldText && intText) {
       goldText.textContent = `🪙 ${player.gold} G`;
-      intText.textContent = `(이자 +${player.calculateInterestGold()}G / 한도 ${player.getMaxInterestCap()}G)`;
+      intText.textContent = `이자+${player.calculateInterestGold()}G`;
     }
 
     const rerollBtn = document.getElementById('reroll-btn');
     if (rerollBtn) {
-      rerollBtn.textContent =
+      rerollBtn.innerHTML =
         player.freeRerolls > 0
-          ? `🎟️ 무료 리롤 (${player.freeRerolls}회)`
-          : `🎲 상점 리롤 (2G)`;
+          ? `<span class="btn-main-label">🎟️ 무료리롤</span><span class="btn-sub-cost">${player.freeRerolls}회 남음</span>`
+          : `<span class="btn-main-label">🎲 리롤</span><span class="btn-sub-cost">2 골드</span>`;
     }
 
     const lockBtn = document.getElementById('lock-shop-btn');
     if (lockBtn) {
-      lockBtn.textContent = player.isShopLocked ? '🔒 상점 잠김' : '🔓 잠금 해제됨';
+      lockBtn.textContent = player.isShopLocked ? '🔒' : '🔓';
     }
 
-    // 레벨별 코스트 등장 확률 표시
     const oddsBar = document.getElementById('shop-odds-bar');
     if (oddsBar) {
       const odds = SHOP_ODDS_BY_LEVEL[player.level] ?? SHOP_ODDS_BY_LEVEL[1];
       oddsBar.innerHTML = `
-        <span style="color:var(--cost-1)">1코:${odds[0]}%</span>
-        <span style="color:var(--cost-2)">2코:${odds[1]}%</span>
-        <span style="color:var(--cost-3)">3코:${odds[2]}%</span>
-        <span style="color:var(--cost-4)">4코:${odds[3]}%</span>
-        <span style="color:var(--cost-5)">5코:${odds[4]}%</span>
+        <span style="color:var(--cost-1)">1코 ${odds[0]}%</span>
+        <span style="color:var(--cost-2)">2코 ${odds[1]}%</span>
+        <span style="color:var(--cost-3)">3코 ${odds[2]}%</span>
+        <span style="color:var(--cost-4)">4코 ${odds[3]}%</span>
+        <span style="color:var(--cost-5)">5코 ${odds[4]}%</span>
       `;
     }
 
-    // 전투 시작 vs 배속/스킵 버튼 전환
     const startCombatBtn = document.getElementById('start-combat-btn');
     const speedControls = document.getElementById('combat-speed-controls');
     if (startCombatBtn && speedControls) {
@@ -1088,7 +944,7 @@ class FantasyAutoBattlerApp {
         ?.classList.toggle('active', this.game.playbackSpeed === 2);
     }
 
-    // 상점 5칸 카드 렌더링
+    // 하단 5장 챔피언 도트 일러스트 카드 렌더링
     const shopContainer = document.getElementById('shop-cards-container');
     if (!shopContainer) return;
     shopContainer.innerHTML = '';
@@ -1114,11 +970,11 @@ class FantasyAutoBattlerApp {
 
       let mergeHintBadge = '';
       if (ownedCopies === 8) {
-        mergeHintBadge = `<div class="shop-merge-badge">👑 구매 즉시 3성 달성!</div>`;
+        mergeHintBadge = `<div class="shop-merge-badge">👑즉시3성!</div>`;
       } else if (ownedCopies === 2 || ownedCopies === 5) {
-        mergeHintBadge = `<div class="shop-merge-badge">⚡ 구매 즉시 2성 합성!</div>`;
+        mergeHintBadge = `<div class="shop-merge-badge">⚡즉시2성!</div>`;
       } else if (ownedCopies > 0) {
-        mergeHintBadge = `<div class="shop-merge-badge">✨ 보유 중 (${ownedCopies}장)</div>`;
+        mergeHintBadge = `<div class="shop-merge-badge">✨보유(${ownedCopies})</div>`;
       }
 
       const traitNames = template.traits
@@ -1127,22 +983,46 @@ class FantasyAutoBattlerApp {
 
       card.innerHTML = `
         <div class="shop-card-top">
-          <span>${template.icon} ${template.name}</span>
+          <span>${template.name}</span>
           <span class="shop-cost-tag">🪙${template.cost}</span>
         </div>
         ${mergeHintBadge}
-        <div class="shop-card-traits">${traitNames}</div>
+        <div class="shop-card-portrait-row">
+          <canvas class="shop-pixel-portrait" width="28" height="28"></canvas>
+          <div class="shop-card-traits">${traitNames}</div>
+        </div>
         <div class="shop-pool-footer">
-          <span>공유 풀 잔여:</span>
-          <strong>${remainingPool} / ${maxPool}</strong>
+          <span>남은 풀:</span>
+          <strong>${remainingPool}/${maxPool}</strong>
         </div>
       `;
 
+      // 상점 카드 내부에 실제 28x28 도트 캐릭터 일러스트 복사 렌더링
+      const portraitCanvas = card.querySelector(
+        '.shop-pixel-portrait'
+      ) as HTMLCanvasElement | null;
+      if (portraitCanvas) {
+        const pCtx = portraitCanvas.getContext('2d')!;
+        pCtx.imageSmoothingEnabled = false;
+        const sprite = this.pixelRenderer.getOrCreateUnitPixelSprite(
+          unitId,
+          1,
+          0,
+          false
+        );
+        pCtx.drawImage(sprite, 0, 0);
+      }
+
       card.addEventListener('pointerup', (e) => {
         if (player.buyUnit(slotIdx, this.game.sharedPool)) {
-          this.spawnParticleBurst(e.clientX, e.clientY, '#ffd54f', 18);
+          this.pixelRenderer.spawnPixelSparks(
+            e.clientX,
+            e.clientY,
+            '#fde047',
+            22
+          );
           this.checkNewStarUpgrades();
-          this.renderAll();
+          this.renderAllHUD();
         } else if (player.lastActionMessage) {
           this.game.pushBannerNotification(player.lastActionMessage);
           this.renderTopHud();
@@ -1153,9 +1033,6 @@ class FantasyAutoBattlerApp {
     });
   }
 
-  /**
-   * 증강체 모달(2-1, 3-2, 4-2), 운명의 모루 모달(2-4, 3-4, 4-4), 게임오버 모달 렌더링
-   */
   private renderPhaseModals(): void {
     // 1. 증강체 선택 모달
     const augModal = document.getElementById('augment-modal');
@@ -1173,14 +1050,14 @@ class FantasyAutoBattlerApp {
           card.innerHTML = `
             <div>
               <div class="choice-card-title">${aug.icon} ${aug.name}</div>
-              <div style="font-size:10px;color:#ffd54f;margin:4px 0;">[${aug.tier} 등급 증강체]</div>
+              <div style="font-size:10px;color:#fde047;margin:4px 0;">[${aug.tier} 룬 증강체]</div>
               <div class="choice-card-desc">${aug.description}</div>
             </div>
             <div class="choice-btn-group">
-              <button type="button" class="action-btn select-aug-btn" style="border-color:#ffd54f;padding:7px;">✅ 이 증강체 선택</button>
-              <button type="button" class="action-btn reroll-aug-btn" ${
-                !canReroll ? 'disabled style="opacity:0.4"' : ''
-              }>🎲 카드 리롤 (${canReroll ? '1회 가능' : '사용됨'})</button>
+              <div class="rune-choice-btn select-aug-btn">✅ 이 증강체 각인</div>
+              <div class="rune-choice-btn secondary reroll-aug-btn" style="${
+                !canReroll ? 'opacity:0.35;pointer-events:none;' : ''
+              }">🎲 리롤 (${canReroll ? '1회' : '완료'})</div>
             </div>
           `;
 
@@ -1212,17 +1089,19 @@ class FantasyAutoBattlerApp {
 
         this.game.playerAnvilChoices.forEach((opt, idx) => {
           const card = document.createElement('div');
-          card.className = 'choice-card tier-GOLD';
+          card.className = 'choice-card';
           card.innerHTML = `
             <div>
               <div class="choice-card-title">${opt.icon} ${opt.label}</div>
               <div class="choice-card-desc" style="margin-top:6px;">${opt.description}</div>
             </div>
-            <button type="button" class="action-btn" style="border-color:#ffd54f;padding:8px;">🎁 무료 획득</button>
+            <div class="rune-choice-btn anvil-pick-btn">🎁 무료 제련 획득</div>
           `;
-          card.querySelector('button')?.addEventListener('pointerup', () => {
-            this.game.selectPlayerAnvilOption(idx);
-          });
+          card
+            .querySelector('.anvil-pick-btn')
+            ?.addEventListener('pointerup', () => {
+              this.game.selectPlayerAnvilOption(idx);
+            });
           anvilRow.appendChild(card);
         });
       } else {
@@ -1241,10 +1120,10 @@ class FantasyAutoBattlerApp {
         overModal.classList.remove('hidden');
         const res = this.game.rankSettlementResult;
         overSummary.innerHTML = `
-          <div style="font-size:20px;font-weight:900;color:#ffd54f;margin:8px 0;">
+          <div style="font-size:20px;font-weight:900;color:#fde047;margin:8px 0;text-align:center;">
             최종 순위: #${res.placement}위!
           </div>
-          <div style="font-size:14px;margin-bottom:12px;">
+          <div style="font-size:13px;margin-bottom:10px;text-align:center;">
             ${res.summaryText}
           </div>
         `;
@@ -1255,7 +1134,7 @@ class FantasyAutoBattlerApp {
   }
 
   // ==========================================================================
-  // 3. 실시간 공유 기물 풀 & 3성 차단 인스펙터 모달 및 랭크 설정 모달
+  // 3. 공유 기물 풀 & 3성 차단 인스펙터 모달 및 랭크 설정 모달
   // ==========================================================================
 
   private openPoolInspectorModal(): void {
@@ -1272,16 +1151,16 @@ class FantasyAutoBattlerApp {
     for (const row of rows) {
       const tr = document.createElement('tr');
       const lockBadge = row.isBlockedForPlayer
-        ? `<span class="locked-badge">🔒 3성 달성 차단됨 (상점 등장 불가)</span>`
-        : `<span class="open-badge">정상 추첨 가능</span>`;
+        ? `<span class="locked-badge">🔒 3성 달성 차단됨</span>`
+        : `<span class="open-badge">정상 추첨</span>`;
 
       tr.innerHTML = `
-        <td style="color:var(--cost-${row.cost});font-weight:800;">${row.cost}코스트</td>
+        <td style="color:var(--cost-${row.cost});font-weight:900;">${row.cost}코</td>
         <td style="font-weight:800;">${UNIT_TEMPLATES[row.unitId].icon} ${row.unitName}</td>
-        <td>${row.maxCount}개</td>
-        <td style="color:#80d8ff;font-weight:900;">${row.remainingInPool}개</td>
-        <td>${row.ownedByAllParticipants}개</td>
-        <td>${row.inShopsCount}개</td>
+        <td>${row.maxCount}</td>
+        <td style="color:#38bdf8;font-weight:900;">${row.remainingInPool}</td>
+        <td>${row.ownedByAllParticipants}</td>
+        <td>${row.inShopsCount}</td>
         <td>${lockBadge}</td>
       `;
       tbody.appendChild(tr);
@@ -1300,18 +1179,18 @@ class FantasyAutoBattlerApp {
     const aiParams = this.game.rankManager.getAISkillParameters();
 
     summaryEl.innerHTML = `
-      <div style="background:#151b2e;padding:10px;border-radius:8px;border:1px solid #2b3558;">
-        <div style="font-size:15px;font-weight:900;color:#ffd54f;">
+      <div style="background:#0f172a;padding:10px;margin-bottom:8px;">
+        <div style="font-size:14px;font-weight:900;color:#fde047;">
           현재 티어: ${RANK_TIER_BADGE_ICONS[profile.tier]} ${RANK_TIER_KOREAN_NAMES[profile.tier]} (${profile.lp} LP)
         </div>
-        <div style="font-size:12px;color:#b8c6e8;margin-top:4px;">
-          전적: ${profile.gamesPlayed}전 | 1위 우승: ${profile.wins}회 | TOP 4: ${profile.top4Count}회
+        <div style="font-size:11px;color:#cbd5e1;margin-top:4px;">
+          전적: ${profile.gamesPlayed}전 | 1위: ${profile.wins}회 | TOP 4: ${profile.top4Count}회
         </div>
-        <div style="font-size:11px;color:#80d8ff;margin-top:4px;">
-          현재 로비 AI 지능 지수(skillLevel): <strong>${aiParams.skillLevel}</strong> | 정찰/덱전환 확률: <strong>${Math.round(
+        <div style="font-size:10px;color:#38bdf8;margin-top:4px;">
+          AI 지능(skillLevel): <strong>${aiParams.skillLevel}</strong> | 정찰 확률: <strong>${Math.round(
       aiParams.scoutingChance * 100
     )}%</strong> | 4~5코 3성 견제: <strong>${
-      aiParams.skillLevel >= 0.75 ? '활성화 (다이아+)' : '비활성'
+      aiParams.skillLevel >= 0.75 ? 'ON (다이아+)' : 'OFF'
     }</strong>
         </div>
       </div>
@@ -1319,13 +1198,8 @@ class FantasyAutoBattlerApp {
 
     gridEl.innerHTML = '';
     for (const tier of RANK_TIERS_ORDERED) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'action-btn';
-      btn.style.padding = '8px';
-      if (tier === profile.tier) {
-        btn.style.borderColor = '#ffd54f';
-      }
+      const btn = document.createElement('div');
+      btn.className = `rune-icon-btn ${tier === profile.tier ? 'gold-gem' : ''}`;
       btn.innerHTML = `${RANK_TIER_BADGE_ICONS[tier]} ${RANK_TIER_KOREAN_NAMES[tier]}`;
       btn.addEventListener('pointerup', () => {
         this.game.rankManager.setTierForTesting(tier as RankTier, 50);
@@ -1339,7 +1213,7 @@ class FantasyAutoBattlerApp {
   }
 
   // ==========================================================================
-  // 4. 단기 탭(Tap) 상세 툴팁 및 2성/3성 달성/5코 3성 권능 VFX 연출
+  // 4. 단기 탭(Short Tap) 상세 툴팁 & 3성 합성 달성 연출
   // ==========================================================================
 
   private showTapTooltip(html: string): void {
@@ -1363,19 +1237,23 @@ class FantasyAutoBattlerApp {
     this.showTapTooltip(
       `<strong>${unit.icon} ${unit.name} (${'★'.repeat(unit.starLevel)} / ${
         unit.cost
-      }코스트)</strong> [${traitsStr}]<br/>체력: ${unit.maxHp} | 공격력: ${
+      }코스트)</strong> [${traitsStr}]<br/>HP: ${unit.maxHp} | 공격력: ${
         unit.atk
-      } | 방어력: ${unit.def} | 공속: ${unit.atkSpeed} | 사거리: ${
+      } | 방어력: ${unit.def} | 공속: ${unit.atkSpeed} | 육각형 사거리: ${
         unit.range
-      } | 마나: ${unit.startMana}/${unit.maxMana} | 장착 아이템: ${itemsStr}<br/><span style="color:#ffd54f">스킬 [${
+      }칸 | 마나: ${unit.startMana}/${unit.maxMana} | 아이템: ${itemsStr}<br/><span style="color:#fde047">스킬 [${
         template.skill.name
       }]:</span> ${template.skill.description}`
     );
   }
 
-  /**
-   * 새로운 3성 기물이 합성되었는지 감지하여 황금빛 폭발 연출과 상단 배너를 출력한다.
-   */
+  private showCombatUnitTooltip(cu: CombatUnit): void {
+    const template = UNIT_TEMPLATES[cu.unitId];
+    this.showTapTooltip(
+      `<strong>${cu.icon} ${cu.name} (${cu.starLevel}성)</strong> | HP: ${cu.currentHp}/${cu.maxHp} (보호막 ${cu.shield}) | 공격력: ${cu.atk} | 방어력: ${cu.def} | 사거리: ${cu.range}칸 | 누적 딜량: ${cu.totalDamageDealt}<br/><span style="color:#fde047">스킬 [${template?.skill.name}]:</span> ${template?.skill.description}`
+    );
+  }
+
   private checkNewStarUpgrades(): void {
     for (const loc of this.game.player.getAllUnitLocations()) {
       if (
@@ -1383,254 +1261,67 @@ class FantasyAutoBattlerApp {
         !this.knownThreeStarUnits.has(loc.unit.instanceId)
       ) {
         this.knownThreeStarUnits.add(loc.unit.instanceId);
-        this.triggerScreenShake();
-        this.spawnParticleBurst(
+        this.pixelRenderer.triggerImpactShake(11, 380, 50);
+        this.pixelRenderer.spawnPixelSparks(
           window.innerWidth * 0.5,
           window.innerHeight * 0.45,
-          '#ffd700',
-          60
+          '#ffea00',
+          55
+        );
+        this.pixelRenderer.spawnArcadePopupText(
+          window.innerWidth * 0.5,
+          window.innerHeight * 0.4,
+          `★★★ ${loc.unit.name} 3성 진화!`,
+          '#ffea00',
+          20
         );
         this.game.pushBannerNotification(
-          `🌟★★★ [${loc.unit.name}] 3성 달성!! 공유 풀에서 해당 기물의 내 상점 등장이 영구 잠금(BLOCKED)되었습니다!`
+          `🌟★★★ [${loc.unit.name}] 3성 달성!! (1.5배 거대화 & 황금 마법진 발동 / 상점 영구 차단됨)`
         );
       }
     }
   }
 
-  public triggerScreenShake(): void {
-    const appRoot = document.getElementById('app');
-    if (!appRoot) return;
-    appRoot.classList.remove('screen-shake');
-    void appRoot.offsetWidth;
-    appRoot.classList.add('screen-shake');
-  }
-
-  private processCombatEventsForVFX(events: CombatEvent[]): void {
-    const w = this.fxCanvas.width;
-    const h = this.fxCanvas.height;
-    const cellW = w / 7;
-    const cellH = h / 8;
-
-    for (const ev of events) {
-      if (ev.type === 'FIVE_COST_3STAR_CATACLYSM') {
-        this.triggerScreenShake();
-        if (ev.message) {
-          this.game.pushBannerNotification(ev.message);
-        }
-        // 화면 중앙 초대형 99,999! 황금 번개 연출
-        this.floatingTexts.push({
-          x: w * 0.5,
-          y: h * 0.45,
-          vy: -25,
-          text: `⚡ 99,999! 절대 권능! ⚡`,
-          color: '#ffea00',
-          fontSize: 26,
-          alpha: 1,
-          lifeMs: 0,
-          maxLifeMs: 1800,
-        });
-        for (let i = 0; i < 7; i++) {
-          this.beams.push({
-            x1: (i + 0.5) * cellW,
-            y1: 0,
-            x2: (i + 0.5) * cellW,
-            y2: h,
-            color: '#ffea00',
-            width: 6,
-            lifeMs: 0,
-            maxLifeMs: 550,
-          });
-        }
-      } else if (
-        (ev.type === 'BASIC_ATTACK' || ev.type === 'SKILL_CAST') &&
-        ev.fromRow !== undefined &&
-        ev.fromCol !== undefined &&
-        ev.toRow !== undefined &&
-        ev.toCol !== undefined
-      ) {
-        const x1 = (ev.fromCol + 0.5) * cellW;
-        const y1 = (ev.fromRow + 0.5) * cellH;
-        const x2 = (ev.toCol + 0.5) * cellW;
-        const y2 = (ev.toRow + 0.5) * cellH;
-        this.beams.push({
-          x1,
-          y1,
-          x2,
-          y2,
-          color: ev.type === 'SKILL_CAST' ? '#00e5ff' : '#ffd54f',
-          width: ev.type === 'SKILL_CAST' ? 4 : 2,
-          lifeMs: 0,
-          maxLifeMs: ev.type === 'SKILL_CAST' ? 320 : 160,
-        });
-      } else if (
-        ev.type === 'DAMAGE' &&
-        ev.toRow !== undefined &&
-        ev.toCol !== undefined &&
-        ev.amount !== undefined
-      ) {
-        const x = (ev.toCol + 0.5) * cellW + (Math.random() - 0.5) * 18;
-        const y = (ev.toRow + 0.4) * cellH;
-        const isCataclysmDmg = ev.amount >= 10000;
-        const color = isCataclysmDmg
-          ? '#ffea00'
-          : ev.damageType === 'TRUE'
-          ? '#ffffff'
-          : ev.damageType === 'MAGICAL'
-          ? '#40c4ff'
-          : ev.isCrit
-          ? '#ff5252'
-          : '#ffab40';
-
-        this.floatingTexts.push({
-          x,
-          y,
-          vy: -35,
-          text: `${ev.isCrit || isCataclysmDmg ? '💥' : ''}-${ev.amount}`,
-          color,
-          fontSize: isCataclysmDmg ? 22 : ev.isCrit ? 15 : 12,
-          alpha: 1,
-          lifeMs: 0,
-          maxLifeMs: isCataclysmDmg ? 1300 : 750,
-        });
-      } else if (
-        ev.type === 'HEAL' &&
-        ev.toRow !== undefined &&
-        ev.toCol !== undefined &&
-        ev.amount !== undefined
-      ) {
-        const x = (ev.toCol + 0.5) * cellW;
-        const y = (ev.toRow + 0.3) * cellH;
-        this.floatingTexts.push({
-          x,
-          y,
-          vy: -30,
-          text: `+${ev.amount}`,
-          color: '#69f0ae',
-          fontSize: 12,
-          alpha: 1,
-          lifeMs: 0,
-          maxLifeMs: 700,
-        });
-      } else if (ev.type === 'GOLD_DROP' && ev.message) {
-        this.game.pushBannerNotification(ev.message);
-      }
-    }
-  }
-
-  private spawnParticleBurst(
-    clientX: number,
-    clientY: number,
-    color: string,
-    count: number
-  ): void {
-    const rect = this.fxCanvas.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 35 + Math.random() * 120;
-      this.particles.push({
-        x,
-        y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        radius: 2 + Math.random() * 3,
-        color,
-        alpha: 1,
-        lifeMs: 0,
-        maxLifeMs: 450 + Math.random() * 350,
-      });
-    }
-  }
+  // ==========================================================================
+  // 5. 전체화면 캔버스 리사이즈 및 60FPS 픽셀 렌더 루프
+  // ==========================================================================
 
   private resizeCanvas(): void {
-    const container = document.getElementById('battlefield-container');
-    if (!container) return;
-    this.fxCanvas.width = container.clientWidth || 600;
-    this.fxCanvas.height = container.clientHeight || 400;
+    this.fxCanvas.width = window.innerWidth || 800;
+    this.fxCanvas.height = window.innerHeight || 600;
+    this.pixelRenderer.recomputeLayoutMetrics();
   }
 
-  private startVFXAnimationLoop(): void {
+  private startRenderLoop(): void {
     let lastTime = performance.now();
 
     const frame = (now: number) => {
       const dt = Math.min(50, now - lastTime);
       lastTime = now;
-      this.updateAndDrawVFX(dt);
+
+      const viewed = this.game.getViewedParticipant();
+      const inCombat =
+        this.game.phase === 'COMBAT_PHASE' &&
+        viewed.id === this.game.player.id;
+
+      this.pixelRenderer.renderFrame(dt, {
+        inCombat,
+        viewedParticipant: viewed,
+        combatUnits: this.game.playerCombatEngine.units,
+        hoveredHex: this.hoveredHex,
+        hoveredBenchIndex: this.hoveredBenchIndex,
+        isDraggingUnit: this.isDragging && this.dragPayload?.kind === 'UNIT',
+        draggedInstanceId:
+          this.isDragging && this.dragPayload?.kind === 'UNIT'
+            ? this.dragPayload.instanceId
+            : null,
+        hasPandoraBench: viewed.augments.includes('AUG_PANDORA_BENCH'),
+      });
+
       requestAnimationFrame(frame);
     };
 
     requestAnimationFrame(frame);
-  }
-
-  private updateAndDrawVFX(dtMs: number): void {
-    const ctx = this.fxCtx;
-    ctx.clearRect(0, 0, this.fxCanvas.width, this.fxCanvas.height);
-
-    // 1. 투사체/스킬 광선(Beams)
-    for (let i = this.beams.length - 1; i >= 0; i--) {
-      const b = this.beams[i];
-      b.lifeMs += dtMs;
-      if (b.lifeMs >= b.maxLifeMs) {
-        this.beams.splice(i, 1);
-        continue;
-      }
-      const alpha = 1 - b.lifeMs / b.maxLifeMs;
-      ctx.save();
-      ctx.strokeStyle = b.color;
-      ctx.globalAlpha = alpha;
-      ctx.lineWidth = b.width;
-      ctx.beginPath();
-      ctx.moveTo(b.x1, b.y1);
-      ctx.lineTo(b.x2, b.y2);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // 2. 파티클(Particles)
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const p = this.particles[i];
-      p.lifeMs += dtMs;
-      if (p.lifeMs >= p.maxLifeMs) {
-        this.particles.splice(i, 1);
-        continue;
-      }
-      p.x += (p.vx * dtMs) / 1000;
-      p.y += (p.vy * dtMs) / 1000;
-      p.alpha = 1 - p.lifeMs / p.maxLifeMs;
-
-      ctx.save();
-      ctx.fillStyle = p.color;
-      ctx.globalAlpha = p.alpha;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    // 3. 플로팅 데미지/회복 텍스트
-    for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
-      const ft = this.floatingTexts[i];
-      ft.lifeMs += dtMs;
-      if (ft.lifeMs >= ft.maxLifeMs) {
-        this.floatingTexts.splice(i, 1);
-        continue;
-      }
-      ft.y += (ft.vy * dtMs) / 1000;
-      ft.alpha = 1 - ft.lifeMs / ft.maxLifeMs;
-
-      ctx.save();
-      ctx.font = `900 ${ft.fontSize}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.globalAlpha = ft.alpha;
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 3;
-      ctx.strokeText(ft.text, ft.x, ft.y);
-      ctx.fillStyle = ft.color;
-      ctx.fillText(ft.text, ft.x, ft.y);
-      ctx.restore();
-    }
   }
 }
 
@@ -1641,4 +1332,3 @@ if (document.readyState === 'loading') {
 } else {
   new FantasyAutoBattlerApp();
 }
-
