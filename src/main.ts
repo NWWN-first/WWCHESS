@@ -1125,12 +1125,12 @@ class FantasyAutoBattlerApp {
       if (engine.currentTick === 0) {
         const initEvs = engine.consumeInitialEvents();
         this.pixelRenderer.ingestCombatEvents(initEvs, engine.units);
+        this.threeRenderer.ingestCombatEvents(initEvs, engine.units);
       } else if (engine.currentTick !== this.lastProcessedCombatTick) {
         this.lastProcessedCombatTick = engine.currentTick;
-        this.pixelRenderer.ingestCombatEvents(
-          engine.getLastTickEvents(),
-          engine.units
-        );
+        const tickEvs = engine.getLastTickEvents();
+        this.pixelRenderer.ingestCombatEvents(tickEvs, engine.units);
+        this.threeRenderer.ingestCombatEvents(tickEvs, engine.units);
       }
     } else {
       this.lastProcessedCombatEngine = null;
