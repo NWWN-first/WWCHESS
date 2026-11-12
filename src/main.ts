@@ -28,6 +28,7 @@ import { PixiVfxEngine } from './PixiVfxEngine';
 import { CombatUnit } from './SkillRegistry';
 import { soundFX } from './SoundFXManager';
 import { SynergyEngine } from './SynergyEngine';
+import { ThreeJsGameRenderer } from './ThreeJsGameRenderer';
 
 type DragPayload =
   | {
@@ -62,8 +63,11 @@ class FantasyAutoBattlerApp {
   private game: GameLoopManager;
   private fxCanvas: HTMLCanvasElement;
   private pixiCanvas: HTMLCanvasElement;
+  private threeCanvas: HTMLCanvasElement;
   private pixelRenderer: PixelGameRenderer;
   private pixiVfx: PixiVfxEngine;
+  private threeRenderer: ThreeJsGameRenderer;
+  private is3DViewMode: boolean = true;
 
   private lastProcessedCombatTick: number = -1;
   private lastProcessedCombatEngine: CombatEngine | null = null;
@@ -101,9 +105,16 @@ class FantasyAutoBattlerApp {
   constructor() {
     this.fxCanvas = document.getElementById('fx-canvas') as HTMLCanvasElement;
     this.pixiCanvas = document.getElementById('pixi-canvas') as HTMLCanvasElement;
+    this.threeCanvas = document.getElementById('three-canvas') as HTMLCanvasElement;
     this.pixelRenderer = new PixelGameRenderer(this.fxCanvas);
     this.pixiVfx = new PixiVfxEngine(this.pixiCanvas);
+    this.threeRenderer = new ThreeJsGameRenderer(this.threeCanvas);
     this.pixiVfx.init();
+
+    // 3D 모드가 기본이므로 2D 캔버스는 반투명 HUD/파티클 레이어로 동작
+    if (this.is3DViewMode) {
+      this.fxCanvas.style.opacity = '0.35';
+    }
 
     // 로비 화면 대기 상태로 초기화 (autoStart = false)
     this.game = new GameLoopManager(undefined, false);
@@ -175,6 +186,24 @@ class FantasyAutoBattlerApp {
       },
       { once: true }
     );
+
+    document
+      .getElementById('view-mode-toggle-btn')
+      ?.addEventListener('pointerup', () => {
+        soundFX.playPickup();
+        this.is3DViewMode = !this.is3DViewMode;
+        const btn = document.getElementById('view-mode-toggle-btn');
+        if (btn) {
+          btn.textContent = this.is3DViewMode ? '🎮3D모드' : '👾2D도트';
+        }
+        if (this.is3DViewMode) {
+          this.threeCanvas.classList.remove('hidden');
+          this.fxCanvas.style.opacity = '0.35';
+        } else {
+          this.threeCanvas.classList.add('hidden');
+          this.fxCanvas.style.opacity = '1.0';
+        }
+      });
 
     document
       .getElementById('map-theme-btn')
@@ -1933,6 +1962,7 @@ class FantasyAutoBattlerApp {
         this.isShopCurrentlyExpanded()
       );
       this.pixiVfx.resize(rawH, rawW, dpr);
+      this.threeRenderer.resize(rawH, rawW);
     } else {
       this.isPortraitRotated = false;
       appEl?.classList.remove('force-landscape-rotated');
@@ -1943,6 +1973,7 @@ class FantasyAutoBattlerApp {
         this.isShopCurrentlyExpanded()
       );
       this.pixiVfx.resize(rawW, rawH, dpr);
+      this.threeRenderer.resize(rawW, rawH);
     }
   }
 
@@ -1968,6 +1999,31 @@ class FantasyAutoBattlerApp {
         this.isDragging && this.dragPayload?.kind === 'UNIT'
           ? this.dragPayload.instanceId
           : this.selectedUnitInstanceId;
+
+      if (this.is3DViewMode) {
+        this.threeRenderer.renderFrame(dt, {
+          inCombat,
+          viewedParticipant: viewedCombat
+            ? viewedCombat.viewedParticipant
+            : viewed,
+          combatUnits: viewedCombat ? viewedCombat.engine.units : [],
+          hoveredHex: this.hoveredHex,
+          hoveredBenchIndex: this.hoveredBenchIndex,
+          isDraggingUnit: this.isDragging && this.dragPayload?.kind === 'UNIT',
+          draggedInstanceId:
+            this.isDragging && this.dragPayload?.kind === 'UNIT'
+              ? this.dragPayload.instanceId
+              : null,
+          selectedInstanceId: activeSelectedOrDraggedId,
+          hasPandoraBench: viewed.augments.includes('AUG_PANDORA_BENCH'),
+          opponentName: viewedCombat
+            ? viewedCombat.opponentName
+            : this.game.playerCurrentOpponentName,
+          isCreepMatch: viewedCombat
+            ? viewedCombat.isCreepMatch
+            : this.game.getCurrentRoundType() !== 'PVP',
+        });
+      }
 
       this.pixelRenderer.renderFrame(dt, {
         inCombat,

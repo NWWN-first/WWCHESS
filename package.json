@@ -15,10 +15,12 @@
     "@capacitor/android": "^6.0.0",
     "@capacitor/core": "^6.0.0",
     "onnxruntime-web": "^1.31.1",
-    "pixi.js": "^8.23.0"
+    "pixi.js": "^8.23.0",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.0.0",
+    "@types/three": "^0.187.0",
     "gh-pages": "^6.3.0",
     "typescript": "^5.4.5",
     "vite": "^5.2.11"
