@@ -147,6 +147,13 @@ export class CombatEngine implements SkillCombatContext {
   }
 
   /**
+   * 가장 최근 stepTick에서 발생한 전투 이벤트 목록을 반환한다 (화면 VFX 렌더링용).
+   */
+  public getLastTickEvents(): CombatEvent[] {
+    return [...this.currentTickEvents];
+  }
+
+  /**
    * 원본 UnitInstance를 오염시키지 않도록 깊은 복사하고 시너지/아이템/증강체 초기 버프를 적용한다.
    */
   private createDeepClonedCombatUnit(

@@ -1,0 +1,14 @@
+{
+  "appId": "com.wwchess.fantasyautobattler",
+  "appName": "WWCHESS Fantasy AutoBattler",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  }
+}
