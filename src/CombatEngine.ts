@@ -1,0 +1,1497 @@
+// src/CombatEngine.ts
+
+import { ITEM_DEFINITIONS, TraitId, UNIT_TEMPLATES } from './GameData';
+import { Participant, UnitInstance } from './Participant';
+import {
+  CombatDamageType,
+  CombatEvent,
+  CombatTeam,
+  CombatUnit,
+  SkillCombatContext,
+  SkillRegistry,
+} from './SkillRegistry';
+import { ActiveSynergyState, SynergyEngine } from './SynergyEngine';
+
+export interface CombatSummary {
+  winner: 'HOME' | 'AWAY' | 'DRAW';
+  survivingHomeUnits: number;
+  survivingAwayUnits: number;
+  homeGoldEarnedInCombat: number;
+  awayGoldEarnedInCombat: number;
+  playerDamageTaken: number;
+  totalTicks: number;
+}
+
+interface AStarNode {
+  row: number;
+  col: number;
+  g: number;
+  h: number;
+  f: number;
+  parent: AStarNode | null;
+}
+
+export class CombatEngine implements SkillCombatContext {
+  public static readonly GRID_ROWS = 8;
+  public static readonly GRID_COLS = 7;
+  public static readonly MAX_COMBAT_MS = 45000; // 45초 초과 시 승패 판정
+
+  public currentTick: number = 0;
+  public elapsedMs: number = 0;
+  public units: CombatUnit[] = [];
+  public isFinished: boolean = false;
+  public winner: 'HOME' | 'AWAY' | 'DRAW' | null = null;
+
+  public homeGoldEarned: number = 0;
+  public awayGoldEarned: number = 0;
+
+  private homeParticipant: Participant | null = null;
+  private awayParticipant: Participant | null = null;
+  private homeSynergies: Map<TraitId, ActiveSynergyState> = new Map();
+  private awaySynergies: Map<TraitId, ActiveSynergyState> = new Map();
+
+  private currentTickEvents: CombatEvent[] = [];
+  private initialEventsBuffer: CombatEvent[] = [];
+
+  private elvenTickTimerMs: number = 0;
+  private sunfireTickTimerMs: number = 0;
+  private archangelTickTimerMs: number = 0;
+
+  /**
+   * 1) 전투 초기화 (initCombat)
+   * - 원본 기물 상태가 오염되지 않도록 양쪽 보드 기물을 깊은 복사(Deep Clone)하여 CombatUnit 생성
+   *   (하단 4~7행은 HOME 아군, 상단 0~3행은 AWAY 적군 점대칭 배치)
+   * - 양쪽의 활성화된 시너지(SynergyEngine)와 장착된 아이템, 증강체 효과를 완벽히 반영
+   * - 전투 시작 특수 효과 발동:
+   *   1) 신성 제국(HOLY_EMPIRE) 보호막 부여
+   *   2) 용족(DRAGONKIN) 시작 화염 브레스 피해 및 스킬 치명타 활성화
+   *   3) 그림자 암살자(SHADOW_ASSASSIN) 적진 최후방 빈 타일로 은신 도약(Leap)
+   *   4) 5코스트 3성 황금 고블린 왕 골드투스(u5_goldtooth) 개전 즉시 적 전체 99,999 폭격 및 +50G
+   */
+  public initCombat(home: Participant, away: Participant): CombatEvent[] {
+    this.currentTick = 0;
+    this.elapsedMs = 0;
+    this.units = [];
+    this.isFinished = false;
+    this.winner = null;
+    this.homeGoldEarned = 0;
+    this.awayGoldEarned = 0;
+    this.currentTickEvents = [];
+    this.initialEventsBuffer = [];
+    this.elvenTickTimerMs = 0;
+    this.sunfireTickTimerMs = 0;
+    this.archangelTickTimerMs = 0;
+
+    this.homeParticipant = home;
+    this.awayParticipant = away;
+    this.homeSynergies = SynergyEngine.getActiveSynergyMap(home);
+    this.awaySynergies = SynergyEngine.getActiveSynergyMap(away);
+
+    // 1. HOME(아군) 기물 깊은 복사 및 배치 (4~7행, 0~6열)
+    for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+      for (let c = 0; c < Participant.BOARD_COLS; c++) {
+        const unit = home.board[r][c];
+        if (!unit) continue;
+        const combatRow = 4 + r;
+        const combatCol = c;
+        const cloned = this.createDeepClonedCombatUnit(
+          unit,
+          'HOME',
+          combatRow,
+          combatCol,
+          home,
+          this.homeSynergies
+        );
+        this.units.push(cloned);
+      }
+    }
+
+    // 2. AWAY(적군) 기물 깊은 복사 및 점대칭 배치 (0~3행, 0~6열)
+    for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+      for (let c = 0; c < Participant.BOARD_COLS; c++) {
+        const unit = away.board[r][c];
+        if (!unit) continue;
+        const combatRow = 3 - r;
+        const combatCol = Participant.BOARD_COLS - 1 - c;
+        const cloned = this.createDeepClonedCombatUnit(
+          unit,
+          'AWAY',
+          combatRow,
+          combatCol,
+          away,
+          this.awaySynergies
+        );
+        this.units.push(cloned);
+      }
+    }
+
+    // 3. 개전 특수 효과 발동 (신성 제국 보호막, 용족 브레스, 그림자 암살자 후방 도약, 5코 3성 골드투스 개전 권능)
+    this.triggerCombatStartEffects('HOME', this.homeSynergies);
+    this.triggerCombatStartEffects('AWAY', this.awaySynergies);
+
+    // 4. 개전 직후 이미 한쪽이 전멸했는지 확인
+    this.checkCombatEndCondition();
+
+    const startEvents = [...this.currentTickEvents];
+    this.initialEventsBuffer = [...startEvents];
+    return startEvents;
+  }
+
+  /**
+   * 개전 시 생성된 이벤트들을 소비(반환 후 비움)한다.
+   */
+  public consumeInitialEvents(): CombatEvent[] {
+    const ev = [...this.initialEventsBuffer];
+    this.initialEventsBuffer = [];
+    return ev;
+  }
+
+  /**
+   * 원본 UnitInstance를 오염시키지 않도록 깊은 복사하고 시너지/아이템/증강체 초기 버프를 적용한다.
+   */
+  private createDeepClonedCombatUnit(
+    source: UnitInstance,
+    team: CombatTeam,
+    row: number,
+    col: number,
+    owner: Participant,
+    synergyMap: Map<TraitId, ActiveSynergyState>
+  ): CombatUnit {
+    const cu: CombatUnit = {
+      instanceId: `${team}_${source.instanceId}`,
+      unitId: source.unitId,
+      name: source.name,
+      team,
+      cost: source.cost,
+      starLevel: source.starLevel,
+      traits: [...source.traits],
+      icon: source.icon,
+      items: [...source.items],
+      row,
+      col,
+      maxHp: source.maxHp,
+      currentHp: source.maxHp,
+      shield: 0,
+      atk: source.atk,
+      baseAtk: source.atk,
+      def: source.def,
+      baseDef: source.def,
+      atkSpeed: source.atkSpeed,
+      baseAtkSpeed: source.atkSpeed,
+      range: source.range,
+      startMana: source.startMana,
+      maxMana: source.maxMana,
+      currentMana: source.startMana,
+      spellPower: source.spellPower,
+      critChance: source.critChance,
+      critDamage: source.critDamage,
+      omnivamp: source.omnivamp,
+      enableSkillCrit: false,
+      trueDamageBonusRatio: 0,
+      damageReductionRatio: 0,
+      ccDurationReduction: 0,
+      stunTimerMs: 0,
+      manaLockTimerMs: 0,
+      attackCooldownMs: Math.round(1000 / Math.max(0.2, source.atkSpeed)),
+      basicAttackCount: 0,
+      titansStacks: 0,
+      berserkTriggered: false,
+      bloodthirsterTriggered: false,
+      protectorsVowTriggered: false,
+      hasReviveAvailable: false,
+      isReviving: false,
+      reviveTimerMs: 0,
+      reviveHpRatio: 0,
+      reviveBonusAtkSpeed: 0,
+      ownerGold: owner.gold,
+      totalDamageDealt: 0,
+    };
+
+    // 아이템 고유 패시브(무한의 대검 스킬 치명타) 반영
+    for (const itemId of cu.items) {
+      const def = ITEM_DEFINITIONS[itemId];
+      if (def?.passiveFlags.enableSkillCrit) {
+        cu.enableSkillCrit = true;
+      }
+    }
+
+    // 증강체 전투 버프 반영
+    // 1) 사이버네틱 임플란트: 아이템 1개 이상 장착 시 체력 +250, 공격력 +25
+    if (owner.augments.includes('AUG_CYBERNETIC_IMPLANT') && cu.items.length > 0) {
+      cu.maxHp += 250;
+      cu.currentHp += 250;
+      cu.atk += 25;
+      cu.baseAtk += 25;
+    }
+    // 2) 전투 마법사: 전방 2열(원본 보드 기준 0~1행)에 배치된 아군 기물이 주문력 +35%, 방어력 +35
+    const originalBoardRow = team === 'HOME' ? row - 4 : 3 - row;
+    if (owner.augments.includes('AUG_BATTLE_MAGE') && originalBoardRow <= 1) {
+      cu.spellPower = Number((cu.spellPower + 0.35).toFixed(2));
+      cu.def += 35;
+      cu.baseDef += 35;
+    }
+    // 3) 천상의 축복: 아군 전체 모든 피해 흡혈 +20%
+    if (owner.augments.includes('AUG_CELESTIAL_BLESSING')) {
+      cu.omnivamp = Number((cu.omnivamp + 0.2).toFixed(2));
+    }
+
+    // 시너지 상시 스탯 버프 반영
+    // - 신성 제국(HOLY_EMPIRE): 방어력 보너스
+    const empire = synergyMap.get('HOLY_EMPIRE')?.activeEffect;
+    if (empire && cu.traits.includes('HOLY_EMPIRE') && empire.bonusDef) {
+      cu.def += empire.bonusDef;
+      cu.baseDef += empire.bonusDef;
+    }
+
+    // - 심연의 악마(ABYSSAL_DEMON): 고정 피해 및 모든 피해 흡혈
+    const demon = synergyMap.get('ABYSSAL_DEMON')?.activeEffect;
+    if (demon && cu.traits.includes('ABYSSAL_DEMON')) {
+      cu.trueDamageBonusRatio += demon.trueDamageRatio ?? 0;
+      cu.omnivamp += demon.omnivamp ?? 0;
+    }
+
+    // - 용족(DRAGONKIN): 스킬 치명타 활성화 및 치명타 피해 증가
+    const dragon = synergyMap.get('DRAGONKIN')?.activeEffect;
+    if (dragon && cu.traits.includes('DRAGONKIN')) {
+      if (dragon.enableSkillCrit) cu.enableSkillCrit = true;
+      cu.critDamage += dragon.bonusCritDamage ?? 0;
+    }
+
+    // - 언데드 군단(UNDEAD_SCOURGE): 최초 사망 시 2초 뒤 부활 플래그
+    const undead = synergyMap.get('UNDEAD_SCOURGE')?.activeEffect;
+    if (undead && cu.traits.includes('UNDEAD_SCOURGE') && undead.reviveHpRatio) {
+      cu.hasReviveAvailable = true;
+      cu.reviveHpRatio = undead.reviveHpRatio;
+      cu.reviveBonusAtkSpeed = undead.reviveBonusAtkSpeed ?? 0.35;
+    }
+
+    // - 마탑(ARCANE_TOWER): 마탑 기물 주문력 상승
+    const arcane = synergyMap.get('ARCANE_TOWER')?.activeEffect;
+    if (arcane && cu.traits.includes('ARCANE_TOWER') && arcane.spellPowerBonus) {
+      cu.spellPower = Number((cu.spellPower + arcane.spellPowerBonus).toFixed(2));
+    }
+
+    // - 선봉대(VANGUARD): 방어력 상승 및 개전 8초간 피해 감소 30%
+    const vanguard = synergyMap.get('VANGUARD')?.activeEffect;
+    if (vanguard && cu.traits.includes('VANGUARD')) {
+      cu.def += vanguard.bonusDef ?? 0;
+      cu.baseDef += vanguard.bonusDef ?? 0;
+      cu.damageReductionRatio = vanguard.damageReductionFirst8s ?? 0.3;
+    }
+
+    // - 순찰자(RANGER): 사거리 +1 증가
+    const ranger = synergyMap.get('RANGER')?.activeEffect;
+    if (ranger && cu.traits.includes('RANGER') && ranger.bonusRange) {
+      cu.range += ranger.bonusRange;
+    }
+
+    // - 대마법사(ARCHMAGE): 주문력 상승
+    const archmage = synergyMap.get('ARCHMAGE')?.activeEffect;
+    if (archmage && cu.traits.includes('ARCHMAGE') && archmage.spellPowerBonus) {
+      cu.spellPower = Number((cu.spellPower + archmage.spellPowerBonus).toFixed(2));
+    }
+
+    // - 그림자 암살자(SHADOW_ASSASSIN): 치명타 확률 및 치명타 피해량 증가
+    const assassin = synergyMap.get('SHADOW_ASSASSIN')?.activeEffect;
+    if (assassin && cu.traits.includes('SHADOW_ASSASSIN')) {
+      cu.critChance = Math.min(1.0, cu.critChance + (assassin.bonusCritChance ?? 0));
+      cu.critDamage += assassin.bonusCritDamage ?? 0;
+    }
+
+    // - 성기사(PALADIN): 아군 전체 군중제어(기절) 지속시간 감소 또는 면역
+    const paladin = synergyMap.get('PALADIN')?.activeEffect;
+    if (paladin && paladin.ccDurationReduction) {
+      cu.ccDurationReduction = paladin.ccDurationReduction;
+    }
+
+    return cu;
+  }
+
+  /**
+   * 전투 시작 시 발동하는 특수 시너지 효과 처리
+   */
+  private triggerCombatStartEffects(
+    team: CombatTeam,
+    synergyMap: Map<TraitId, ActiveSynergyState>
+  ): void {
+    const teamUnits = this.units.filter((u) => u.team === team && u.currentHp > 0);
+    const enemyUnits = this.units.filter((u) => u.team !== team && u.currentHp > 0);
+
+    // 1. 신성 제국(HOLY_EMPIRE): 최대 체력 비례 신성 보호막 부여
+    const empire = synergyMap.get('HOLY_EMPIRE')?.activeEffect;
+    if (empire && empire.shieldMaxHpRatio) {
+      for (const u of teamUnits) {
+        if (u.traits.includes('HOLY_EMPIRE')) {
+          const shieldAmt = Math.round(u.maxHp * empire.shieldMaxHpRatio);
+          this.addShield(u, u, shieldAmt);
+        }
+      }
+    }
+
+    // 2. 용족(DRAGONKIN): 전투 시작 시 화염 숨결로 적 전체에게 최대 체력 비례 화상 피해
+    const dragon = synergyMap.get('DRAGONKIN')?.activeEffect;
+    if (dragon && dragon.initialBurnMaxHpRatio) {
+      const dragonCaster = teamUnits.find((u) => u.traits.includes('DRAGONKIN'));
+      if (dragonCaster) {
+        for (const enemy of enemyUnits) {
+          if (enemy.currentHp > 0) {
+            const burnDmg = Math.round(enemy.maxHp * dragon.initialBurnMaxHpRatio);
+            this.dealDamage(dragonCaster, enemy, burnDmg, 'TRUE', false, true);
+          }
+        }
+      }
+    }
+
+    // 3. 그림자 암살자(SHADOW_ASSASSIN): 전투 시작 시 적진 가장 뒷열(원거리 딜러 라인) 빈 타일로 은신 도약(Leap)
+    const targetBackRows = team === 'HOME' ? [0, 1, 2, 3] : [7, 6, 5, 4];
+    for (const u of teamUnits) {
+      if (u.traits.includes('SHADOW_ASSASSIN')) {
+        const leapTile = this.findBacklineLeapTile(u, targetBackRows);
+        if (leapTile && (leapTile.row !== u.row || leapTile.col !== u.col)) {
+          const fromRow = u.row;
+          const fromCol = u.col;
+          u.row = leapTile.row;
+          u.col = leapTile.col;
+          this.emitEvent({
+            type: 'LEAP',
+            tick: this.currentTick,
+            sourceId: u.instanceId,
+            team: u.team,
+            unitId: u.unitId,
+            fromRow,
+            fromCol,
+            toRow: u.row,
+            toCol: u.col,
+            message: `🗡️ [${u.name}] 적진 후방으로 은신 도약!`,
+          });
+        }
+      }
+    }
+
+    // 4. 5코스트 3성 황금 고블린 왕 골드투스(u5_goldtooth) 개전 즉시 권능 발동!
+    for (const u of teamUnits) {
+      if (u.unitId === 'u5_goldtooth' && u.starLevel === 3 && u.currentHp > 0) {
+        const aliveEnemies = this.units.filter(
+          (e) => e.team !== u.team && e.currentHp > 0
+        );
+        if (aliveEnemies.length > 0) {
+          this.emitEvent({
+            type: 'FIVE_COST_3STAR_CATACLYSM',
+            tick: this.currentTick,
+            sourceId: u.instanceId,
+            team: u.team,
+            unitId: u.unitId,
+            skillName: UNIT_TEMPLATES[u.unitId].skill.name,
+            message: `⚡👑 [3성 골드투스 절대 권능!] 개전 즉시 황금 제국 금고 대폭격 (99,999 피해 & +50G)!`,
+          });
+          SkillRegistry.executeSkill(u, aliveEnemies[0], this.units, this);
+        }
+      }
+    }
+  }
+
+  private findBacklineLeapTile(
+    assassin: CombatUnit,
+    preferredRows: number[]
+  ): { row: number; col: number } | null {
+    const occupied = new Set<string>();
+    for (const u of this.units) {
+      if (u.currentHp > 0 && u.instanceId !== assassin.instanceId) {
+        occupied.add(`${u.row},${u.col}`);
+      }
+    }
+
+    // 자신의 원래 열(col)과 가장 가까운 열부터 탐색
+    const colsOrdered = [0, 1, 2, 3, 4, 5, 6].sort(
+      (a, b) => Math.abs(a - assassin.col) - Math.abs(b - assassin.col)
+    );
+
+    for (const r of preferredRows) {
+      for (const c of colsOrdered) {
+        if (!occupied.has(`${r},${c}`)) {
+          return { row: r, col: c };
+        }
+      }
+    }
+    return null;
+  }
+
+  // ==========================================================================
+  // 2. 타일 예약제 A* 길찾기 (findNextStepWithReservation - 이동 충돌 100% 방지)
+  // ==========================================================================
+
+  /**
+   * 현재 유닛들이 서 있는 타일(occupiedTiles)뿐만 아니라,
+   * 이번 틱에 다른 유닛이 이동하기로 결정한 타일(reservedTiles)도 장애물로 간주하여
+   * A* 최단 경로 1칸을 찾는다.
+   * 이동할 타일 (nextRow, nextCol)이 결정되는 즉시 reservedTiles에 등록하여
+   * 두 근접 기물이 같은 칸으로 겹쳐 들어가는 버그를 100% 차단한다.
+   */
+  public findNextStepWithReservation(
+    unit: CombatUnit,
+    target: CombatUnit,
+    occupiedTiles: Set<string>,
+    reservedTiles: Set<string>
+  ): { row: number; col: number } | null {
+    const startKey = `${unit.row},${unit.col}`;
+    const openList: AStarNode[] = [];
+    const closedSet = new Set<string>();
+
+    const startNode: AStarNode = {
+      row: unit.row,
+      col: unit.col,
+      g: 0,
+      h: this.chebyshevDistance(unit.row, unit.col, target.row, target.col),
+      f: 0,
+      parent: null,
+    };
+    startNode.f = startNode.g + startNode.h;
+    openList.push(startNode);
+
+    const directions = [
+      [-1, 0],
+      [1, 0],
+      [0, -1],
+      [0, 1],
+      [-1, -1],
+      [-1, 1],
+      [1, -1],
+      [1, 1],
+    ];
+
+    let bestGoalNode: AStarNode | null = null;
+
+    while (openList.length > 0) {
+      openList.sort((a, b) => a.f - b.f);
+      const current = openList.shift()!;
+      const currentKey = `${current.row},${current.col}`;
+
+      if (closedSet.has(currentKey)) continue;
+      closedSet.add(currentKey);
+
+      // 현재 노드가 타겟을 공격할 수 있는 사거리 내에 도달했다면 경로 완성
+      const distToTarget = this.chebyshevDistance(
+        current.row,
+        current.col,
+        target.row,
+        target.col
+      );
+      if (currentKey !== startKey && distToTarget <= unit.range) {
+        bestGoalNode = current;
+        break;
+      }
+
+      for (const [dr, dc] of directions) {
+        const nr = current.row + dr;
+        const nc = current.col + dc;
+
+        if (
+          nr < 0 ||
+          nr >= CombatEngine.GRID_ROWS ||
+          nc < 0 ||
+          nc >= CombatEngine.GRID_COLS
+        ) {
+          continue;
+        }
+
+        const neighborKey = `${nr},${nc}`;
+        if (closedSet.has(neighborKey)) continue;
+
+        // occupiedTiles 또는 reservedTiles에 있는 칸은 절대 통과/진입 불가
+        if (occupiedTiles.has(neighborKey) || reservedTiles.has(neighborKey)) {
+          continue;
+        }
+
+        const stepCost = dr !== 0 && dc !== 0 ? 1.15 : 1.0; // 직선 이동을 미세하게 선호
+        const gScore = current.g + stepCost;
+        const hScore = this.chebyshevDistance(nr, nc, target.row, target.col);
+        const fScore = gScore + hScore;
+
+        const existing = openList.find((n) => n.row === nr && n.col === nc);
+        if (!existing || gScore < existing.g) {
+          if (existing) {
+            existing.g = gScore;
+            existing.h = hScore;
+            existing.f = fScore;
+            existing.parent = current;
+          } else {
+            openList.push({
+              row: nr,
+              col: nc,
+              g: gScore,
+              h: hScore,
+              f: fScore,
+              parent: current,
+            });
+          }
+        }
+      }
+    }
+
+    // 만약 A*로 사거리 내 빈 타일을 찾았다면 첫 번째 이동 스텝 추출
+    if (bestGoalNode) {
+      let stepNode: AStarNode = bestGoalNode;
+      while (stepNode.parent && stepNode.parent.parent !== null) {
+        stepNode = stepNode.parent;
+      }
+      const nextKey = `${stepNode.row},${stepNode.col}`;
+      reservedTiles.add(nextKey);
+      occupiedTiles.delete(startKey);
+      occupiedTiles.add(nextKey);
+      return { row: stepNode.row, col: stepNode.col };
+    }
+
+    // 사거리 타일이 모두 둘러싸여 막혀있는 경우: 인접 8방향 중 타겟과 가장 가까워지는 빈 칸으로 1보 전진
+    let fallbackStep: { row: number; col: number } | null = null;
+    let bestFallbackDist = this.chebyshevDistance(
+      unit.row,
+      unit.col,
+      target.row,
+      target.col
+    );
+
+    for (const [dr, dc] of directions) {
+      const nr = unit.row + dr;
+      const nc = unit.col + dc;
+      if (
+        nr < 0 ||
+        nr >= CombatEngine.GRID_ROWS ||
+        nc < 0 ||
+        nc >= CombatEngine.GRID_COLS
+      ) {
+        continue;
+      }
+      const key = `${nr},${nc}`;
+      if (occupiedTiles.has(key) || reservedTiles.has(key)) continue;
+
+      const d = this.chebyshevDistance(nr, nc, target.row, target.col);
+      if (d < bestFallbackDist) {
+        bestFallbackDist = d;
+        fallbackStep = { row: nr, col: nc };
+      }
+    }
+
+    if (fallbackStep) {
+      const nextKey = `${fallbackStep.row},${fallbackStep.col}`;
+      reservedTiles.add(nextKey);
+      occupiedTiles.delete(startKey);
+      occupiedTiles.add(nextKey);
+      return fallbackStep;
+    }
+
+    return null;
+  }
+
+  // ==========================================================================
+  // 3. 단일 틱 업데이트 (stepTick(deltaMs = 50): CombatEvent[])
+  // ==========================================================================
+
+  public stepTick(deltaMs: number = 50): CombatEvent[] {
+    if (this.isFinished) return [];
+
+    this.currentTick += 1;
+    this.elapsedMs += deltaMs;
+    this.currentTickEvents = [];
+
+    // 1. 주기적 시너지/아이템 타이머 업데이트 (엘프 숲 2초, 태양불꽃 망토 2초, 대천사의 지팡이 4초, 선봉대 8초)
+    this.processPeriodicTimers(deltaMs);
+
+    // 2. 현재 틱의 점유 타일(occupiedTiles) 및 예약 타일(reservedTiles) 초기화
+    const occupiedTiles = new Set<string>();
+    const reservedTiles = new Set<string>();
+
+    for (const u of this.units) {
+      if (u.currentHp > 0 || u.isReviving) {
+        occupiedTiles.add(`${u.row},${u.col}`);
+      }
+    }
+
+    // 3. 모든 유닛 루프 (부활 대기, 기절, 이동, 스킬 시전, 기본 공격)
+    for (const unit of this.units) {
+      if (this.isFinished) break;
+
+      // 언데드 군단(UNDEAD_SCOURGE) 부활 대기 상태 처리
+      if (unit.isReviving) {
+        unit.reviveTimerMs -= deltaMs;
+        if (unit.reviveTimerMs <= 0) {
+          unit.isReviving = false;
+          unit.currentHp = Math.max(1, Math.round(unit.maxHp * unit.reviveHpRatio));
+          unit.atkSpeed = Number(
+            (unit.atkSpeed * (1 + unit.reviveBonusAtkSpeed)).toFixed(3)
+          );
+          unit.stunTimerMs = 0;
+          this.emitEvent({
+            type: 'REVIVE_COMPLETE',
+            tick: this.currentTick,
+            sourceId: unit.instanceId,
+            team: unit.team,
+            unitId: unit.unitId,
+            toRow: unit.row,
+            toCol: unit.col,
+            amount: unit.currentHp,
+            message: `💀 [${unit.name}] 언데드 군단 권능으로 부활!`,
+          });
+        }
+        continue;
+      }
+
+      if (unit.currentHp <= 0) continue;
+
+      // 마나 락 및 공격 쿨타임 감소
+      if (unit.manaLockTimerMs > 0) {
+        unit.manaLockTimerMs = Math.max(0, unit.manaLockTimerMs - deltaMs);
+      }
+      if (unit.attackCooldownMs > 0) {
+        unit.attackCooldownMs = Math.max(0, unit.attackCooldownMs - deltaMs);
+      }
+
+      // 기절(Stun) 상태 확인
+      if (unit.stunTimerMs > 0) {
+        unit.stunTimerMs = Math.max(0, unit.stunTimerMs - deltaMs);
+        continue;
+      }
+
+      // 가장 가까운 살아있는 적 타겟 탐색
+      const target = this.findNearestEnemy(unit);
+      if (!target) {
+        break;
+      }
+
+      const dist = this.chebyshevDistance(
+        unit.row,
+        unit.col,
+        target.row,
+        target.col
+      );
+
+      // 사거리 밖에 있으면 타일 예약제 A* 길찾기로 1칸 이동
+      if (dist > unit.range) {
+        const nextTile = this.findNextStepWithReservation(
+          unit,
+          target,
+          occupiedTiles,
+          reservedTiles
+        );
+        if (nextTile) {
+          const fromRow = unit.row;
+          const fromCol = unit.col;
+          unit.row = nextTile.row;
+          unit.col = nextTile.col;
+          this.emitEvent({
+            type: 'MOVE',
+            tick: this.currentTick,
+            sourceId: unit.instanceId,
+            team: unit.team,
+            unitId: unit.unitId,
+            fromRow,
+            fromCol,
+            toRow: unit.row,
+            toCol: unit.col,
+          });
+        }
+        continue;
+      }
+
+      // 사거리 내에 타겟이 있을 때:
+      // A) 마나가 가득 찼다면 즉시 스킬 시전!
+      if (unit.currentMana >= unit.maxMana && unit.maxMana > 0) {
+        this.castUnitSkill(unit, target);
+        this.checkCombatEndCondition();
+        continue;
+      }
+
+      // B) 공격 쿨타임이 돌아왔다면 기본 공격 실행!
+      if (unit.attackCooldownMs <= 0) {
+        this.performBasicAttack(unit, target);
+        unit.attackCooldownMs = Math.max(
+          150,
+          Math.round(1000 / Math.max(0.25, unit.atkSpeed))
+        );
+        this.checkCombatEndCondition();
+      }
+    }
+
+    this.checkCombatEndCondition();
+    return [...this.currentTickEvents];
+  }
+
+  /**
+   * [⚡ 즉시 결과 스킵] 버튼을 위해 전투가 끝날 때까지 남은 모든 틱을 즉시 시뮬레이션한다.
+   */
+  public simulateToCompletion(): CombatEvent[] {
+    const allEvents: CombatEvent[] = [...this.consumeInitialEvents()];
+    let safetySteps = 0;
+    while (!this.isFinished && safetySteps < 1000) {
+      const evs = this.stepTick(50);
+      allEvents.push(...evs);
+      safetySteps++;
+    }
+    return allEvents;
+  }
+
+  /**
+   * 스킬 시전 처리 (5코스트 3성 FIVE_COST_3STAR_CATACLYSM 특수 이벤트 및 대마법사 연쇄 번개 포함)
+   */
+  private castUnitSkill(unit: CombatUnit, target: CombatUnit): void {
+    const template = UNIT_TEMPLATES[unit.unitId];
+    const skillName = template?.skill.name ?? '스킬';
+    const manaLockMs = template?.skill.manaLockMs ?? 1000;
+
+    // 푸른 파수꾼(BLUE_BUFF) 보유 시 스킬 시전 직후 마나 20 페이백
+    const hasBlueBuff = unit.items.some(
+      (id) => ITEM_DEFINITIONS[id]?.passiveFlags.blueBuffReset
+    );
+    unit.currentMana = hasBlueBuff ? 20 : 0;
+    unit.manaLockTimerMs = manaLockMs;
+
+    // 5코스트 3성 절대 권능(FIVE_COST_3STAR_CATACLYSM) 이벤트 발행!
+    if (unit.cost === 5 && unit.starLevel === 3) {
+      this.emitEvent({
+        type: 'FIVE_COST_3STAR_CATACLYSM',
+        tick: this.currentTick,
+        sourceId: unit.instanceId,
+        targetId: target.instanceId,
+        team: unit.team,
+        unitId: unit.unitId,
+        skillName,
+        toRow: target.row,
+        toCol: target.col,
+        message: `⚡👑 [5코스트 3성 절대 권능!] ${unit.name} - [${skillName}] 발동!!`,
+      });
+    }
+
+    this.emitEvent({
+      type: 'SKILL_CAST',
+      tick: this.currentTick,
+      sourceId: unit.instanceId,
+      targetId: target.instanceId,
+      team: unit.team,
+      unitId: unit.unitId,
+      skillName,
+      fromRow: unit.row,
+      fromCol: unit.col,
+      toRow: target.row,
+      toCol: target.col,
+    });
+
+    // SkillRegistry 전략 핸들러 실행
+    SkillRegistry.executeSkill(unit, target, this.units, this);
+
+    // 대마법사(ARCHMAGE) 시너지 활성화 시: 스킬 시전할 때 체력이 가장 낮은 적에게 연쇄 번개 추가 낙하!
+    const synergyMap =
+      unit.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
+    const archmageEffect = synergyMap.get('ARCHMAGE')?.activeEffect;
+    if (
+      archmageEffect &&
+      unit.traits.includes('ARCHMAGE') &&
+      archmageEffect.chainLightningDamage
+    ) {
+      const aliveEnemies = this.units
+        .filter((e) => e.team !== unit.team && e.currentHp > 0 && !e.isReviving)
+        .sort((a, b) => a.currentHp - b.currentHp);
+
+      if (aliveEnemies.length > 0) {
+        this.dealDamage(
+          unit,
+          aliveEnemies[0],
+          archmageEffect.chainLightningDamage * unit.spellPower,
+          'MAGICAL',
+          unit.enableSkillCrit,
+          true
+        );
+      }
+    }
+  }
+
+  /**
+   * 기본 공격 및 직업/아이템 온히트 효과 처리
+   */
+  private performBasicAttack(attacker: CombatUnit, target: CombatUnit): void {
+    attacker.basicAttackCount += 1;
+
+    this.emitEvent({
+      type: 'BASIC_ATTACK',
+      tick: this.currentTick,
+      sourceId: attacker.instanceId,
+      targetId: target.instanceId,
+      team: attacker.team,
+      unitId: attacker.unitId,
+      fromRow: attacker.row,
+      fromCol: attacker.col,
+      toRow: target.row,
+      toCol: target.col,
+    });
+
+    // 1. 기본 물리 공격 피해 적용 (공식: rawAtk * (100 / (100 + targetDef))는 dealDamage 내부에서 수행)
+    this.dealDamage(attacker, target, attacker.atk, 'PHYSICAL', true, false);
+
+    // 2. 공격자 마나 회복: 기본 +10 + 마탑(ARCANE_TOWER) 보너스 + 쇼진의 창(SPEAR_OF_SHOJIN) 보너스
+    const synergyMap =
+      attacker.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
+    const arcaneBonus =
+      synergyMap.get('ARCANE_TOWER')?.activeEffect?.teamManaPerAttack ?? 0;
+
+    let shojinBonus = 0;
+    for (const itemId of attacker.items) {
+      const pf = ITEM_DEFINITIONS[itemId]?.passiveFlags;
+      if (pf?.shojinBonusMana) {
+        shojinBonus += pf.shojinBonusMana;
+      }
+      if (pf?.guinsooStackingAtkSpeed) {
+        attacker.atkSpeed = Number(
+          Math.min(5.0, attacker.atkSpeed * (1 + pf.guinsooStackingAtkSpeed)).toFixed(3)
+        );
+      }
+    }
+
+    this.grantMana(attacker, 10 + arcaneBonus + shojinBonus);
+    this.incrementTitansResolve(attacker);
+
+    // 3. 광전사(BERSERKER) 광폭화 중 스플래시 피해 처리
+    const berserkerEffect = synergyMap.get('BERSERKER')?.activeEffect;
+    if (
+      berserkerEffect &&
+      attacker.traits.includes('BERSERKER') &&
+      attacker.berserkTriggered &&
+      berserkerEffect.berserkSplashRatio
+    ) {
+      const splashDmg = attacker.atk * berserkerEffect.berserkSplashRatio;
+      const nearbyEnemies = this.units.filter(
+        (e) =>
+          e.team !== attacker.team &&
+          e.currentHp > 0 &&
+          !e.isReviving &&
+          e.instanceId !== target.instanceId &&
+          this.chebyshevDistance(target.row, target.col, e.row, e.col) <= 1
+      );
+      for (const enemy of nearbyEnemies) {
+        this.dealDamage(attacker, enemy, splashDmg, 'PHYSICAL', false, false);
+      }
+    }
+
+    // 4. 순찰자(RANGER) 3타마다 관통 화살 추가 발사
+    const rangerEffect = synergyMap.get('RANGER')?.activeEffect;
+    if (
+      rangerEffect &&
+      attacker.traits.includes('RANGER') &&
+      attacker.basicAttackCount % 3 === 0 &&
+      rangerEffect.pierceArrowDamageRatio
+    ) {
+      if (target.currentHp > 0) {
+        this.dealDamage(
+          attacker,
+          target,
+          attacker.atk * rangerEffect.pierceArrowDamageRatio,
+          'PHYSICAL',
+          true,
+          false
+        );
+      }
+    }
+
+    // 5. 스태틱의 단검(STATIKK_SHIV) 3타마다 적 3명에게 연쇄 번개 및 방어력 30% 파쇄
+    const hasStatikk = attacker.items.some(
+      (id) => ITEM_DEFINITIONS[id]?.passiveFlags.statikkChainLightning
+    );
+    if (hasStatikk && attacker.basicAttackCount % 3 === 0) {
+      const bounceTargets = this.units
+        .filter((e) => e.team !== attacker.team && e.currentHp > 0 && !e.isReviving)
+        .slice(0, 3);
+      for (const bt of bounceTargets) {
+        this.shredArmor(attacker, bt, 0.3);
+        this.dealDamage(attacker, bt, 90, 'MAGICAL', false, true);
+      }
+    }
+
+    // 6. 성기사(PALADIN) 기본 공격 시 주변 아군 체력 회복
+    const paladinEffect = synergyMap.get('PALADIN')?.activeEffect;
+    if (
+      paladinEffect &&
+      attacker.traits.includes('PALADIN') &&
+      paladinEffect.healPerAttack
+    ) {
+      const allies = this.units
+        .filter((a) => a.team === attacker.team && a.currentHp > 0 && !a.isReviving)
+        .sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp);
+      if (allies.length > 0) {
+        this.healUnit(attacker, allies[0], paladinEffect.healPerAttack);
+      }
+    }
+  }
+
+  // ==========================================================================
+  // 4. 데미지 계산, 치명타, 보호막, 흡혈, 사망/부활 처리 (SkillCombatContext 구현)
+  // ==========================================================================
+
+  public dealDamage(
+    attacker: CombatUnit,
+    target: CombatUnit,
+    rawAmount: number,
+    damageType: CombatDamageType,
+    canCrit: boolean,
+    isSkill: boolean
+  ): { actualDamage: number; killed: boolean; isCrit: boolean } {
+    if (target.currentHp <= 0 || target.isReviving) {
+      return { actualDamage: 0, killed: false, isCrit: false };
+    }
+
+    let modifiedRaw = Math.max(1, rawAmount);
+
+    // 거인 학살자(GIANT_SLAYER): 대상 최대 체력 1400 이상일 때 피해량 +35%
+    if (
+      target.maxHp >= 1400 &&
+      attacker.items.some((id) => ITEM_DEFINITIONS[id]?.passiveFlags.giantSlayerBonus)
+    ) {
+      modifiedRaw *= 1.35;
+    }
+
+    // 치명타 판정 (가시 갑옷 BRAMBLE_VEST 보유 피격자는 치명타 추가 피해 무효화)
+    let isCrit = false;
+    if (canCrit && Math.random() < attacker.critChance) {
+      isCrit = true;
+      const targetHasBramble = target.items.some(
+        (id) => ITEM_DEFINITIONS[id]?.passiveFlags.brambleReflect
+      );
+      if (!targetHasBramble) {
+        modifiedRaw *= attacker.critDamage;
+      }
+    }
+
+    // 방어력 감산 공식: raw * (100 / (100 + targetDef))
+    let mitigatedDamage = modifiedRaw;
+    if (damageType !== 'TRUE') {
+      const effectiveDef = Math.max(0, target.def);
+      mitigatedDamage = modifiedRaw * (100 / (100 + effectiveDef));
+    }
+
+    // 선봉대(VANGUARD) 개전 8초간 피해 감소 적용
+    if (target.damageReductionRatio > 0 && damageType !== 'TRUE') {
+      mitigatedDamage *= 1 - target.damageReductionRatio;
+    }
+
+    // 심연의 악마(ABYSSAL_DEMON) 추가 고정 피해 합산
+    if (attacker.trueDamageBonusRatio > 0 && damageType !== 'TRUE') {
+      mitigatedDamage += modifiedRaw * attacker.trueDamageBonusRatio;
+    }
+
+    const finalDamage = Math.max(1, Math.round(mitigatedDamage));
+    attacker.totalDamageDealt += finalDamage;
+
+    // 보호막 우선 차감 후 체력 차감
+    let remainingDmg = finalDamage;
+    if (target.shield > 0) {
+      const absorbed = Math.min(target.shield, remainingDmg);
+      target.shield -= absorbed;
+      remainingDmg -= absorbed;
+    }
+
+    target.currentHp = Math.max(0, target.currentHp - remainingDmg);
+
+    this.emitEvent({
+      type: 'DAMAGE',
+      tick: this.currentTick,
+      sourceId: attacker.instanceId,
+      targetId: target.instanceId,
+      team: attacker.team,
+      unitId: attacker.unitId,
+      toRow: target.row,
+      toCol: target.col,
+      amount: finalDamage,
+      damageType,
+      isCrit,
+    });
+
+    // 공격자 모든 피해 흡혈(Omnivamp) 및 마법공학 총검(HEXTECH_GUNBLADE) 아군 치유
+    if (attacker.omnivamp > 0 && attacker.currentHp > 0) {
+      this.healUnit(attacker, attacker, Math.round(finalDamage * attacker.omnivamp));
+    }
+    if (
+      attacker.currentHp > 0 &&
+      attacker.items.some((id) => ITEM_DEFINITIONS[id]?.passiveFlags.gunbladeAllyHeal)
+    ) {
+      const lowestAlly = this.units
+        .filter((a) => a.team === attacker.team && a.currentHp > 0 && !a.isReviving)
+        .sort((a, b) => a.currentHp / a.maxHp - b.currentHp / b.maxHp)[0];
+      if (lowestAlly) {
+        this.healUnit(attacker, lowestAlly, Math.round(finalDamage * 0.25));
+      }
+    }
+
+    // 피격자 마나 회복 (마나 락 상태가 아닐 때만) 및 피격 트리거 처리
+    if (target.currentHp > 0) {
+      const manaFromDamage = Math.min(35, Math.max(4, Math.round(finalDamage * 0.06)));
+      this.grantMana(target, manaFromDamage);
+      this.incrementTitansResolve(target);
+      this.checkLowHpThresholds(target);
+
+      // 가시 갑옷(BRAMBLE_VEST) 기본 공격 피격 시 반사 피해
+      if (
+        !isSkill &&
+        target.items.some((id) => ITEM_DEFINITIONS[id]?.passiveFlags.brambleReflect)
+      ) {
+        const adjEnemies = this.units.filter(
+          (e) =>
+            e.team !== target.team &&
+            e.currentHp > 0 &&
+            !e.isReviving &&
+            this.chebyshevDistance(target.row, target.col, e.row, e.col) <= 1
+        );
+        for (const e of adjEnemies) {
+          this.dealDamage(target, e, 120, 'MAGICAL', false, true);
+        }
+      }
+    } else {
+      // 사망 또는 언데드 군단(UNDEAD_SCOURGE) 부활 대기 진입
+      if (target.hasReviveAvailable) {
+        target.hasReviveAvailable = false;
+        target.isReviving = true;
+        target.reviveTimerMs = 2000; // 2초 뒤 부활!
+        this.emitEvent({
+          type: 'REVIVE_START',
+          tick: this.currentTick,
+          sourceId: target.instanceId,
+          team: target.team,
+          unitId: target.unitId,
+          toRow: target.row,
+          toCol: target.col,
+          message: `💀 [${target.name}] 2초 뒤 부활합니다...`,
+        });
+        return { actualDamage: finalDamage, killed: false, isCrit };
+      } else {
+        this.emitEvent({
+          type: 'DEATH',
+          tick: this.currentTick,
+          sourceId: attacker.instanceId,
+          targetId: target.instanceId,
+          team: target.team,
+          unitId: target.unitId,
+          toRow: target.row,
+          toCol: target.col,
+        });
+        return { actualDamage: finalDamage, killed: true, isCrit };
+      }
+    }
+
+    return { actualDamage: finalDamage, killed: false, isCrit };
+  }
+
+  public healUnit(source: CombatUnit, target: CombatUnit, amount: number): number {
+    if (target.currentHp <= 0 || target.isReviving || amount <= 0) return 0;
+    const rounded = Math.round(amount);
+    const prevHp = target.currentHp;
+    target.currentHp = Math.min(target.maxHp, target.currentHp + rounded);
+    const actualHeal = target.currentHp - prevHp;
+
+    // 천상의 축복(AUG_CELESTIAL_BLESSING): 초과 회복량 보호막 전환 (최대 350)
+    const owner =
+      target.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
+    if (
+      owner?.augments.includes('AUG_CELESTIAL_BLESSING') &&
+      prevHp + rounded > target.maxHp
+    ) {
+      const overheal = prevHp + rounded - target.maxHp;
+      target.shield = Math.min(target.shield + overheal, Math.max(target.shield, 350));
+    }
+
+    if (actualHeal > 0) {
+      this.emitEvent({
+        type: 'HEAL',
+        tick: this.currentTick,
+        sourceId: source.instanceId,
+        targetId: target.instanceId,
+        team: target.team,
+        unitId: target.unitId,
+        toRow: target.row,
+        toCol: target.col,
+        amount: actualHeal,
+      });
+    }
+    return actualHeal;
+  }
+
+  public addShield(source: CombatUnit, target: CombatUnit, amount: number): void {
+    if (target.currentHp <= 0 || target.isReviving || amount <= 0) return;
+    const rounded = Math.round(amount);
+    target.shield += rounded;
+    this.emitEvent({
+      type: 'SHIELD',
+      tick: this.currentTick,
+      sourceId: source.instanceId,
+      targetId: target.instanceId,
+      team: target.team,
+      unitId: target.unitId,
+      toRow: target.row,
+      toCol: target.col,
+      amount: rounded,
+    });
+  }
+
+  public applyStun(
+    source: CombatUnit,
+    target: CombatUnit,
+    durationMs: number
+  ): void {
+    if (target.currentHp <= 0 || target.isReviving) return;
+    // 성기사(PALADIN) 군중제어 감소/면역 반영
+    const effectiveDuration = Math.round(
+      durationMs * Math.max(0, 1 - target.ccDurationReduction)
+    );
+    if (effectiveDuration <= 0) return;
+
+    target.stunTimerMs = Math.max(target.stunTimerMs, effectiveDuration);
+    this.emitEvent({
+      type: 'STUN',
+      tick: this.currentTick,
+      sourceId: source.instanceId,
+      targetId: target.instanceId,
+      team: target.team,
+      unitId: target.unitId,
+      toRow: target.row,
+      toCol: target.col,
+      amount: effectiveDuration,
+    });
+  }
+
+  public shredArmor(
+    source: CombatUnit,
+    target: CombatUnit,
+    shredRatio: number
+  ): void {
+    if (target.currentHp <= 0 || target.isReviving) return;
+    target.def = Math.max(5, Math.round(target.def * (1 - shredRatio)));
+    this.emitEvent({
+      type: 'ARMOR_SHRED',
+      tick: this.currentTick,
+      sourceId: source.instanceId,
+      targetId: target.instanceId,
+      team: target.team,
+      unitId: target.unitId,
+      toRow: target.row,
+      toCol: target.col,
+    });
+  }
+
+  public teleportUnit(
+    unit: CombatUnit,
+    targetRow: number,
+    targetCol: number
+  ): boolean {
+    const occupied = this.units.some(
+      (u) =>
+        u.instanceId !== unit.instanceId &&
+        (u.currentHp > 0 || u.isReviving) &&
+        u.row === targetRow &&
+        u.col === targetCol
+    );
+    if (occupied) return false;
+
+    const fromRow = unit.row;
+    const fromCol = unit.col;
+    unit.row = targetRow;
+    unit.col = targetCol;
+    this.emitEvent({
+      type: 'LEAP',
+      tick: this.currentTick,
+      sourceId: unit.instanceId,
+      team: unit.team,
+      unitId: unit.unitId,
+      fromRow,
+      fromCol,
+      toRow: targetRow,
+      toCol: targetCol,
+    });
+    return true;
+  }
+
+  public findEmptyTileBehindTarget(
+    mover: CombatUnit,
+    target: CombatUnit
+  ): { row: number; col: number } | null {
+    const occupied = new Set<string>();
+    for (const u of this.units) {
+      if (u.instanceId !== mover.instanceId && (u.currentHp > 0 || u.isReviving)) {
+        occupied.add(`${u.row},${u.col}`);
+      }
+    }
+
+    const candidates = [
+      [target.row + (mover.team === 'HOME' ? -1 : 1), target.col],
+      [target.row, target.col - 1],
+      [target.row, target.col + 1],
+      [target.row + (mover.team === 'HOME' ? 1 : -1), target.col],
+      [target.row - 1, target.col - 1],
+      [target.row - 1, target.col + 1],
+      [target.row + 1, target.col - 1],
+      [target.row + 1, target.col + 1],
+    ];
+
+    for (const [r, c] of candidates) {
+      if (
+        r >= 0 &&
+        r < CombatEngine.GRID_ROWS &&
+        c >= 0 &&
+        c < CombatEngine.GRID_COLS &&
+        !occupied.has(`${r},${c}`)
+      ) {
+        return { row: r, col: c };
+      }
+    }
+    return null;
+  }
+
+  public emitEvent(event: CombatEvent): void {
+    if (event.type === 'GOLD_DROP' && event.goldAmount) {
+      if (event.team === 'HOME') {
+        this.homeGoldEarned += event.goldAmount;
+        if (this.homeParticipant) {
+          this.homeParticipant.gold += event.goldAmount;
+        }
+      } else if (event.team === 'AWAY') {
+        this.awayGoldEarned += event.goldAmount;
+        if (this.awayParticipant) {
+          this.awayParticipant.gold += event.goldAmount;
+        }
+      }
+    }
+    this.currentTickEvents.push(event);
+  }
+
+  // ==========================================================================
+  // 내부 보조 메서드 (마나, 광전사/아이템 체력 임계값, 주기적 타이머, 종료 판정)
+  // ==========================================================================
+
+  private grantMana(unit: CombatUnit, amount: number): void {
+    if (unit.manaLockTimerMs > 0 || unit.maxMana <= 0 || unit.currentHp <= 0) {
+      return;
+    }
+    unit.currentMana = Math.min(unit.maxMana, unit.currentMana + amount);
+  }
+
+  private incrementTitansResolve(unit: CombatUnit): void {
+    const hasTitans = unit.items.some(
+      (id) => ITEM_DEFINITIONS[id]?.passiveFlags.titansResolveStacking
+    );
+    if (!hasTitans || unit.titansStacks >= 25) return;
+
+    unit.titansStacks += 1;
+    unit.atk = Math.round(unit.atk * 1.02);
+    unit.spellPower = Number((unit.spellPower + 0.02).toFixed(2));
+    if (unit.titansStacks === 25) {
+      unit.def += 35;
+    }
+  }
+
+  private checkLowHpThresholds(unit: CombatUnit): void {
+    const hpRatio = unit.currentHp / unit.maxHp;
+
+    // 1. 광전사(BERSERKER): 체력 50% 이하 도달 시 공격력/공속 폭증
+    if (!unit.berserkTriggered && hpRatio <= 0.5 && unit.traits.includes('BERSERKER')) {
+      const synergyMap =
+        unit.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
+      const berserkEffect = synergyMap.get('BERSERKER')?.activeEffect;
+      if (berserkEffect) {
+        unit.berserkTriggered = true;
+        unit.atk = Math.round(unit.atk * (berserkEffect.berserkAtkMultiplier ?? 2.0));
+        unit.atkSpeed = Number(
+          Math.min(
+            5.0,
+            unit.atkSpeed * (berserkEffect.berserkAtkSpeedMultiplier ?? 2.0)
+          ).toFixed(3)
+        );
+      }
+    }
+
+    // 2. 피바라기(BLOODTHIRSTER): 체력 40% 이하 시 최대 체력 30% 보호막
+    if (
+      !unit.bloodthirsterTriggered &&
+      hpRatio <= 0.4 &&
+      unit.items.some((id) => ITEM_DEFINITIONS[id]?.passiveFlags.bloodthirsterShield)
+    ) {
+      unit.bloodthirsterTriggered = true;
+      this.addShield(unit, unit, Math.round(unit.maxHp * 0.3));
+    }
+
+    // 3. 수호자의 맹세(PROTECTORS_VOW): 체력 40% 이하 시 최대 체력 25% 보호막 및 방어력 +30
+    if (
+      !unit.protectorsVowTriggered &&
+      hpRatio <= 0.4 &&
+      unit.items.some((id) => ITEM_DEFINITIONS[id]?.passiveFlags.protectorsVowShield)
+    ) {
+      unit.protectorsVowTriggered = true;
+      unit.def += 30;
+      this.addShield(unit, unit, Math.round(unit.maxHp * 0.25));
+    }
+  }
+
+  private processPeriodicTimers(deltaMs: number): void {
+    // 선봉대(VANGUARD) 개전 8초 경과 시 추가 피해감소 해제
+    if (this.elapsedMs >= 8000) {
+      for (const u of this.units) {
+        if (u.damageReductionRatio > 0) {
+          u.damageReductionRatio = 0;
+        }
+      }
+    }
+
+    // 엘프 숲(ELVEN_SYLVAN): 매 2초마다 공속 중첩 및 체력 회복
+    this.elvenTickTimerMs += deltaMs;
+    if (this.elvenTickTimerMs >= 2000) {
+      this.elvenTickTimerMs -= 2000;
+      for (const u of this.units) {
+        if (u.currentHp <= 0 || u.isReviving || !u.traits.includes('ELVEN_SYLVAN')) {
+          continue;
+        }
+        const synergyMap =
+          u.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
+        const elven = synergyMap.get('ELVEN_SYLVAN')?.activeEffect;
+        if (elven) {
+          if (elven.atkSpeedPerStack) {
+            u.atkSpeed = Number(
+              Math.min(5.0, u.atkSpeed * (1 + elven.atkSpeedPerStack)).toFixed(3)
+            );
+          }
+          if (elven.hpRegenRatioPerTick) {
+            this.healUnit(u, u, Math.round(u.maxHp * elven.hpRegenRatioPerTick));
+          }
+        }
+      }
+    }
+
+    // 태양불꽃 망토(SUNFIRE_CAPE): 매 2초마다 주변 2칸 적에게 최대 체력 8% 고정 화상 피해
+    this.sunfireTickTimerMs += deltaMs;
+    if (this.sunfireTickTimerMs >= 2000) {
+      this.sunfireTickTimerMs -= 2000;
+      for (const u of this.units) {
+        if (u.currentHp <= 0 || u.isReviving) continue;
+        const hasSunfire = u.items.some(
+          (id) => ITEM_DEFINITIONS[id]?.passiveFlags.sunfireBurnAura
+        );
+        if (!hasSunfire) continue;
+
+        const nearbyEnemies = this.units.filter(
+          (e) =>
+            e.team !== u.team &&
+            e.currentHp > 0 &&
+            !e.isReviving &&
+            this.chebyshevDistance(u.row, u.col, e.row, e.col) <= 2
+        );
+        for (const e of nearbyEnemies) {
+          this.dealDamage(u, e, Math.round(e.maxHp * 0.08), 'TRUE', false, true);
+        }
+      }
+    }
+
+    // 대천사의 지팡이(ARCHANGELS_STAFF): 매 4초마다 주문력 +25% 영구 중첩
+    this.archangelTickTimerMs += deltaMs;
+    if (this.archangelTickTimerMs >= 4000) {
+      this.archangelTickTimerMs -= 4000;
+      for (const u of this.units) {
+        if (u.currentHp <= 0 || u.isReviving) continue;
+        const count = u.items.filter(
+          (id) => ITEM_DEFINITIONS[id]?.passiveFlags.archangelManaScaling
+        ).length;
+        if (count > 0) {
+          u.spellPower = Number((u.spellPower + 0.25 * count).toFixed(2));
+        }
+      }
+    }
+  }
+
+  private findNearestEnemy(unit: CombatUnit): CombatUnit | null {
+    let bestTarget: CombatUnit | null = null;
+    let bestDist = 9999;
+
+    for (const other of this.units) {
+      if (other.team === unit.team) continue;
+      if (other.currentHp <= 0 || other.isReviving) continue;
+
+      const dist = this.chebyshevDistance(
+        unit.row,
+        unit.col,
+        other.row,
+        other.col
+      );
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestTarget = other;
+      }
+    }
+
+    return bestTarget;
+  }
+
+  public chebyshevDistance(
+    r1: number,
+    c1: number,
+    r2: number,
+    c2: number
+  ): number {
+    return Math.max(Math.abs(r1 - r2), Math.abs(c1 - c2));
+  }
+
+  private checkCombatEndCondition(): void {
+    const homeAlive = this.units.filter(
+      (u) => u.team === 'HOME' && (u.currentHp > 0 || u.isReviving)
+    ).length;
+    const awayAlive = this.units.filter(
+      (u) => u.team === 'AWAY' && (u.currentHp > 0 || u.isReviving)
+    ).length;
+
+    if (homeAlive === 0 && awayAlive === 0) {
+      this.isFinished = true;
+      this.winner = 'DRAW';
+    } else if (awayAlive === 0) {
+      this.isFinished = true;
+      this.winner = 'HOME';
+    } else if (homeAlive === 0) {
+      this.isFinished = true;
+      this.winner = 'AWAY';
+    } else if (this.elapsedMs >= CombatEngine.MAX_COMBAT_MS) {
+      this.isFinished = true;
+      const homeHpSum = this.units
+        .filter((u) => u.team === 'HOME' && u.currentHp > 0)
+        .reduce((acc, u) => acc + u.currentHp, 0);
+      const awayHpSum = this.units
+        .filter((u) => u.team === 'AWAY' && u.currentHp > 0)
+        .reduce((acc, u) => acc + u.currentHp, 0);
+      this.winner =
+        homeHpSum > awayHpSum
+          ? 'HOME'
+          : awayHpSum > homeHpSum
+          ? 'AWAY'
+          : 'DRAW';
+    }
+  }
+
+  /**
+   * 전투 종료 후 요약 데이터(승패, 생존 기물 수, 플레이어 피해량 등)를 반환한다.
+   */
+  public getCombatSummary(stageNumber: number = 2): CombatSummary {
+    const survivingHomeUnits = this.units.filter(
+      (u) => u.team === 'HOME' && (u.currentHp > 0 || u.isReviving)
+    ).length;
+    const survivingAwayUnits = this.units.filter(
+      (u) => u.team === 'AWAY' && (u.currentHp > 0 || u.isReviving)
+    ).length;
+
+    const winner = this.winner ?? 'DRAW';
+    let playerDamageTaken = 0;
+
+    if (winner === 'AWAY') {
+      const baseStageDmg = Math.max(2, stageNumber * 2);
+      playerDamageTaken = baseStageDmg + survivingAwayUnits * 2;
+    } else if (winner === 'DRAW') {
+      playerDamageTaken = 2;
+    }
+
+    return {
+      winner,
+      survivingHomeUnits,
+      survivingAwayUnits,
+      homeGoldEarnedInCombat: this.homeGoldEarned,
+      awayGoldEarnedInCombat: this.awayGoldEarned,
+      playerDamageTaken,
+      totalTicks: this.currentTick,
+    };
+  }
+}
