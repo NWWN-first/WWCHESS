@@ -46,6 +46,7 @@ export interface MatchPairing {
   isGhostMatch: boolean;
   ghostSourceParticipant?: Participant;
   isCreepMatch: boolean;
+  engine?: CombatEngine;
 }
 
 export interface RoundMatchResult {
@@ -286,6 +287,46 @@ export class GameLoopManager {
       this.participants.find((p) => p.id === this.viewedParticipantId) ??
       this.player
     );
+  }
+
+  /**
+   * 현재 정찰(Scouting) 중이거나 화면에 보고 있는 진영의 실시간 전투 엔진 및 대전 정보 반환
+   */
+  public getViewedCombatContext(): {
+    engine: CombatEngine;
+    viewedParticipant: Participant;
+    opponentName: string;
+    isCreepMatch: boolean;
+  } | null {
+    if (this.phase !== 'COMBAT_PHASE' && this.phase !== 'RESOLUTION_PHASE') {
+      return null;
+    }
+
+    const viewed = this.getViewedParticipant();
+    const pairing = this.currentPairings.find(
+      (p) => p.home.id === viewed.id || (!p.isGhostMatch && p.away.id === viewed.id)
+    );
+
+    if (pairing && pairing.engine) {
+      const isHome = pairing.home.id === viewed.id;
+      const opponent = isHome ? pairing.away : pairing.home;
+      const opponentName = pairing.isGhostMatch
+        ? `${opponent.name} (고스트 군대)`
+        : opponent.name;
+      return {
+        engine: pairing.engine,
+        viewedParticipant: pairing.home,
+        opponentName,
+        isCreepMatch: pairing.isCreepMatch,
+      };
+    }
+
+    return {
+      engine: this.playerCombatEngine,
+      viewedParticipant: this.player,
+      opponentName: this.playerCurrentOpponentName,
+      isCreepMatch: this.getCurrentRoundType() !== 'PVP',
+    };
   }
 
   /**
@@ -704,29 +745,27 @@ export class GameLoopManager {
     this.lastRoundResults = [];
     this.activeFinisherLaser = null;
 
-    // 1. 플레이어 매치 찾기 및 실시간 CombatEngine 초기화
-    const playerPairing = this.currentPairings.find(
-      (pair) =>
+    // 1. 모든 매칭(플레이어 매칭 포함)의 실시간 CombatEngine 초기화
+    for (const pair of this.currentPairings) {
+      const engine = new CombatEngine();
+      engine.initCombat(pair.home, pair.away);
+      pair.engine = engine;
+
+      if (
         pair.home.id === this.player.id ||
         (!pair.isGhostMatch && pair.away.id === this.player.id)
-    );
-
-    if (playerPairing) {
-      // 플레이어가 항상 HOME(하단 4~7행)에 보이도록 정규화
-      const opponent =
-        playerPairing.home.id === this.player.id
-          ? playerPairing.away
-          : playerPairing.home;
-
-      this.playerCurrentOpponentName = playerPairing.isGhostMatch
-        ? `${opponent.name} (고스트 군대)`
-        : opponent.name;
-      this.isPlayerFightingGhost = playerPairing.isGhostMatch;
-
-      this.playerCombatEngine.initCombat(this.player, opponent);
+      ) {
+        this.playerCombatEngine = engine;
+        const opponent =
+          pair.home.id === this.player.id ? pair.away : pair.home;
+        this.playerCurrentOpponentName = pair.isGhostMatch
+          ? `${opponent.name} (고스트 군대)`
+          : opponent.name;
+        this.isPlayerFightingGhost = pair.isGhostMatch;
+      }
     }
 
-    // 2. 플레이어 전투 실시간 틱 타이머 가동 (1x: 50ms, 2x: 25ms)
+    // 2. 플레이어 및 모든 봇 전투 실시간 틱 타이머 가동 (1x: 50ms, 2x: 25ms)
     this.startCombatLoopTimer();
     this.notifyStateChange();
   }
@@ -748,7 +787,11 @@ export class GameLoopManager {
   public skipCombatToResolution(): void {
     if (this.phase !== 'COMBAT_PHASE') return;
     this.stopCombatLoopTimer();
-    this.playerCombatEngine.simulateToCompletion();
+    for (const pairing of this.currentPairings) {
+      if (pairing.engine && !pairing.engine.isFinished) {
+        pairing.engine.simulateToCompletion();
+      }
+    }
     this.resolveAllMatchesAndAdvance();
   }
 
@@ -763,8 +806,14 @@ export class GameLoopManager {
           return;
         }
 
+        // 모든 매칭의 전투 틱 동시 진행
+        for (const pairing of this.currentPairings) {
+          if (pairing.engine && !pairing.engine.isFinished) {
+            pairing.engine.stepTick(50);
+          }
+        }
+
         if (!this.playerCombatEngine.isFinished) {
-          this.playerCombatEngine.stepTick(50);
           this.notifyStateChange();
         } else {
           this.stopCombatLoopTimer();
@@ -905,13 +954,13 @@ export class GameLoopManager {
     for (const pairing of this.currentPairings) {
       let summary: CombatSummary;
 
-      if (pairing.home.id === this.player.id) {
-        if (!this.playerCombatEngine.isFinished) {
-          this.playerCombatEngine.simulateToCompletion();
+      if (pairing.engine) {
+        if (!pairing.engine.isFinished) {
+          pairing.engine.simulateToCompletion();
         }
-        summary = this.playerCombatEngine.getCombatSummary(this.stage);
+        summary = pairing.engine.getCombatSummary(this.stage);
       } else {
-        // AI 대 AI (또는 AI 대 크립/고스트) 백그라운드 즉시 시뮬레이션
+        // 백업: 엔진이 없었던 경우 즉시 시뮬레이션
         const bgEngine = new CombatEngine();
         bgEngine.initCombat(pairing.home, pairing.away);
         bgEngine.simulateToCompletion();

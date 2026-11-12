@@ -23,6 +23,7 @@ import {
   RANK_TIERS_ORDERED,
   RankTier,
 } from './RankManager';
+import { CombatEngine } from './CombatEngine';
 import { CombatUnit } from './SkillRegistry';
 import { SynergyEngine } from './SynergyEngine';
 
@@ -61,6 +62,7 @@ class FantasyAutoBattlerApp {
   private pixelRenderer: PixelGameRenderer;
 
   private lastProcessedCombatTick: number = -1;
+  private lastProcessedCombatEngine: CombatEngine | null = null;
   private lastTriggeredLaserKey: string = '';
   private lastKnownPhase: string = '';
   private knownThreeStarUnits: Set<string> = new Set();
@@ -298,12 +300,35 @@ class FantasyAutoBattlerApp {
         document.getElementById('tap-tooltip-bar')?.classList.add('hidden');
       });
 
-    document
-      .getElementById('return-home-btn')
-      ?.addEventListener('pointerup', () => {
+    const returnHome = () => {
+      if (this.game.viewedParticipantId !== this.game.player.id) {
         this.game.viewedParticipantId = this.game.player.id;
         this.renderAllHUD();
+      }
+    };
+
+    document
+      .getElementById('return-home-btn')
+      ?.addEventListener('pointerup', (e) => {
+        e.stopPropagation();
+        returnHome();
       });
+
+    document
+      .getElementById('scouting-banner')
+      ?.addEventListener('pointerup', () => {
+        returnHome();
+      });
+
+    window.addEventListener('keydown', (e) => {
+      if (
+        (e.code === 'Space' || e.key === ' ') &&
+        this.game.viewedParticipantId !== this.game.player.id
+      ) {
+        e.preventDefault();
+        returnHome();
+      }
+    });
 
     document
       .getElementById('goblin-vault-box')
@@ -419,10 +444,9 @@ class FantasyAutoBattlerApp {
     const viewed = this.game.getViewedParticipant();
 
     // 1. 전투 페이즈 중이면 가장 가까운 전투 기물 탭 선택 및 툴팁 조회
-    if (
-      this.game.phase === 'COMBAT_PHASE' &&
-      viewed.id === this.game.player.id
-    ) {
+    if (this.game.phase === 'COMBAT_PHASE') {
+      const viewedCombat = this.game.getViewedCombatContext();
+      const combatUnits = viewedCombat ? viewedCombat.engine.units : this.game.playerCombatEngine.units;
       const hitHex = HexGridMath.screenPointToHex(
         px,
         py,
@@ -432,7 +456,7 @@ class FantasyAutoBattlerApp {
         1.5
       );
       if (hitHex) {
-        const cu = this.game.playerCombatEngine.units.find(
+        const cu = combatUnits.find(
           (u) =>
             u.currentHp > 0 && u.row === hitHex.row && u.col === hitHex.col
         );
@@ -1008,7 +1032,12 @@ class FantasyAutoBattlerApp {
     }
 
     if (this.game.phase === 'COMBAT_PHASE') {
-      const engine = this.game.playerCombatEngine;
+      const combatCtx = this.game.getViewedCombatContext();
+      const engine = combatCtx?.engine ?? this.game.playerCombatEngine;
+      if (this.lastProcessedCombatEngine !== engine) {
+        this.lastProcessedCombatEngine = engine;
+        this.lastProcessedCombatTick = -1;
+      }
       if (engine.currentTick === 0) {
         const initEvs = engine.consumeInitialEvents();
         this.pixelRenderer.ingestCombatEvents(initEvs, engine.units);
@@ -1019,6 +1048,8 @@ class FantasyAutoBattlerApp {
           engine.units
         );
       }
+    } else {
+      this.lastProcessedCombatEngine = null;
     }
 
     // 전투 종료 직후 승자 아바타 -> 패자 아바타 피니시 레이저 연출 발동
@@ -1336,26 +1367,39 @@ class FantasyAutoBattlerApp {
     if (!listEl) return;
     listEl.innerHTML = '';
 
+    const dockEl = document.querySelector('.right-player-dock');
+    if (dockEl) {
+      dockEl.classList.toggle('shop-collapsed', !this.isShopCurrentlyExpanded());
+    }
+
     const sorted = [...this.game.participants].sort((a, b) => {
       if (a.isEliminated !== b.isEliminated) return a.isEliminated ? 1 : -1;
       return b.hp - a.hp;
     });
 
+    const isScouting = this.game.viewedParticipantId !== this.game.player.id;
+
     sorted.forEach((p, idx) => {
+      const isPlayer = !p.isAI;
+      const isViewed = p.id === this.game.viewedParticipantId;
+      const needsReturn = isPlayer && isScouting;
+
       const card = document.createElement('div');
-      card.className = `leader-card ${!p.isAI ? 'is-player' : ''} ${
-        p.id === this.game.viewedParticipantId ? 'is-viewed' : ''
-      } ${p.isEliminated ? 'eliminated' : ''}`;
+      card.className = `leader-card ${isPlayer ? 'is-player' : ''} ${
+        isViewed ? 'is-viewed' : ''
+      } ${needsReturn ? 'needs-return' : ''} ${p.isEliminated ? 'eliminated' : ''}`;
 
       const hpPct = Math.max(
         0,
         Math.min(100, Math.round((p.hp / p.maxHp) * 100))
       );
-      const shortName = !p.isAI ? '나' : p.name.slice(0, 3);
+      const nameLabel = isPlayer
+        ? (needsReturn ? '🏠내전장' : '나')
+        : p.name.slice(0, 3);
 
       card.innerHTML = `
         <div class="leader-top-row">
-          <span>#${idx + 1} ${shortName}</span>
+          <span>#${idx + 1} ${nameLabel}</span>
           <span style="color:${p.hp > 35 ? '#34d399' : '#fb7185'}">${
         p.isEliminated ? '💀' : p.hp
       }</span>
@@ -1848,10 +1892,13 @@ class FantasyAutoBattlerApp {
       lastTime = now;
 
       const viewed = this.game.getViewedParticipant();
-      const inCombat =
-        (this.game.phase === 'COMBAT_PHASE' ||
-          this.game.phase === 'RESOLUTION_PHASE') &&
-        viewed.id === this.game.player.id;
+      const isCombatPhase =
+        this.game.phase === 'COMBAT_PHASE' ||
+        this.game.phase === 'RESOLUTION_PHASE';
+      const viewedCombat = isCombatPhase
+        ? this.game.getViewedCombatContext()
+        : null;
+      const inCombat = viewedCombat !== null;
 
       const activeSelectedOrDraggedId =
         this.isDragging && this.dragPayload?.kind === 'UNIT'
@@ -1860,8 +1907,10 @@ class FantasyAutoBattlerApp {
 
       this.pixelRenderer.renderFrame(dt, {
         inCombat,
-        viewedParticipant: viewed,
-        combatUnits: this.game.playerCombatEngine.units,
+        viewedParticipant: viewedCombat
+          ? viewedCombat.viewedParticipant
+          : viewed,
+        combatUnits: viewedCombat ? viewedCombat.engine.units : [],
         hoveredHex: this.hoveredHex,
         hoveredBenchIndex: this.hoveredBenchIndex,
         isDraggingUnit: this.isDragging && this.dragPayload?.kind === 'UNIT',
@@ -1871,8 +1920,12 @@ class FantasyAutoBattlerApp {
             : null,
         selectedInstanceId: activeSelectedOrDraggedId,
         hasPandoraBench: viewed.augments.includes('AUG_PANDORA_BENCH'),
-        opponentName: this.game.playerCurrentOpponentName,
-        isCreepMatch: this.game.getCurrentRoundType() !== 'PVP',
+        opponentName: viewedCombat
+          ? viewedCombat.opponentName
+          : this.game.playerCurrentOpponentName,
+        isCreepMatch: viewedCombat
+          ? viewedCombat.isCreepMatch
+          : this.game.getCurrentRoundType() !== 'PVP',
       });
 
       // 내 아바타가 전장을 이동하다가 ? / ! 미스터리 상자와 접촉(거리 36px 이내)하면 상자 폭발 & 획득!
