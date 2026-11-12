@@ -18,8 +18,8 @@
       rel="stylesheet"
     />
     <title>WWCHESS - 헥사곤 도트 판타지 오토배틀러</title>
-    <script type="module" crossorigin src="./assets/index-DyI91l6_.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-VucdyCKh.css">
+    <script type="module" crossorigin src="./assets/index-BzOtbObY.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DMhv3aQ6.css">
   </head>
   <body>
     <div id="app" class="app-root">
@@ -76,6 +76,8 @@
         </div>
       </section>
 
+      <!-- Three.js 3D WebGL TFT 스타일 쿼터뷰 입체 헥사곤 전장 캔버스 -->
+      <canvas id="three-canvas" class="three-viewport-canvas"></canvas>
       <!-- 100vw x 100vh 전체화면 픽셀 아트 + 판타지 결투장 + 육각형 전장 & 석조 대기석 단일 게임 캔버스 -->
       <canvas id="fx-canvas" class="game-viewport-canvas"></canvas>
       <!-- Pixi.js v8 WebGL 하드웨어 가속 발광 파티클 & 육각형 배치 충격파 캔버스 -->
@@ -132,6 +134,10 @@
             <div id="skip-combat-btn" class="rune-icon-btn skip-gem hidden" role="button" tabindex="0">
               ⏭️스킵
             </div>
+          </div>
+
+          <div id="view-mode-toggle-btn" class="rune-icon-btn emerald-gem" role="button" tabindex="0" title="2D 도트 / 3D 롤토체스 모드 전환">
+            🎮3D모드
           </div>
 
           <div id="map-theme-btn" class="rune-icon-btn" role="button" tabindex="0" title="전장 배경 변경 (판타지 숲 / 왕도 광장)">
