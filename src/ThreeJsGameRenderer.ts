@@ -1,35 +1,33 @@
 // src/ThreeJsGameRenderer.ts
 /**
- * Three.js 3D WebGL Low-Poly Fantasy Auto-Battler Renderer (Style A - TFT 3D).
- * Features:
- * - 6 distinct low-poly champion archetypes (Warrior, Mage, Rogue, Ranger, Brawler, Beast/Golem)
- * - Distinct signature 3D weapons & equipment (Shields, Swords, Glowing Arcane Staves, Dual Daggers, Bows, Spiked Gauntlets, Claws/Horns)
- * - 3D Combat Juice: Melee attack lunges & weapon swings, assassin parabolic leaps, hit flashes
- * - 3D Projectiles: Arcing curved arrows and glowing magical arcane orbs with impact sparks
- * - 3D Overhead Billboards: Camera-facing real-time HP & Mana bars with star indicators
- * - 3D Floating Combat Popups: Floating damage numbers, critical hits, heal & shield popups
- * - TFT-style 3D perspective camera, dynamic directional shadows, and extruded 3D hex arena.
+ * Three.js 3D WebGL Fantasy Auto-Battler Renderer.
+ * High-End TFT Mobile Style with:
+ * - Real 3D GLB Character Models (Knight, Mage, Rogue, Barbarian, Skeleton, Dragon) via GLTFLoader
+ * - Dark Medieval Fantasy Colosseum Arena (No digital/neon wireframes, Real Stone Hexagons with Carved Runes)
+ * - Warm Flickering Torches & Braziers with dynamic PointLight fire glows
+ * - TFT-style 1:1 Responsive 3D Drag & Drop (Unit floats up, follows finger/cursor in 3D world space, snapped landing)
+ * - 3D Overhead Billboard HP/Mana bars and 3D Floating Popups
  */
 
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import {
   CostTier,
-  ItemId,
   StarLevel,
   UNIT_TEMPLATES,
-  TraitId,
 } from './GameData';
 import { HexCoord } from './HexGridMath';
 import { Participant } from './Participant';
 import { CombatEvent, CombatUnit } from './SkillRegistry';
 
 export type ChampionArchetype =
-  | 'WARRIOR'      // 선봉대, 성기사 (검 + 방패 / 플레이트 아머)
-  | 'MAGE'         // 대마법사, 비전탑 (뾰족 고깔 모자 + 룬 지팡이)
-  | 'ROGUE'        // 그림자 암살자, 고블린 (닌자 후드 + 쌍단검)
-  | 'RANGER'       // 순찰자, 엘프 (깃털 캡 + 장궁 + 화살통)
-  | 'BRAWLER'      // 광전사, 버서커 (헤드밴드 + 스파이크 헤비 건틀릿)
-  | 'BEAST_GOLEM'; // 용족, 언데드 괴수, 크립 몬스터 (거대 뿔 + 바위 어깨 + 흑요석 발톱)
+  | 'WARRIOR'      // 기사, 선봉대, 성기사 (Knight.glb)
+  | 'MAGE'         // 대마법사, 비전탑 (Mage.glb)
+  | 'ROGUE'        // 그림자 암살자, 고블린 (Rogue.glb)
+  | 'BRAWLER'      // 광전사, 버서커 (Barbarian.glb)
+  | 'SKELETON'     // 언데드, 사령술사 (Skeleton.glb)
+  | 'BEAST_GOLEM'; // 용족, 몬스터, PVE 크립 (Dragon.glb)
 
 export interface RenderState3D {
   inCombat: boolean;
@@ -51,9 +49,8 @@ interface UnitJuice3D {
   lungeMaxMs: number;
   lungeDirX: number;
   lungeDirZ: number;
-  swingAngle: number;
   hitFlashTimerMs: number;
-  leapProgress: number; // 0 to 1
+  leapProgress: number;
   leapStartPos: THREE.Vector3;
   leapTargetPos: THREE.Vector3;
 }
@@ -89,7 +86,7 @@ export class ThreeJsGameRenderer {
   public renderer: THREE.WebGLRenderer;
   private canvas: HTMLCanvasElement;
 
-  // 3D 전장 메트릭 (World Space)
+  // 3D 전장 그리드 메트릭 (World Space)
   public readonly hexRadius: number = 1.15;
   public readonly hexWidth: number = Math.sqrt(3) * 1.15; // ~1.99
   public readonly rowStepZ: number = 1.5 * 1.15; // 1.725
@@ -99,6 +96,7 @@ export class ThreeJsGameRenderer {
   private boardGroup: THREE.Group = new THREE.Group();
   private benchGroup: THREE.Group = new THREE.Group();
   private unitsGroup: THREE.Group = new THREE.Group();
+  private environmentGroup: THREE.Group = new THREE.Group();
   private projectilesGroup: THREE.Group = new THREE.Group();
   private popupsGroup: THREE.Group = new THREE.Group();
   private vfxGroup: THREE.Group = new THREE.Group();
@@ -106,10 +104,20 @@ export class ThreeJsGameRenderer {
   // 타일 메시 캐시
   private hexTileMeshes: Map<string, THREE.Mesh> = new Map();
   private benchTileMeshes: Map<number, THREE.Mesh> = new Map();
+  private tileOriginalY: Map<THREE.Mesh, number> = new Map();
 
   // 유닛 3D 메시 및 쥬스 상태
   private unitMeshesMap: Map<string, THREE.Group> = new Map();
   private unitJuiceMap: Map<string, UnitJuice3D> = new Map();
+  private unitMixers: Map<string, THREE.AnimationMixer> = new Map();
+
+  // GLB 모델 에셋 캐시
+  private glbLoadedTemplates: Map<ChampionArchetype, THREE.Group> = new Map();
+  private glbAnimations: Map<ChampionArchetype, THREE.AnimationClip[]> = new Map();
+  private glbLoader: GLTFLoader = new GLTFLoader();
+
+  // 횃불 조명들 (Flickering Torches)
+  private torchLights: { light: THREE.PointLight; baseIntensity: number; phase: number }[] = [];
 
   // 활성 투사체 및 팝업 텍스트
   private activeProjectiles: Active3DProjectile[] = [];
@@ -125,23 +133,27 @@ export class ThreeJsGameRenderer {
   private shakeIntensity: number = 0;
   private animClockMs: number = 0;
 
-  // 3D 레이캐스터
+  // 3D 레이캐스터 및 지면 평면
   private raycaster: THREE.Raycaster = new THREE.Raycaster();
   private mouseVec: THREE.Vector2 = new THREE.Vector2();
+  private groundPlane: THREE.Plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private currentDragWorldPos: THREE.Vector3 = new THREE.Vector3();
+  private isPointerDownOn3D: boolean = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x070a14);
-    this.scene.fog = new THREE.FogExp2(0x070a14, 0.022);
+    // 묵직한 중세 다크 판타지 밤하늘 & 결투장 배경색 (사이버 네온 완전 탈피)
+    this.scene.background = new THREE.Color(0x0c0f18);
+    this.scene.fog = new THREE.FogExp2(0x0c0f18, 0.024);
 
-    // 1. TFT 쿼터뷰 3D 카메라 설정 (전장 + 대기석이 시원하게 가시 영역에 꽉 차도록 최적화)
+    // 1. TFT 쿼터뷰 3D 카메라 설정
     const aspect = (window.innerWidth || 800) / (window.innerHeight || 600);
     this.camera = new THREE.PerspectiveCamera(44, aspect, 0.5, 120);
     this.camera.position.set(0, 15.5, 18.0);
     this.camera.lookAt(0, 0, 2.2);
 
-    // 2. WebGL 렌더러 (완전 불투명 다크 판타지 배경으로 2D 화면과 확실히 분리)
+    // 2. WebGL 렌더러 (완전 불투명 렌더링으로 2D 화면과 철저히 분리)
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
       antialias: true,
@@ -153,49 +165,94 @@ export class ThreeJsGameRenderer {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // 3. 다크 판타지 전장 조명 & 앰비언트 라이트 (기물들이 어둡게 묻히지 않도록 선명한 조명 보강)
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+    // 3. 중세 판타지 분위기 조명 (디지털 네온 배제, 중세 달빛 + 따뜻한 횃불 조명)
+    const ambientLight = new THREE.AmbientLight(0xfff5eb, 0.95);
     this.scene.add(ambientLight);
 
-    this.hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e1b4b, 1.5);
+    this.hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1f2438, 1.4);
     this.scene.add(this.hemiLight);
 
-    this.dirLight = new THREE.DirectionalLight(0xffedd5, 2.8);
-    this.dirLight.position.set(10, 24, 14);
+    // 주광선 (차가운 달빛 느낌)
+    this.dirLight = new THREE.DirectionalLight(0xffedd5, 2.6);
+    this.dirLight.position.set(8, 22, 12);
     this.dirLight.castShadow = true;
     this.dirLight.shadow.mapSize.width = 1024;
     this.dirLight.shadow.mapSize.height = 1024;
     this.dirLight.shadow.camera.near = 0.5;
     this.dirLight.shadow.camera.far = 60;
-    this.dirLight.shadow.camera.left = -15;
-    this.dirLight.shadow.camera.right = 15;
-    this.dirLight.shadow.camera.top = 15;
-    this.dirLight.shadow.camera.bottom = -15;
+    this.dirLight.shadow.camera.left = -14;
+    this.dirLight.shadow.camera.right = 14;
+    this.dirLight.shadow.camera.top = 14;
+    this.dirLight.shadow.camera.bottom = -14;
     this.dirLight.shadow.bias = -0.0006;
     this.scene.add(this.dirLight);
-
-    const blueRimLight = new THREE.PointLight(0x38bdf8, 2.5, 25);
-    blueRimLight.position.set(-14, 8, -6);
-    this.scene.add(blueRimLight);
-
-    const goldRimLight = new THREE.PointLight(0xfacc15, 2.2, 25);
-    goldRimLight.position.set(14, 8, 8);
-    this.scene.add(goldRimLight);
 
     this.scene.add(this.boardGroup);
     this.scene.add(this.benchGroup);
     this.scene.add(this.unitsGroup);
+    this.scene.add(this.environmentGroup);
     this.scene.add(this.projectilesGroup);
     this.scene.add(this.popupsGroup);
     this.scene.add(this.vfxGroup);
 
-    this.build3DHexArena();
-    this.build3DStoneBench();
-    this.buildBattlefieldSurroundings();
+    this.buildMedievalStoneArena();
+    this.buildMedievalStoneBench();
+    this.buildColosseumSurroundingsAndTorches();
+
+    // 4. 외부 고품질 GLB 캐릭터 모델 비동기 로딩 시작
+    this.loadGlbCharacterModels();
   }
 
   /**
-   * 유닛 템플릿 정보 및 특성을 분석하여 6가지 아키타입 중 하나로 매핑
+   * 외부 GLB 모델 파일 6종 비동기 사전 로딩
+   */
+  private loadGlbCharacterModels(): void {
+    const modelSources: { archetype: ChampionArchetype; url: string; scale: number; offsetY: number }[] = [
+      { archetype: 'WARRIOR', url: './models/Knight.glb', scale: 1.15, offsetY: 0 },
+      { archetype: 'MAGE', url: './models/Mage.glb', scale: 1.15, offsetY: 0 },
+      { archetype: 'ROGUE', url: './models/Rogue.glb', scale: 1.12, offsetY: 0 },
+      { archetype: 'BRAWLER', url: './models/Barbarian.glb', scale: 1.22, offsetY: 0 },
+      { archetype: 'SKELETON', url: './models/Skeleton.glb', scale: 1.15, offsetY: 0 },
+      { archetype: 'BEAST_GOLEM', url: './models/Dragon.glb', scale: 0.95, offsetY: 0 },
+    ];
+
+    modelSources.forEach((src) => {
+      this.glbLoader.load(
+        src.url,
+        (gltf) => {
+          const root = gltf.scene;
+          root.scale.set(src.scale, src.scale, src.scale);
+          root.position.y = src.offsetY;
+
+          // 그림자 활성화 & 재질 최적화
+          root.traverse((child) => {
+            if ((child as THREE.Mesh).isMesh) {
+              const m = child as THREE.Mesh;
+              m.castShadow = true;
+              m.receiveShadow = true;
+              if (m.material) {
+                const mat = m.material as THREE.MeshStandardMaterial;
+                mat.roughness = 0.55;
+                mat.metalness = 0.35;
+              }
+            }
+          });
+
+          this.glbLoadedTemplates.set(src.archetype, root);
+          if (gltf.animations && gltf.animations.length > 0) {
+            this.glbAnimations.set(src.archetype, gltf.animations);
+          }
+        },
+        undefined,
+        (err) => {
+          console.warn(`[ThreeJsGameRenderer] Model load fallback for ${src.archetype}:`, err);
+        }
+      );
+    });
+  }
+
+  /**
+   * 챔피언 아키타입 분류
    */
   public getChampionArchetype(unitId: string): ChampionArchetype {
     if (unitId.startsWith('creep_')) {
@@ -210,69 +267,62 @@ export class ThreeJsGameRenderer {
     const traits = tpl.traits || [];
     const range = tpl.stats?.range ?? 1;
 
-    // 1. 순찰자 / 엘프 궁수 계열
-    if (traits.includes('RANGER') || range >= 4) {
-      return 'RANGER';
+    // 언데드
+    if (traits.includes('UNDEAD_SCOURGE') || unitId.includes('skel')) {
+      return 'SKELETON';
     }
 
-    // 2. 대마법사 / 비전탑 계열
-    if (
-      traits.includes('ARCHMAGE') ||
-      traits.includes('ARCANE_TOWER') ||
-      range >= 3
-    ) {
+    // 용족 / 크립
+    if (traits.includes('DRAGONKIN') || unitId.includes('dragon')) {
+      return 'BEAST_GOLEM';
+    }
+
+    // 마법사
+    if (traits.includes('ARCHMAGE') || traits.includes('ARCANE_TOWER') || range >= 3) {
       return 'MAGE';
     }
 
-    // 3. 그림자 암살자 계열
+    // 도적 / 암살자
     if (traits.includes('SHADOW_ASSASSIN') || traits.includes('GOLDEN_GOBLIN')) {
       return 'ROGUE';
     }
 
-    // 4. 용족 / 대형 괴물 계열
-    if (
-      traits.includes('DRAGONKIN') ||
-      unitId.includes('dragon') ||
-      unitId.includes('golem')
-    ) {
-      return 'BEAST_GOLEM';
-    }
-
-    // 5. 광전사 / 격투가 계열
+    // 광전사
     if (traits.includes('BERSERKER')) {
       return 'BRAWLER';
     }
 
-    // 6. 선봉대 / 성기사 / 신성제국 기본 전사
+    // 선봉대 / 기사
     return 'WARRIOR';
   }
 
   /**
-   * 8x7 입체 3D 헥사곤 전장 타일 생성
+   * 중세 석조 헥사곤 전장 타일 생성 (네온 와이어프레임 완전 철거, 자연스러운 고대 석조 대리석 재질)
    */
-  private build3DHexArena(): void {
+  private buildMedievalStoneArena(): void {
     const tileGeo = new THREE.CylinderGeometry(
       this.hexRadius,
-      this.hexRadius * 0.96,
-      0.36,
+      this.hexRadius * 0.95,
+      0.38,
       6
     );
 
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 7; c++) {
         const isAway = r < 4;
-        const color = isAway
+        // 고대 석판 텍스처 컬러 (내 진영: 다크 슬레이트 블루 스톤 / 적 진영: 다크 옵시디언 스톤)
+        const stoneColor = isAway
           ? (r + c) % 2 === 0
-            ? 0x221c35
-            : 0x1a1528
+            ? 0x221a24
+            : 0x1c151e
           : (r + c) % 2 === 0
-          ? 0x1e293b
-          : 0x0f172a;
+          ? 0x242938
+          : 0x1a202c;
 
         const mat = new THREE.MeshStandardMaterial({
-          color,
-          roughness: 0.65,
-          metalness: 0.25,
+          color: stoneColor,
+          roughness: 0.88,
+          metalness: 0.12,
           flatShading: true,
         });
 
@@ -282,107 +332,151 @@ export class ThreeJsGameRenderer {
 
         const pos = this.hexToWorldPos(r, c);
         mesh.position.set(pos.x, 0, pos.z);
-        mesh.userData = { type: 'HEX', row: r, col: c, originalColor: color };
+        mesh.userData = {
+          type: 'HEX',
+          row: r,
+          col: c,
+          baseColor: stoneColor,
+          baseY: 0,
+        };
 
         const key = `${r},${c}`;
         this.hexTileMeshes.set(key, mesh);
+        this.tileOriginalY.set(mesh, 0);
         this.boardGroup.add(mesh);
 
-        // 타일 테두리 미세 발광 와이어프레임
-        const edgeGeo = new THREE.EdgesGeometry(tileGeo);
-        const edgeMat = new THREE.LineBasicMaterial({
-          color: isAway ? 0x6b21a8 : 0x0284c7,
-          transparent: true,
-          opacity: 0.45,
+        // 윗면에 은은한 음각 석조 룬 라인 (사이버 네온이 아닌, 자연스러운 어두운 암석 각인선)
+        const grooveGeo = new THREE.RingGeometry(this.hexRadius * 0.75, this.hexRadius * 0.78, 6);
+        const grooveMat = new THREE.MeshStandardMaterial({
+          color: isAway ? 0x140e18 : 0x111622,
+          roughness: 0.95,
         });
-        const edgeLine = new THREE.LineSegments(edgeGeo, edgeMat);
-        edgeLine.rotation.y = Math.PI / 6;
-        edgeLine.position.set(pos.x, 0.01, pos.z);
-        this.boardGroup.add(edgeLine);
+        const groove = new THREE.Mesh(grooveGeo, grooveMat);
+        groove.rotation.x = -Math.PI / 2;
+        groove.rotation.z = Math.PI / 6;
+        groove.position.set(pos.x, 0.191, pos.z);
+        this.boardGroup.add(groove);
       }
     }
   }
 
   /**
-   * 하단 1x9 입체 석조 대기석(Bench) 단상 생성
+   * 하단 1x9 중세 석조 대기석(Bench) 단상 생성
    */
-  private build3DStoneBench(): void {
-    const slotGeo = new THREE.BoxGeometry(1.65, 0.32, 1.65);
-    const benchBaseGeo = new THREE.BoxGeometry(17.5, 0.25, 2.2);
+  private buildMedievalStoneBench(): void {
+    const slotGeo = new THREE.BoxGeometry(1.68, 0.36, 1.68);
+    const benchBaseGeo = new THREE.BoxGeometry(17.6, 0.3, 2.4);
     const baseMat = new THREE.MeshStandardMaterial({
-      color: 0x0a0f1d,
-      roughness: 0.8,
-      metalness: 0.2,
+      color: 0x121722,
+      roughness: 0.9,
+      metalness: 0.15,
+      flatShading: true,
     });
     const baseMesh = new THREE.Mesh(benchBaseGeo, baseMat);
-    baseMesh.position.set(0, -0.08, this.benchZ);
+    baseMesh.position.set(0, -0.06, this.benchZ);
     baseMesh.receiveShadow = true;
     this.benchGroup.add(baseMesh);
 
     for (let i = 0; i < 9; i++) {
       const slotMat = new THREE.MeshStandardMaterial({
-        color: i % 2 === 0 ? 0x172554 : 0x0f172a,
-        roughness: 0.6,
-        metalness: 0.3,
+        color: i % 2 === 0 ? 0x1e2738 : 0x181f2c,
+        roughness: 0.85,
+        metalness: 0.2,
+        flatShading: true,
       });
 
       const slot = new THREE.Mesh(slotGeo, slotMat);
       const slotX = (i - 4) * 1.85;
-      slot.position.set(slotX, 0.05, this.benchZ);
+      slot.position.set(slotX, 0.08, this.benchZ);
       slot.receiveShadow = true;
-      slot.userData = { type: 'BENCH', index: i, originalColor: slotMat.color.getHex() };
+      slot.userData = {
+        type: 'BENCH',
+        index: i,
+        baseColor: slotMat.color.getHex(),
+        baseY: 0.08,
+      };
 
       this.benchTileMeshes.set(i, slot);
+      this.tileOriginalY.set(slot, 0.08);
       this.benchGroup.add(slot);
-
-      const edgeGeo = new THREE.EdgesGeometry(slotGeo);
-      const edgeMat = new THREE.LineBasicMaterial({
-        color: 0x38bdf8,
-        transparent: true,
-        opacity: 0.35,
-      });
-      const edges = new THREE.LineSegments(edgeGeo, edgeMat);
-      edges.position.set(slotX, 0.06, this.benchZ);
-      this.benchGroup.add(edges);
     }
   }
 
   /**
-   * 경기장 주변 환경 (판타지 부유석 콜로세움 배경)
+   * 중세 콜로세움 배경 & 타오르는 판타지 횃불 화로 (Torches & Braziers)
    */
-  private buildBattlefieldSurroundings(): void {
-    const groundGeo = new THREE.CylinderGeometry(24, 26, 1.2, 32);
+  private buildColosseumSurroundingsAndTorches(): void {
+    // 웅장한 콜로세움 원형 석조 대지
+    const groundGeo = new THREE.CylinderGeometry(24, 26, 1.5, 32);
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x05070e,
+      color: 0x0a0c14,
       roughness: 0.95,
-      metalness: 0.1,
+      metalness: 0.05,
     });
     const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.position.set(0, -0.75, 1.5);
+    ground.position.set(0, -0.9, 1.5);
     ground.receiveShadow = true;
-    this.scene.add(ground);
+    this.environmentGroup.add(ground);
 
-    // 공중에 떠 있는 룬 수정 기둥 4개
-    const pylonGeo = new THREE.OctahedronGeometry(1.2, 0);
-    const pylonColors = [0x38bdf8, 0x818cf8, 0xfacc15, 0x34d399];
-    const pylonPositions = [
-      [-13, 3.5, -9],
-      [13, 3.5, -9],
-      [-14, 3.5, 9],
-      [14, 3.5, 9],
+    // 전장 모서리 4곳에 배치된 중세 석조 횃불 기둥 (Stone Braziers with Flickering Fire)
+    const torchPositions = [
+      [-11.5, 0, -8.0],
+      [11.5, 0, -8.0],
+      [-12.0, 0, 8.5],
+      [12.0, 0, 8.5],
     ];
 
-    pylonPositions.forEach((pos, idx) => {
-      const mat = new THREE.MeshStandardMaterial({
-        color: pylonColors[idx],
-        emissive: pylonColors[idx],
-        emissiveIntensity: 0.6,
-        roughness: 0.3,
-        metalness: 0.8,
+    torchPositions.forEach((pos, idx) => {
+      const pillarGroup = new THREE.Group();
+      pillarGroup.position.set(pos[0], pos[1], pos[2]);
+
+      // 석조 기둥 베이스
+      const pillarGeo = new THREE.CylinderGeometry(0.55, 0.75, 3.2, 8);
+      const pillarMat = new THREE.MeshStandardMaterial({
+        color: 0x222634,
+        roughness: 0.85,
+        flatShading: true,
       });
-      const pylon = new THREE.Mesh(pylonGeo, mat);
-      pylon.position.set(pos[0], pos[1], pos[2]);
-      this.scene.add(pylon);
+      const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+      pillar.position.y = 1.6;
+      pillar.castShadow = true;
+      pillarGroup.add(pillar);
+
+      // 횃불 화로 보울 (Brazier Bowl)
+      const bowlGeo = new THREE.CylinderGeometry(0.85, 0.45, 0.5, 8);
+      const bowlMat = new THREE.MeshStandardMaterial({
+        color: 0x3d3025,
+        metalness: 0.7,
+        roughness: 0.35,
+      });
+      const bowl = new THREE.Mesh(bowlGeo, bowlMat);
+      bowl.position.y = 3.3;
+      pillarGroup.add(bowl);
+
+      // 타오르는 화염 덩어리
+      const flameGeo = new THREE.DodecahedronGeometry(0.35, 0);
+      const flameMat = new THREE.MeshStandardMaterial({
+        color: 0xff6600,
+        emissive: 0xff4400,
+        emissiveIntensity: 1.8,
+        roughness: 0.3,
+      });
+      const flame = new THREE.Mesh(flameGeo, flameMat);
+      flame.position.y = 3.65;
+      pillarGroup.add(flame);
+
+      // 따뜻한 주황빛 포인트 라이트 (Flickering Flame Light)
+      const fireLight = new THREE.PointLight(0xff7711, 2.4, 18);
+      fireLight.position.set(0, 3.8, 0);
+      pillarGroup.add(fireLight);
+
+      this.torchLights.push({
+        light: fireLight,
+        baseIntensity: 2.4,
+        phase: idx * 1.5,
+      });
+
+      this.environmentGroup.add(pillarGroup);
     });
   }
 
@@ -435,7 +529,7 @@ export class ThreeJsGameRenderer {
   }
 
   /**
-   * 6대 로우폴리 3D 챔피언 아키타입별 메시 생성 빌더
+   * 3D 캐릭터 메시 빌더 (GLB 에셋 복제 또는 정교한 로우폴리 피규어)
    */
   public create3DChampionMesh(
     unitId: string,
@@ -446,437 +540,103 @@ export class ThreeJsGameRenderer {
     group.name = `UNIT_${unitId}`;
     const archetype = this.getChampionArchetype(unitId);
 
-    // 코스트별 팔레트 색상
+    // 코스트별 팔레트 (1코: 실버/아이언, 2코: 에메랄드, 3코: 사파이어, 4코: 자수정, 5코: 황금)
     const costColors: Record<CostTier, { primary: number; trim: number; emissive: number }> = {
-      1: { primary: 0x94a3b8, trim: 0x475569, emissive: 0x334155 }, // 실버 아이언
-      2: { primary: 0x10b981, trim: 0x065f46, emissive: 0x047857 }, // 에메랄드
-      3: { primary: 0x38bdf8, trim: 0x0369a1, emissive: 0x0284c7 }, // 사파이어
-      4: { primary: 0xc084fc, trim: 0x6b21a8, emissive: 0x9333ea }, // 자수정
-      5: { primary: 0xfacc15, trim: 0xb45309, emissive: 0xeab308 }, // 황금/신화
+      1: { primary: 0x94a3b8, trim: 0x475569, emissive: 0x334155 },
+      2: { primary: 0x10b981, trim: 0x065f46, emissive: 0x047857 },
+      3: { primary: 0x38bdf8, trim: 0x0369a1, emissive: 0x0284c7 },
+      4: { primary: 0xc084fc, trim: 0x6b21a8, emissive: 0x9333ea },
+      5: { primary: 0xfacc15, trim: 0xb45309, emissive: 0xeab308 },
     };
     const palette = costColors[cost] || costColors[1];
+    const scaleMultiplier = starLevel === 3 ? 1.55 : starLevel === 2 ? 1.25 : 1.0;
 
-    // 성급 스케일 (1성: 1.0배, 2성: 1.25배, 3성: 1.55배)
-    const scale = starLevel === 3 ? 1.55 : starLevel === 2 ? 1.25 : 1.0;
+    // A. 만약 고품질 외부 GLB 모델이 로드되어 있다면 실제 3D 모델 복제 사용!
+    const glbTemplate = this.glbLoadedTemplates.get(archetype);
+    if (glbTemplate) {
+      const clonedModel = SkeletonUtils.clone(glbTemplate) as THREE.Group;
+      clonedModel.name = 'GLB_MODEL_ROOT';
 
-    // 유닛 루트 바디 그룹 (애니메이션 틸트용)
-    const bodyRoot = new THREE.Group();
-    bodyRoot.name = 'BODY_ROOT';
-    group.add(bodyRoot);
+      // 코스트별 톤 미세 틴트 적용
+      clonedModel.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          if (mesh.material) {
+            const mat = (mesh.material as THREE.Material).clone() as THREE.MeshStandardMaterial;
+            if (mat.color && cost >= 3) {
+              mat.color.lerp(new THREE.Color(palette.primary), 0.25);
+            }
+            mesh.material = mat;
+          }
+        }
+      });
 
-    // 오른손 무기 그룹 (스윙 애니메이션 타겟)
-    const weaponRight = new THREE.Group();
-    weaponRight.name = 'WEAPON_RIGHT';
+      group.add(clonedModel);
+    } else {
+      // B. GLB 모델 로딩 전 또는 폴백용 세련된 판타지 미니어처 피규어 조형
+      const fallbackRoot = new THREE.Group();
+      fallbackRoot.name = 'FALLBACK_ROOT';
 
-    // 왼손 보조 장비 그룹
-    const weaponLeft = new THREE.Group();
-    weaponLeft.name = 'WEAPON_LEFT';
+      // 머리, 투구, 눈 바이저, 흉갑, 어깨갑, 무기
+      const chestGeo = new THREE.BoxGeometry(0.8, 0.95, 0.55);
+      const chestMat = new THREE.MeshStandardMaterial({
+        color: palette.primary,
+        roughness: 0.4,
+        metalness: 0.6,
+      });
+      const chest = new THREE.Mesh(chestGeo, chestMat);
+      chest.position.y = 0.95;
+      chest.castShadow = true;
+      fallbackRoot.add(chest);
 
-    // -------------------------------------------------------------
-    // 아키타입별 디테일 로우폴리 메시 분기 생성
-    // -------------------------------------------------------------
-    switch (archetype) {
-      // 1. WARRIOR (선봉대, 성기사): 판금 흉갑, 투구 바이저, 견갑, 검 + 방패
-      case 'WARRIOR': {
-        // 몸통 판금 흉갑
-        const chestGeo = new THREE.BoxGeometry(0.8, 0.95, 0.55);
-        const chestMat = new THREE.MeshStandardMaterial({
-          color: palette.primary,
-          roughness: 0.35,
-          metalness: 0.75,
-        });
-        const chest = new THREE.Mesh(chestGeo, chestMat);
-        chest.position.y = 0.95;
-        chest.castShadow = true;
-        bodyRoot.add(chest);
+      const headGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+      const headMat = new THREE.MeshStandardMaterial({ color: palette.trim, roughness: 0.3, metalness: 0.7 });
+      const head = new THREE.Mesh(headGeo, headMat);
+      head.position.y = 1.68;
+      head.castShadow = true;
+      fallbackRoot.add(head);
 
-        // 투구 & 바이저
-        const helmGeo = new THREE.BoxGeometry(0.62, 0.62, 0.62);
-        const helmMat = new THREE.MeshStandardMaterial({
-          color: palette.trim,
-          roughness: 0.3,
-          metalness: 0.8,
-        });
-        const helm = new THREE.Mesh(helmGeo, helmMat);
-        helm.position.y = 1.7;
-        helm.castShadow = true;
-        bodyRoot.add(helm);
+      // 빛나는 바이저 눈
+      const eyeGeo = new THREE.BoxGeometry(0.5, 0.14, 0.62);
+      const eyeMat = new THREE.MeshStandardMaterial({
+        color: palette.emissive,
+        emissive: palette.emissive,
+        emissiveIntensity: 0.8,
+      });
+      const eye = new THREE.Mesh(eyeGeo, eyeMat);
+      eye.position.set(0, 1.68, 0.05);
+      fallbackRoot.add(eye);
 
-        // 투구 슬릿 (발광 바이저)
-        const visorGeo = new THREE.BoxGeometry(0.52, 0.14, 0.64);
-        const visorMat = new THREE.MeshStandardMaterial({
-          color: 0x0f172a,
-          emissive: palette.emissive,
-          emissiveIntensity: 0.8,
-        });
-        const visor = new THREE.Mesh(visorGeo, visorMat);
-        visor.position.set(0, 1.7, 0.05);
-        bodyRoot.add(visor);
+      // 망토 (Cape)
+      const capeGeo = new THREE.BoxGeometry(0.7, 1.2, 0.08);
+      const capeMat = new THREE.MeshStandardMaterial({
+        color: palette.trim,
+        roughness: 0.8,
+      });
+      const cape = new THREE.Mesh(capeGeo, capeMat);
+      cape.position.set(0, 0.9, -0.32);
+      cape.rotation.x = -Math.PI / 18;
+      fallbackRoot.add(cape);
 
-        // 양 어깨 플레이트 견갑
-        const pauldronGeo = new THREE.BoxGeometry(0.38, 0.38, 0.48);
-        const pauldronMat = new THREE.MeshStandardMaterial({
-          color: palette.trim,
-          metalness: 0.8,
-          roughness: 0.3,
-        });
-        const leftP = new THREE.Mesh(pauldronGeo, pauldronMat);
-        leftP.position.set(-0.58, 1.35, 0);
-        const rightP = new THREE.Mesh(pauldronGeo, pauldronMat);
-        rightP.position.set(0.58, 1.35, 0);
-        bodyRoot.add(leftP);
-        bodyRoot.add(rightP);
+      // 오른손 무기
+      const weaponGroup = new THREE.Group();
+      weaponGroup.name = 'WEAPON_RIGHT';
+      const swordGeo = new THREE.BoxGeometry(0.16, 1.4, 0.06);
+      const swordMat = new THREE.MeshStandardMaterial({
+        color: 0xf1f5f9,
+        emissive: palette.emissive,
+        emissiveIntensity: 0.35,
+        metalness: 0.9,
+      });
+      const sword = new THREE.Mesh(swordGeo, swordMat);
+      sword.position.y = 0.6;
+      weaponGroup.add(sword);
+      weaponGroup.position.set(0.65, 0.85, 0.2);
+      fallbackRoot.add(weaponGroup);
 
-        // [오른손] 기사의 롱소드
-        const swordBladeGeo = new THREE.BoxGeometry(0.16, 1.45, 0.06);
-        const swordMat = new THREE.MeshStandardMaterial({
-          color: 0xf1f5f9,
-          emissive: palette.emissive,
-          emissiveIntensity: 0.4,
-          metalness: 0.95,
-          roughness: 0.15,
-        });
-        const swordBlade = new THREE.Mesh(swordBladeGeo, swordMat);
-        swordBlade.position.y = 0.65;
-        weaponRight.add(swordBlade);
-
-        const swordGuardGeo = new THREE.BoxGeometry(0.55, 0.08, 0.12);
-        const guardMat = new THREE.MeshStandardMaterial({ color: palette.trim, metalness: 0.8 });
-        const guard = new THREE.Mesh(swordGuardGeo, guardMat);
-        weaponRight.add(guard);
-
-        weaponRight.position.set(0.65, 0.9, 0.2);
-        weaponRight.rotation.x = Math.PI / 10;
-        bodyRoot.add(weaponRight);
-
-        // [왼손] 기사의 방패 (Kite Shield)
-        const shieldGeo = new THREE.BoxGeometry(0.55, 0.85, 0.1);
-        const shieldMat = new THREE.MeshStandardMaterial({
-          color: palette.primary,
-          metalness: 0.7,
-          roughness: 0.3,
-        });
-        const shield = new THREE.Mesh(shieldGeo, shieldMat);
-        shield.position.set(-0.65, 0.95, 0.25);
-        shield.rotation.y = Math.PI / 8;
-        bodyRoot.add(shield);
-        break;
-      }
-
-      // 2. MAGE (대마법사, 비전탑): 로브 치마단, 마법사 뾰족 고깔 모자, 룬 지팡이 + 마법 구체
-      case 'MAGE': {
-        // 상의 로브
-        const chestGeo = new THREE.BoxGeometry(0.7, 0.9, 0.5);
-        const chestMat = new THREE.MeshStandardMaterial({
-          color: palette.trim,
-          roughness: 0.6,
-          metalness: 0.2,
-        });
-        const chest = new THREE.Mesh(chestGeo, chestMat);
-        chest.position.y = 0.95;
-        bodyRoot.add(chest);
-
-        // 하의 긴 로브 (Skirt Cone/Cylinder)
-        const skirtGeo = new THREE.CylinderGeometry(0.38, 0.62, 0.85, 8);
-        const skirtMat = new THREE.MeshStandardMaterial({
-          color: palette.primary,
-          roughness: 0.5,
-          metalness: 0.2,
-        });
-        const skirt = new THREE.Mesh(skirtGeo, skirtMat);
-        skirt.position.y = 0.42;
-        bodyRoot.add(skirt);
-
-        // 머리
-        const headGeo = new THREE.BoxGeometry(0.54, 0.54, 0.54);
-        const headMat = new THREE.MeshStandardMaterial({ color: 0xfef08a });
-        const head = new THREE.Mesh(headGeo, headMat);
-        head.position.y = 1.65;
-        bodyRoot.add(head);
-
-        // 마법사 뾰족 모자 (Wizard Cone Hat)
-        const hatBrimGeo = new THREE.CylinderGeometry(0.72, 0.72, 0.08, 12);
-        const hatMat = new THREE.MeshStandardMaterial({
-          color: palette.trim,
-          roughness: 0.4,
-          metalness: 0.4,
-        });
-        const hatBrim = new THREE.Mesh(hatBrimGeo, hatMat);
-        hatBrim.position.y = 1.95;
-        bodyRoot.add(hatBrim);
-
-        const hatConeGeo = new THREE.ConeGeometry(0.48, 1.1, 8);
-        const hatCone = new THREE.Mesh(hatConeGeo, hatMat);
-        hatCone.position.set(0, 2.45, -0.05);
-        hatCone.rotation.x = -Math.PI / 14;
-        bodyRoot.add(hatCone);
-
-        // [오른손] 룬 지팡이 (Staff)
-        const staffPoleGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.8, 6);
-        const poleMat = new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.8 });
-        const pole = new THREE.Mesh(staffPoleGeo, poleMat);
-        pole.position.y = 0.8;
-        weaponRight.add(pole);
-
-        // 지팡이 끝에 회전하며 빛나는 아케인 보주 (Orb)
-        const orbGeo = new THREE.OctahedronGeometry(0.24, 0);
-        const orbMat = new THREE.MeshStandardMaterial({
-          color: palette.emissive,
-          emissive: palette.emissive,
-          emissiveIntensity: 1.2,
-          roughness: 0.2,
-          metalness: 0.9,
-        });
-        const orb = new THREE.Mesh(orbGeo, orbMat);
-        orb.position.y = 1.75;
-        orb.name = 'MAGE_ORB';
-        weaponRight.add(orb);
-
-        weaponRight.position.set(0.62, 0.7, 0.2);
-        weaponRight.rotation.x = -Math.PI / 12;
-        bodyRoot.add(weaponRight);
-        break;
-      }
-
-      // 3. ROGUE (그림자 암살자, 고블린): 닌자 후드/마스크, 슬림 가죽 조끼, 쌍단검 (Dual Daggers)
-      case 'ROGUE': {
-        // 슬림 몸통
-        const chestGeo = new THREE.BoxGeometry(0.65, 0.85, 0.45);
-        const chestMat = new THREE.MeshStandardMaterial({
-          color: 0x1e293b,
-          roughness: 0.7,
-          metalness: 0.3,
-        });
-        const chest = new THREE.Mesh(chestGeo, chestMat);
-        chest.position.y = 0.88;
-        bodyRoot.add(chest);
-
-        // 암살자 머리 & 후드 (Ninja Hood)
-        const hoodGeo = new THREE.BoxGeometry(0.64, 0.64, 0.64);
-        const hoodMat = new THREE.MeshStandardMaterial({
-          color: 0x0f172a,
-          roughness: 0.5,
-          metalness: 0.4,
-        });
-        const hood = new THREE.Mesh(hoodGeo, hoodMat);
-        hood.position.y = 1.62;
-        bodyRoot.add(hood);
-
-        // 눈가 발광 마스크
-        const maskGeo = new THREE.BoxGeometry(0.5, 0.12, 0.68);
-        const maskMat = new THREE.MeshStandardMaterial({
-          color: palette.emissive,
-          emissive: palette.emissive,
-          emissiveIntensity: 0.9,
-        });
-        const mask = new THREE.Mesh(maskGeo, maskMat);
-        mask.position.set(0, 1.62, 0.05);
-        bodyRoot.add(mask);
-
-        // [오른손 & 왼손] 날렵한 역수 쌍단검 (Dual Daggers)
-        const daggerGeo = new THREE.BoxGeometry(0.1, 0.85, 0.05);
-        const daggerMat = new THREE.MeshStandardMaterial({
-          color: 0xe2e8f0,
-          emissive: palette.emissive,
-          emissiveIntensity: 0.5,
-          metalness: 0.9,
-          roughness: 0.2,
-        });
-
-        // 오른손 단검
-        const d1 = new THREE.Mesh(daggerGeo, daggerMat);
-        d1.position.y = -0.25; // 역수 그립
-        weaponRight.add(d1);
-        weaponRight.position.set(0.55, 0.85, 0.2);
-        weaponRight.rotation.x = Math.PI / 4;
-        bodyRoot.add(weaponRight);
-
-        // 왼손 단검
-        const d2 = new THREE.Mesh(daggerGeo, daggerMat);
-        d2.position.y = -0.25;
-        weaponLeft.add(d2);
-        weaponLeft.position.set(-0.55, 0.85, 0.2);
-        weaponLeft.rotation.x = Math.PI / 4;
-        bodyRoot.add(weaponLeft);
-        break;
-      }
-
-      // 4. RANGER (순찰자, 엘프 궁수): 깃털 모자, 등 뒤 화살통, 곡선 장궁 (Longbow)
-      case 'RANGER': {
-        // 날렵한 경갑
-        const chestGeo = new THREE.BoxGeometry(0.68, 0.9, 0.48);
-        const chestMat = new THREE.MeshStandardMaterial({
-          color: palette.primary,
-          roughness: 0.5,
-          metalness: 0.4,
-        });
-        const chest = new THREE.Mesh(chestGeo, chestMat);
-        chest.position.y = 0.92;
-        bodyRoot.add(chest);
-
-        // 머리
-        const headGeo = new THREE.BoxGeometry(0.55, 0.55, 0.55);
-        const headMat = new THREE.MeshStandardMaterial({ color: 0xfde047 });
-        const head = new THREE.Mesh(headGeo, headMat);
-        head.position.y = 1.65;
-        bodyRoot.add(head);
-
-        // 로빈 후드 캡 (Robin Hood Cap + Feather)
-        const capGeo = new THREE.ConeGeometry(0.42, 0.45, 4);
-        const capMat = new THREE.MeshStandardMaterial({ color: palette.trim, roughness: 0.6 });
-        const cap = new THREE.Mesh(capGeo, capMat);
-        cap.position.set(0, 1.95, -0.05);
-        cap.rotation.x = -Math.PI / 8;
-        bodyRoot.add(cap);
-
-        const featherGeo = new THREE.BoxGeometry(0.06, 0.35, 0.12);
-        const featherMat = new THREE.MeshStandardMaterial({
-          color: 0xef4444,
-          emissive: 0xef4444,
-          emissiveIntensity: 0.5,
-        });
-        const feather = new THREE.Mesh(featherGeo, featherMat);
-        feather.position.set(-0.25, 2.1, -0.08);
-        feather.rotation.z = Math.PI / 6;
-        bodyRoot.add(feather);
-
-        // 등 뒤 화살통 (Quiver with arrows)
-        const quiverGeo = new THREE.CylinderGeometry(0.14, 0.12, 0.85, 6);
-        const quiverMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
-        const quiver = new THREE.Mesh(quiverGeo, quiverMat);
-        quiver.position.set(0.18, 1.1, -0.32);
-        quiver.rotation.z = -Math.PI / 7;
-        bodyRoot.add(quiver);
-
-        // [오른손/전방] 장궁 (Recurve Bow)
-        const bowCurveGeo = new THREE.TorusGeometry(0.65, 0.05, 6, 12, Math.PI * 0.9);
-        const bowMat = new THREE.MeshStandardMaterial({
-          color: 0xd97706,
-          metalness: 0.6,
-          roughness: 0.3,
-        });
-        const bow = new THREE.Mesh(bowCurveGeo, bowMat);
-        bow.rotation.y = Math.PI / 2;
-        bow.rotation.z = Math.PI / 2;
-        bow.position.set(0, 0, 0.3);
-        weaponRight.add(bow);
-
-        weaponRight.position.set(0.5, 0.95, 0.15);
-        bodyRoot.add(weaponRight);
-        break;
-      }
-
-      // 5. BRAWLER (광전사, 버서커): 헤드밴드 머리띠, 우람한 어깨 근육, 스파이크 헤비 건틀릿
-      case 'BRAWLER': {
-        // 우람한 상체 (Bulky Muscle Torso)
-        const chestGeo = new THREE.BoxGeometry(0.95, 0.95, 0.6);
-        const chestMat = new THREE.MeshStandardMaterial({
-          color: palette.trim,
-          roughness: 0.6,
-          metalness: 0.3,
-        });
-        const chest = new THREE.Mesh(chestGeo, chestMat);
-        chest.position.y = 0.95;
-        bodyRoot.add(chest);
-
-        // 머리 & 격투가 헤드밴드
-        const headGeo = new THREE.BoxGeometry(0.62, 0.62, 0.62);
-        const headMat = new THREE.MeshStandardMaterial({ color: 0xfcb88b });
-        const head = new THREE.Mesh(headGeo, headMat);
-        head.position.y = 1.7;
-        bodyRoot.add(head);
-
-        const bandGeo = new THREE.BoxGeometry(0.66, 0.16, 0.66);
-        const bandMat = new THREE.MeshStandardMaterial({
-          color: 0xd946ef,
-          emissive: 0xd946ef,
-          emissiveIntensity: 0.6,
-        });
-        const band = new THREE.Mesh(bandGeo, bandMat);
-        band.position.set(0, 1.75, 0);
-        bodyRoot.add(band);
-
-        // [양손] 거대한 메탈 스파이크 건틀릿 (Heavy Spiked Gauntlets)
-        const fistGeo = new THREE.BoxGeometry(0.38, 0.38, 0.38);
-        const fistMat = new THREE.MeshStandardMaterial({
-          color: palette.primary,
-          metalness: 0.85,
-          roughness: 0.25,
-        });
-
-        const rFist = new THREE.Mesh(fistGeo, fistMat);
-        weaponRight.add(rFist);
-        weaponRight.position.set(0.68, 0.85, 0.25);
-        bodyRoot.add(weaponRight);
-
-        const lFist = new THREE.Mesh(fistGeo, fistMat);
-        weaponLeft.add(lFist);
-        weaponLeft.position.set(-0.68, 0.85, 0.25);
-        bodyRoot.add(weaponLeft);
-        break;
-      }
-
-      // 6. BEAST_GOLEM (용족, 골렘, 크립 몬스터): 바위 질감 외골격, 뿔, 흑요석 발톱
-      case 'BEAST_GOLEM':
-      default: {
-        // 거대한 괴수/골렘 몸체
-        const bodyGeo = new THREE.DodecahedronGeometry(0.65, 0);
-        const bodyMat = new THREE.MeshStandardMaterial({
-          color: palette.primary,
-          roughness: 0.85,
-          metalness: 0.3,
-          flatShading: true,
-        });
-        const body = new THREE.Mesh(bodyGeo, bodyMat);
-        body.position.y = 0.95;
-        bodyRoot.add(body);
-
-        // 머리 및 거대한 뿔 2개
-        const headGeo = new THREE.BoxGeometry(0.65, 0.55, 0.65);
-        const headMat = new THREE.MeshStandardMaterial({
-          color: palette.trim,
-          roughness: 0.7,
-          metalness: 0.4,
-        });
-        const head = new THREE.Mesh(headGeo, headMat);
-        head.position.y = 1.6;
-        bodyRoot.add(head);
-
-        const hornGeo = new THREE.ConeGeometry(0.12, 0.65, 5);
-        const hornMat = new THREE.MeshStandardMaterial({
-          color: palette.emissive,
-          emissive: palette.emissive,
-          emissiveIntensity: 0.7,
-        });
-        const hornL = new THREE.Mesh(hornGeo, hornMat);
-        hornL.position.set(-0.35, 2.05, 0.1);
-        hornL.rotation.z = Math.PI / 6;
-        const hornR = new THREE.Mesh(hornGeo, hornMat);
-        hornR.position.set(0.35, 2.05, 0.1);
-        hornR.rotation.z = -Math.PI / 6;
-        bodyRoot.add(hornL);
-        bodyRoot.add(hornR);
-
-        // 양손 거대 흑요석 발톱 (Obsidian Claws)
-        const clawGeo = new THREE.ConeGeometry(0.16, 0.65, 4);
-        const clawMat = new THREE.MeshStandardMaterial({
-          color: 0x09090b,
-          emissive: palette.emissive,
-          emissiveIntensity: 0.4,
-        });
-        const clawR = new THREE.Mesh(clawGeo, clawMat);
-        clawR.rotation.x = Math.PI / 2;
-        weaponRight.add(clawR);
-        weaponRight.position.set(0.7, 0.8, 0.3);
-        bodyRoot.add(weaponRight);
-
-        const clawL = new THREE.Mesh(clawGeo, clawMat);
-        clawL.rotation.x = Math.PI / 2;
-        weaponLeft.add(clawL);
-        weaponLeft.position.set(-0.7, 0.8, 0.3);
-        bodyRoot.add(weaponLeft);
-        break;
-      }
+      group.add(fallbackRoot);
     }
 
     // -------------------------------------------------------------
@@ -886,13 +646,11 @@ export class ThreeJsGameRenderer {
     overheadGroup.name = 'OVERHEAD_BAR';
     overheadGroup.position.set(0, 2.45, 0);
 
-    // HP 배경 바
     const hpBgGeo = new THREE.PlaneGeometry(1.4, 0.18);
     const hpBgMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
     const hpBg = new THREE.Mesh(hpBgGeo, hpBgMat);
     overheadGroup.add(hpBg);
 
-    // HP 게이지 바 (초록/적색)
     const hpFillGeo = new THREE.PlaneGeometry(1.36, 0.14);
     const hpFillMat = new THREE.MeshBasicMaterial({ color: 0x22c55e });
     const hpFill = new THREE.Mesh(hpFillGeo, hpFillMat);
@@ -900,7 +658,6 @@ export class ThreeJsGameRenderer {
     hpFill.position.set(0, 0, 0.01);
     overheadGroup.add(hpFill);
 
-    // 마나 바 (파란색)
     const manaBgGeo = new THREE.PlaneGeometry(1.4, 0.08);
     const manaBgMat = new THREE.MeshBasicMaterial({ color: 0x020617 });
     const manaBg = new THREE.Mesh(manaBgGeo, manaBgMat);
@@ -928,12 +685,11 @@ export class ThreeJsGameRenderer {
       star.position.set(starX, 0.16, 0.02);
       overheadGroup.add(star);
     }
-
     group.add(overheadGroup);
 
-    // 3성 기물 전용 바닥 회전 황금 마법진
+    // 3성 전용 바닥 황금 룬 마법진
     if (starLevel === 3) {
-      const circleGeo = new THREE.RingGeometry(1.0, 1.22, 6);
+      const circleGeo = new THREE.RingGeometry(1.0, 1.25, 6);
       const circleMat = new THREE.MeshBasicMaterial({
         color: 0xfacc15,
         side: THREE.DoubleSide,
@@ -947,12 +703,22 @@ export class ThreeJsGameRenderer {
       group.add(circle);
     }
 
-    group.scale.set(scale, scale, scale);
+    group.scale.set(scaleMultiplier, scaleMultiplier, scaleMultiplier);
     return group;
   }
 
   /**
-   * 전투 틱 이벤트 스트림 인제스트 (공격, 스킬, 도약, 데미지, 투사체 발사)
+   * 포인터 위치를 3D 지면 평면(y=0)과 교차시켜 3D 월드 좌표 계산 (드래그 실시간 추적용)
+   */
+  public updateDragPointerWorldPos(clientX: number, clientY: number): void {
+    this.mouseVec.x = (clientX / window.innerWidth) * 2 - 1;
+    this.mouseVec.y = -(clientY / window.innerHeight) * 2 + 1;
+    this.raycaster.setFromCamera(this.mouseVec, this.camera);
+    this.raycaster.ray.intersectPlane(this.groundPlane, this.currentDragWorldPos);
+  }
+
+  /**
+   * 전투 틱 이벤트 스트림 인제스트
    */
   public ingestCombatEvents(events: CombatEvent[], units: CombatUnit[]): void {
     const unitMap = new Map<string, CombatUnit>();
@@ -961,7 +727,6 @@ export class ThreeJsGameRenderer {
     }
 
     for (const ev of events) {
-      // 1. 유닛 이동 및 암살자 도약 (MOVE / LEAP)
       if (ev.type === 'MOVE' || ev.type === 'LEAP') {
         if (ev.sourceId && ev.fromRow !== undefined && ev.toRow !== undefined) {
           const juice = this.getOrInitJuice(ev.sourceId);
@@ -982,10 +747,7 @@ export class ThreeJsGameRenderer {
             this.spawnSparks(pTo.x, 0.5, pTo.z, 0xc084fc, 12);
           }
         }
-      }
-
-      // 2. 기본 공격 및 스킬 시전 (BASIC_ATTACK / SKILL_CAST)
-      else if (ev.type === 'BASIC_ATTACK' || ev.type === 'SKILL_CAST') {
+      } else if (ev.type === 'BASIC_ATTACK' || ev.type === 'SKILL_CAST') {
         if (ev.sourceId) {
           const juice = this.getOrInitJuice(ev.sourceId);
           const attacker = unitMap.get(ev.sourceId);
@@ -993,9 +755,7 @@ export class ThreeJsGameRenderer {
 
           juice.lungeMaxMs = isSkill ? 240 : 160;
           juice.lungeTimerMs = juice.lungeMaxMs;
-          juice.swingAngle = Math.PI * 0.45;
 
-          // 공격 방향 산출
           if (ev.fromRow !== undefined && ev.toRow !== undefined) {
             const pFrom = this.hexToWorldPos(ev.fromRow, ev.fromCol ?? 0);
             const pTo = this.hexToWorldPos(ev.toRow, ev.toCol ?? 0);
@@ -1006,19 +766,15 @@ export class ThreeJsGameRenderer {
             juice.lungeDirZ = (dz / len) * (isSkill ? 0.6 : 0.4);
             juice.facingY = Math.atan2(dx, dz);
 
-            // 원거리 챔피언 투사체 발사 (사거리 2 이상)
             const isRanged = attacker && attacker.range > 1;
             if (isRanged) {
               const archetype = attacker ? this.getChampionArchetype(attacker.unitId) : 'WARRIOR';
-              const projKind = archetype === 'RANGER' ? 'ARROW' : 'MAGIC_ORB';
+              const projKind = archetype === 'WARRIOR' || archetype === 'ROGUE' ? 'ARROW' : 'MAGIC_ORB';
               this.spawn3DProjectile(pFrom.x, 1.3, pFrom.z, pTo.x, 1.1, pTo.z, projKind);
             }
           }
         }
-      }
-
-      // 3. 피격 데미지 연출 (DAMAGE / CRIT_DAMAGE)
-      else if (ev.type === 'DAMAGE') {
+      } else if (ev.type === 'DAMAGE') {
         if (ev.targetId) {
           const juice = this.getOrInitJuice(ev.targetId);
           juice.hitFlashTimerMs = 180;
@@ -1040,10 +796,7 @@ export class ThreeJsGameRenderer {
             this.spawnSparks(p.x, 1.2, p.z, isCrit ? 0xf59e0b : 0xef4444, isCrit ? 10 : 5);
           }
         }
-      }
-
-      // 4. 힐 / 쉴드 팝업
-      else if (ev.type === 'HEAL' || ev.type === 'SHIELD') {
+      } else if (ev.type === 'HEAL' || ev.type === 'SHIELD') {
         if (ev.targetId) {
           const targetUnit = unitMap.get(ev.targetId);
           if (targetUnit) {
@@ -1055,10 +808,7 @@ export class ThreeJsGameRenderer {
             this.spawn3DFloatingPopup(new THREE.Vector3(p.x, 2.5, p.z), text, color, false);
           }
         }
-      }
-
-      // 5. 5코 3성 대재앙 권능
-      else if (ev.type === 'FIVE_COST_3STAR_CATACLYSM') {
+      } else if (ev.type === 'FIVE_COST_3STAR_CATACLYSM') {
         this.triggerImpactShake(18, 600);
         this.spawn3DFloatingPopup(
           new THREE.Vector3(0, 4.0, 0),
@@ -1066,22 +816,10 @@ export class ThreeJsGameRenderer {
           '#facc15',
           true
         );
-        for (let i = 0; i < 25; i++) {
-          this.spawnSparks(
-            (Math.random() - 0.5) * 8,
-            2,
-            (Math.random() - 0.5) * 8,
-            0xfacc15,
-            15
-          );
-        }
       }
     }
   }
 
-  /**
-   * 3D 비행 투사체 생성 (화살 / 마법 구체)
-   */
   private spawn3DProjectile(
     x1: number,
     y1: number,
@@ -1092,7 +830,6 @@ export class ThreeJsGameRenderer {
     kind: 'ARROW' | 'MAGIC_ORB'
   ): void {
     const group = new THREE.Group();
-
     if (kind === 'ARROW') {
       const shaftGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.85, 4);
       const shaftMat = new THREE.MeshStandardMaterial({
@@ -1103,13 +840,6 @@ export class ThreeJsGameRenderer {
       const shaft = new THREE.Mesh(shaftGeo, shaftMat);
       shaft.rotation.x = Math.PI / 2;
       group.add(shaft);
-
-      const headGeo = new THREE.ConeGeometry(0.1, 0.25, 4);
-      const headMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.9 });
-      const head = new THREE.Mesh(headGeo, headMat);
-      head.rotation.x = -Math.PI / 2;
-      head.position.z = 0.45;
-      group.add(head);
     } else {
       const orbGeo = new THREE.SphereGeometry(0.26, 8, 8);
       const orbMat = new THREE.MeshStandardMaterial({
@@ -1135,9 +865,6 @@ export class ThreeJsGameRenderer {
     });
   }
 
-  /**
-   * 3D 플로팅 데미지 텍스트 팝업 (Canvas Texture Sprite)
-   */
   public spawn3DFloatingPopup(
     worldPos: THREE.Vector3,
     text: string,
@@ -1157,12 +884,10 @@ export class ThreeJsGameRenderer {
       ? '900 48px Impact, system-ui, sans-serif'
       : 'bold 38px Impact, system-ui, sans-serif';
 
-    // 두꺼운 검정 외곽선
     ctx.lineWidth = 8;
     ctx.strokeStyle = '#000000';
     ctx.strokeText(text, 128, 64);
 
-    // 텍스트 채우기
     ctx.fillStyle = color;
     ctx.fillText(text, 128, 64);
 
@@ -1190,9 +915,6 @@ export class ThreeJsGameRenderer {
     });
   }
 
-  /**
-   * 3D 파티클 스파크 생성
-   */
   private spawnSparks(x: number, y: number, z: number, color: number, count: number): void {
     const geo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
     const mat = new THREE.MeshBasicMaterial({ color });
@@ -1228,7 +950,6 @@ export class ThreeJsGameRenderer {
         lungeMaxMs: 160,
         lungeDirX: 0,
         lungeDirZ: 0,
-        swingAngle: 0,
         hitFlashTimerMs: 0,
         leapProgress: 0,
         leapStartPos: new THREE.Vector3(),
@@ -1239,9 +960,6 @@ export class ThreeJsGameRenderer {
     return juice;
   }
 
-  /**
-   * 충격 진동 (Screen Shake)
-   */
   public triggerImpactShake(intensity: number, durationMs: number): void {
     this.shakeIntensity = intensity * 0.04;
     this.shakeRemainingMs = durationMs;
@@ -1273,62 +991,66 @@ export class ThreeJsGameRenderer {
     this.camera.position.z = 18.0;
     this.camera.lookAt(0, 0, 2.2);
 
-    // 2. 호버링된 타일 하이라이트
+    // 2. 판타지 횃불 깜빡임 (Flickering Torches)
+    this.torchLights.forEach((t) => {
+      const flicker = Math.sin(this.animClockMs * 0.008 + t.phase) * 0.4 +
+                      Math.cos(this.animClockMs * 0.017 + t.phase) * 0.2;
+      t.light.intensity = Math.max(1.2, t.baseIntensity + flicker);
+    });
+
+    // 3. 호버링/드래그 타일 물리적 엘리베이션 리프트 (Elevation Lift) & 황금 룬 반응
     for (const [key, mesh] of this.hexTileMeshes) {
       const isHovered =
         state.hoveredHex &&
         `${state.hoveredHex.row},${state.hoveredHex.col}` === key;
       const mat = mesh.material as THREE.MeshStandardMaterial;
+
       if (isHovered) {
-        mat.emissive.setHex(0xfacc15);
-        mat.emissiveIntensity = 0.55;
+        // 타일이 자석처럼 붕 떠오르고 황금 룬 발광
+        mesh.position.y += (0.16 - mesh.position.y) * 0.35;
+        mat.emissive.setHex(0xf59e0b);
+        mat.emissiveIntensity = 0.65;
       } else {
+        mesh.position.y += (0 - mesh.position.y) * 0.25;
         mat.emissive.setHex(0x000000);
         mat.emissiveIntensity = 0;
       }
     }
 
-    // 3. 대기석 호버링 하이라이트
     for (const [idx, mesh] of this.benchTileMeshes) {
       const isHovered = state.hoveredBenchIndex === idx;
       const mat = mesh.material as THREE.MeshStandardMaterial;
+
       if (isHovered) {
+        mesh.position.y += (0.24 - mesh.position.y) * 0.35;
         mat.emissive.setHex(0x38bdf8);
-        mat.emissiveIntensity = 0.65;
+        mat.emissiveIntensity = 0.7;
       } else {
+        mesh.position.y += (0.08 - mesh.position.y) * 0.25;
         mat.emissive.setHex(0x000000);
         mat.emissiveIntensity = 0;
       }
     }
 
-    // 4. 유닛 동기화 및 모션 갱신
+    // 4. 유닛 동기화 및 3D 1:1 드래그 물리 모션 갱신
     this.syncUnits3D(dtMs, state);
 
-    // 5. 3D 투사체 업데이트
+    // 5. 투사체 & 팝업 & 스파크 업데이트
     this.updateProjectiles(dtMs);
-
-    // 6. 3D 플로팅 데미지 팝업 업데이트
     this.updatePopups(dtMs);
-
-    // 7. 3D 파티클 스파크 업데이트
     this.updateSparks(dtMs);
 
     this.renderer.render(this.scene, this.camera);
   }
 
-  /**
-   * 3D 투사체 애니메이션 업데이트
-   */
   private updateProjectiles(dtMs: number): void {
     for (let i = this.activeProjectiles.length - 1; i >= 0; i--) {
       const p = this.activeProjectiles[i];
       p.elapsedMs += dtMs;
       const t = Math.min(1.0, p.elapsedMs / p.durationMs);
 
-      // X, Z 선형 보간
       const curX = p.startPos.x + (p.targetPos.x - p.startPos.x) * t;
       const curZ = p.startPos.z + (p.targetPos.z - p.startPos.z) * t;
-      // Y 포물선 궤적
       const curY =
         p.startPos.y +
         (p.targetPos.y - p.startPos.y) * t +
@@ -1336,7 +1058,6 @@ export class ThreeJsGameRenderer {
 
       p.mesh.position.set(curX, curY, curZ);
 
-      // 화살은 진행 방향을 바라봄
       if (p.kind === 'ARROW') {
         p.mesh.lookAt(p.targetPos.x, p.targetPos.y, p.targetPos.z);
       }
@@ -1349,9 +1070,6 @@ export class ThreeJsGameRenderer {
     }
   }
 
-  /**
-   * 3D 플로팅 데미지 팝업 애니메이션 업데이트
-   */
   private updatePopups(dtMs: number): void {
     for (let i = this.activePopups.length - 1; i >= 0; i--) {
       const pop = this.activePopups[i];
@@ -1366,16 +1084,11 @@ export class ThreeJsGameRenderer {
         continue;
       }
 
-      // 위로 부드럽게 솟구침
       pop.sprite.position.y = pop.startPos.y + (t * pop.riseSpeed);
-      // 서서히 페이드아웃
       pop.sprite.material.opacity = 1.0 - t * t;
     }
   }
 
-  /**
-   * 3D 스파크 파티클 물리 업데이트
-   */
   private updateSparks(dtMs: number): void {
     const dtSec = dtMs * 0.001;
     for (let i = this.activeSparks.length - 1; i >= 0; i--) {
@@ -1387,7 +1100,6 @@ export class ThreeJsGameRenderer {
         continue;
       }
 
-      // 중력 적용
       s.vel.y -= 9.8 * dtSec;
       s.mesh.position.x += s.vel.x * dtSec;
       s.mesh.position.y += s.vel.y * dtSec;
@@ -1399,7 +1111,7 @@ export class ThreeJsGameRenderer {
   }
 
   /**
-   * 게임 상태의 유닛들을 3D 씬 오브젝트로 동기화 & 모션 적용
+   * 유닛 3D 씬 오브젝트 동기화 & 1:1 손가락 추적 3D 드래그 모션
    */
   private syncUnits3D(dtMs: number, state: RenderState3D): void {
     const activeIds = new Set<string>();
@@ -1419,7 +1131,6 @@ export class ThreeJsGameRenderer {
         const juice = this.getOrInitJuice(cu.instanceId);
         const targetPos = this.hexToWorldPos(cu.row, cu.col);
 
-        // 공격 런지 및 모션 계산
         let lungeOffsetX = 0;
         let lungeOffsetZ = 0;
         if (juice.lungeTimerMs > 0) {
@@ -1429,7 +1140,6 @@ export class ThreeJsGameRenderer {
           lungeOffsetZ = juice.lungeDirZ * ratio;
         }
 
-        // 도약 중인 경우
         if (juice.leapProgress > 0 && juice.leapProgress < 1.0) {
           juice.leapProgress = Math.min(1.0, juice.leapProgress + dtMs * 0.0035);
           const lp = juice.leapProgress;
@@ -1438,45 +1148,19 @@ export class ThreeJsGameRenderer {
           const ly = juice.leapStartPos.y + Math.sin(lp * Math.PI) * 2.8;
           group.position.set(lx, ly, lz);
         } else {
-          // 일반 보간 이동 + 런지
           group.position.x += (targetPos.x + lungeOffsetX - group.position.x) * 0.3;
           group.position.z += (targetPos.z + lungeOffsetZ - group.position.z) * 0.3;
           group.position.y = 0.2 + Math.sin(this.animClockMs * 0.005 + cu.row) * 0.05;
         }
 
-        // 회전 (공격/마주보기)
         const targetRotY = cu.team === 'HOME' ? Math.PI : 0;
         group.rotation.y += (targetRotY - group.rotation.y) * 0.2;
 
-        // 무기 스윙 모션
-        const weaponRight = group.getObjectByName('WEAPON_RIGHT');
-        if (weaponRight) {
-          if (juice.lungeTimerMs > 0) {
-            const swingRatio = Math.sin((juice.lungeTimerMs / juice.lungeMaxMs) * Math.PI);
-            weaponRight.rotation.x = Math.PI * 0.1 + swingRatio * 0.9;
-          } else {
-            weaponRight.rotation.x = Math.PI * 0.1;
-          }
-        }
-
-        // 마법사 지팡이 보주 회전
-        const mageOrb = group.getObjectByName('MAGE_ORB');
-        if (mageOrb) {
-          mageOrb.rotation.y += 0.04;
-        }
-
-        // 3성 링 회전
         const star3Ring = group.getObjectByName('STAR3_RING');
         if (star3Ring) {
           star3Ring.rotation.z += 0.03;
         }
 
-        // 피격 플래시
-        if (juice.hitFlashTimerMs > 0) {
-          juice.hitFlashTimerMs = Math.max(0, juice.hitFlashTimerMs - dtMs);
-        }
-
-        // 머리 위 체력/마나바 실시간 갱신 & 빌보드 회전
         const overhead = group.getObjectByName('OVERHEAD_BAR');
         if (overhead) {
           overhead.quaternion.copy(this.camera.quaternion);
@@ -1512,12 +1196,18 @@ export class ThreeJsGameRenderer {
           }
 
           const targetPos = this.hexToWorldPos(r + 4, c);
-          const isDragged = state.draggedInstanceId === u.instanceId;
-          const targetY = isDragged ? 1.8 : 0.2;
+          const isDragged = state.isDraggingUnit && state.draggedInstanceId === u.instanceId;
 
-          group.position.x += (targetPos.x - group.position.x) * 0.25;
-          group.position.z += (targetPos.z - group.position.z) * 0.25;
-          group.position.y += (targetY - group.position.y) * 0.25;
+          if (isDragged) {
+            // [TFT 극상 조작감] 손가락 위치(currentDragWorldPos)를 1:1로 리얼타임 부드럽게 추종하며 공중에 둥실 뜸
+            group.position.x += (this.currentDragWorldPos.x - group.position.x) * 0.45;
+            group.position.z += (this.currentDragWorldPos.z - group.position.z) * 0.45;
+            group.position.y += (1.45 - group.position.y) * 0.35;
+          } else {
+            group.position.x += (targetPos.x - group.position.x) * 0.28;
+            group.position.z += (targetPos.z - group.position.z) * 0.28;
+            group.position.y += (0.2 - group.position.y) * 0.28;
+          }
           group.rotation.y = Math.PI;
 
           const overhead = group.getObjectByName('OVERHEAD_BAR');
@@ -1541,12 +1231,17 @@ export class ThreeJsGameRenderer {
         }
 
         const targetPos = this.benchIndexToWorldPos(i);
-        const isDragged = state.draggedInstanceId === u.instanceId;
-        const targetY = isDragged ? 1.8 : 0.25;
+        const isDragged = state.isDraggingUnit && state.draggedInstanceId === u.instanceId;
 
-        group.position.x += (targetPos.x - group.position.x) * 0.25;
-        group.position.z += (targetPos.z - group.position.z) * 0.25;
-        group.position.y += (targetY - group.position.y) * 0.25;
+        if (isDragged) {
+          group.position.x += (this.currentDragWorldPos.x - group.position.x) * 0.45;
+          group.position.z += (this.currentDragWorldPos.z - group.position.z) * 0.45;
+          group.position.y += (1.45 - group.position.y) * 0.35;
+        } else {
+          group.position.x += (targetPos.x - group.position.x) * 0.28;
+          group.position.z += (targetPos.z - group.position.z) * 0.28;
+          group.position.y += (0.25 - group.position.y) * 0.28;
+        }
         group.rotation.y = Math.PI;
 
         const overhead = group.getObjectByName('OVERHEAD_BAR');

@@ -762,16 +762,21 @@ class FantasyAutoBattlerApp {
           // 주의: 상점을 수동으로 접어둔 상태라면, 배치 시야를 가리지 않도록 강제로 펼치지 않음!
           this.showSellDropzoneOverlay(this.dragPayload.unit);
         }
-        this.showDragGhost(e.clientX, e.clientY);
+        if (!this.is3DViewMode || this.dragPayload.kind !== 'UNIT') {
+          this.showDragGhost(e.clientX, e.clientY);
+        }
       }
     }
 
     if (this.isDragging) {
       const px = pt.x;
       const py = pt.y;
-      this.updateDragGhostPosition(e.clientX, e.clientY, px, py);
+      if (!this.is3DViewMode || this.dragPayload?.kind !== 'UNIT') {
+        this.updateDragGhostPosition(e.clientX, e.clientY, px, py);
+      }
 
       if (this.is3DViewMode) {
+        this.threeRenderer.updateDragPointerWorldPos(e.clientX, e.clientY);
         const hit3D = this.threeRenderer.screenPointTo3DTarget(e.clientX, e.clientY);
         if (hit3D?.kind === 'BENCH') {
           this.hoveredBenchIndex = hit3D.index;
