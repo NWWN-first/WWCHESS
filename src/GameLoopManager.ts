@@ -152,12 +152,24 @@ export class GameLoopManager {
   private combatIntervalId: number | null = null;
   private onStateChangeCallback?: () => void;
 
-  constructor(onStateChange?: () => void) {
+  constructor(onStateChange?: () => void, autoStart: boolean = true) {
     this.sharedPool = new SharedPoolManager();
     this.rankManager = new RankManager();
     this.aiController = new AIBotController(this.rankManager);
     this.onStateChangeCallback = onStateChange;
-    this.startNewGame();
+    if (autoStart) {
+      this.startNewGame();
+    } else {
+      // 로비 대기 상태 초기화
+      this.player = new Participant('player_1', '지휘관', false, null);
+      this.participants = [this.player, ...this.aiController.createSevenAIBots()];
+    }
+  }
+
+  public pauseOrStopGame(): void {
+    this.stopPrepTimer();
+    this.stopCombatLoopTimer();
+    this.clearResolutionTimeout();
   }
 
   public setOnStateChange(cb: () => void): void {

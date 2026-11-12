@@ -86,11 +86,15 @@ class FantasyAutoBattlerApp {
   // 플레이어가 터치(Tap)하여 선택한 기물 인스턴스 ID (선택/드래그 중일 때만 말풍선 이름표 표시)
   private selectedUnitInstanceId: string | null = null;
 
+  // 메인 로비 화면 vs 인게임 세션 진행 여부
+  private isInGameSession: boolean = false;
+
   constructor() {
     this.fxCanvas = document.getElementById('fx-canvas') as HTMLCanvasElement;
     this.pixelRenderer = new PixelGameRenderer(this.fxCanvas);
 
-    this.game = new GameLoopManager();
+    // 로비 화면 대기 상태로 초기화 (autoStart = false)
+    this.game = new GameLoopManager(undefined, false);
     this.lastKnownPhase = this.game.phase;
     this.game.setOnStateChange(() => {
       this.onGameStateUpdated();
@@ -197,6 +201,66 @@ class FantasyAutoBattlerApp {
         this.pixelRenderer.resetCombatJuiceStates();
         this.game.startNewGame();
       });
+
+    // 메인 로비 화면 및 설정 모달 이벤트 바인딩
+    document
+      .getElementById('lobby-start-btn')
+      ?.addEventListener('pointerup', () => this.startNewGameFromLobby());
+
+    document
+      .getElementById('lobby-compendium-btn')
+      ?.addEventListener('pointerup', () => this.openPoolInspectorModal());
+
+    document
+      .getElementById('lobby-rank-btn')
+      ?.addEventListener('pointerup', () => this.openRankModal());
+
+    document
+      .getElementById('lobby-settings-btn')
+      ?.addEventListener('pointerup', () => this.openSettingsModal());
+
+    document
+      .getElementById('close-settings-modal-btn')
+      ?.addEventListener('pointerup', () => this.closeSettingsModal());
+
+    document
+      .getElementById('lobby-nav-btn')
+      ?.addEventListener('pointerup', () => {
+        if (confirm('메인 로비 화면으로 이동하시겠습니까? (현재 게임이 일시정지됩니다)')) {
+          this.returnToLobbyScreen();
+        }
+      });
+
+    document
+      .getElementById('gameover-lobby-btn')
+      ?.addEventListener('pointerup', () => this.returnToLobbyScreen());
+
+    // 환경 설정 옵션 토글 이벤트
+    document.querySelectorAll('#settings-speed-options .setting-opt-btn').forEach((btn) => {
+      btn.addEventListener('pointerup', (e) => {
+        const target = e.currentTarget as HTMLElement;
+        const speed = parseInt(target.dataset.speed || '1', 10) as 1 | 2;
+        this.game.playbackSpeed = speed;
+        document.querySelectorAll('#settings-speed-options .setting-opt-btn').forEach((b) => b.classList.remove('active'));
+        target.classList.add('active');
+        document.getElementById('speed-1x-btn')?.classList.toggle('active', this.game.playbackSpeed === 1);
+        document.getElementById('speed-2x-btn')?.classList.toggle('active', this.game.playbackSpeed === 2);
+      });
+    });
+
+    document.querySelectorAll('#settings-map-options .setting-opt-btn').forEach((btn) => {
+      btn.addEventListener('pointerup', (e) => {
+        const target = e.currentTarget as HTMLElement;
+        const map = target.dataset.map;
+        this.pixelRenderer.currentMapTheme = map === 'forest' ? 'FOREST' : 'CASTLE_TOWN';
+        const mapBtn = document.getElementById('map-theme-btn');
+        if (mapBtn) {
+          mapBtn.textContent = map === 'forest' ? '🌲숲맵' : '🏰도시맵';
+        }
+        document.querySelectorAll('#settings-map-options .setting-opt-btn').forEach((b) => b.classList.remove('active'));
+        target.classList.add('active');
+      });
+    });
 
     document
       .getElementById('play-again-btn')
@@ -1736,6 +1800,75 @@ class FantasyAutoBattlerApp {
     };
 
     requestAnimationFrame(frame);
+  }
+
+  /**
+   * 메인 로비 화면에서 [게임 시작]을 눌렀을 때 부드러운 커튼 페이드 전환과 함께 게임 진입
+   */
+  private startNewGameFromLobby(): void {
+    const curtain = document.getElementById('screen-transition-curtain');
+    const lobbyScreen = document.getElementById('main-lobby-screen');
+
+    // 1. 커튼 페이드아웃 (화면 암전)
+    curtain?.classList.add('active');
+
+    setTimeout(() => {
+      // 2. 로비 화면 숨기기 & 인게임 세션 플래그 활성화
+      lobbyScreen?.classList.add('hidden');
+      this.isInGameSession = true;
+
+      // 3. 인게임 세션 시작 및 상태 초기화
+      this.knownThreeStarUnits.clear();
+      this.selectedUnitInstanceId = null;
+      this.isShopManuallyCollapsed = false;
+      this.pixelRenderer.resetCombatJuiceStates();
+      this.game.startNewGame();
+      this.onGameStateUpdated();
+      this.resizeCanvas();
+
+      // 4. 커튼 페이드인 (화면 밝아지며 인게임 등장)
+      setTimeout(() => {
+        curtain?.classList.remove('active');
+      }, 120);
+    }, 280);
+  }
+
+  /**
+   * 인게임 또는 게임오버 화면에서 [메인 로비로 이동]을 눌렀을 때 부드럽게 로비로 복귀
+   */
+  private returnToLobbyScreen(): void {
+    const curtain = document.getElementById('screen-transition-curtain');
+    const lobbyScreen = document.getElementById('main-lobby-screen');
+
+    // 열려있는 인게임 모달들 숨김
+    document.getElementById('gameover-modal')?.classList.add('hidden');
+    document.getElementById('augment-modal')?.classList.add('hidden');
+    document.getElementById('anvil-modal')?.classList.add('hidden');
+    document.getElementById('pool-inspector-modal')?.classList.add('hidden');
+    document.getElementById('rank-modal')?.classList.add('hidden');
+    document.getElementById('settings-modal')?.classList.add('hidden');
+
+    curtain?.classList.add('active');
+
+    setTimeout(() => {
+      this.isInGameSession = false;
+      this.game.pauseOrStopGame();
+      lobbyScreen?.classList.remove('hidden');
+
+      setTimeout(() => {
+        curtain?.classList.remove('active');
+      }, 120);
+    }, 280);
+  }
+
+  private openSettingsModal(): void {
+    const modal = document.getElementById('settings-modal');
+    modal?.classList.remove('hidden');
+  }
+
+  private closeSettingsModal(): void {
+    const modal = document.getElementById('settings-modal');
+    modal?.classList.add('hidden');
   }
 }
 

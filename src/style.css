@@ -1394,3 +1394,337 @@ img {
   white-space: normal;
 }
 
+/* ==========================================================
+   화면 전환 커튼 (Screen Transition Curtain)
+   ========================================================== */
+.screen-transition-curtain {
+  position: fixed;
+  inset: 0;
+  background: #000000;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.screen-transition-curtain.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ==========================================================
+   메인 타이틀 로비 화면 (Main Title & Lobby Screen)
+   ========================================================== */
+.main-lobby-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 40%, #151d30 0%, #0a0e1a 60%, #03050a 100%);
+  overflow: hidden;
+  user-select: none;
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.main-lobby-screen.hidden {
+  opacity: 0;
+  transform: scale(1.06);
+  pointer-events: none;
+}
+
+.lobby-backdrop-effects {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.ambient-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.25;
+  animation: pulseLobbyGlow 8s ease-in-out infinite alternate;
+}
+
+.glow-1 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, #38bdf8 0%, rgba(56, 189, 248, 0) 70%);
+  top: -100px;
+  left: 10%;
+}
+
+.glow-2 {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, #f59e0b 0%, rgba(245, 158, 11, 0) 70%);
+  bottom: -150px;
+  right: 10%;
+  animation-delay: -4s;
+}
+
+@keyframes pulseLobbyGlow {
+  0% { transform: scale(0.9) translate(0, 0); opacity: 0.18; }
+  100% { transform: scale(1.15) translate(30px, -20px); opacity: 0.32; }
+}
+
+.lobby-center-container {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 20px;
+  max-width: 560px;
+  width: 90%;
+  animation: fadeInLobbyUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeInLobbyUp {
+  0% { opacity: 0; transform: translateY(24px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.lobby-title-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.lobby-crest-emblem {
+  font-size: 26px;
+  letter-spacing: 6px;
+  color: #38bdf8;
+  text-shadow: 0 0 16px rgba(56, 189, 248, 0.6);
+  margin-bottom: -4px;
+  animation: crestFloat 3s ease-in-out infinite alternate;
+}
+
+@keyframes crestFloat {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-4px); }
+}
+
+.lobby-main-title {
+  margin: 0;
+  font-family: 'Black Han Sans', sans-serif;
+  font-size: 52px;
+  line-height: 1;
+  letter-spacing: 4px;
+  background: linear-gradient(180deg, #ffffff 0%, #fef08a 40%, #f59e0b 80%, #b45309 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 4px 12px rgba(245, 158, 11, 0.45)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.9));
+}
+
+.lobby-sub-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.lobby-badge-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.lobby-feature-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: rgba(30, 41, 59, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  padding: 3px 9px;
+  border-radius: 9999px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.lobby-menu-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 320px;
+  margin-top: 6px;
+}
+
+.lobby-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 48px;
+  border-radius: 12px;
+  cursor: pointer;
+  border: none;
+  font-family: 'Jua', sans-serif;
+  font-size: 16px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  user-select: none;
+}
+
+.lobby-menu-btn:active {
+  transform: scale(0.97);
+}
+
+.lobby-menu-btn .btn-icon {
+  font-size: 20px;
+}
+
+.lobby-menu-btn.start-btn {
+  height: 54px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, #f59e0b 0%, #ea580c 50%, #dc2626 100%);
+  border: 2px solid #fef08a;
+  box-shadow: 0 4px 20px rgba(234, 88, 12, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.6);
+  animation: pulseStartBtn 2.4s infinite ease-in-out;
+}
+
+@keyframes pulseStartBtn {
+  0% { box-shadow: 0 4px 18px rgba(234, 88, 12, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.6); }
+  50% { box-shadow: 0 6px 28px rgba(245, 158, 11, 0.75), inset 0 1px 4px rgba(255, 255, 255, 0.9); }
+  100% { box-shadow: 0 4px 18px rgba(234, 88, 12, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.6); }
+}
+
+.lobby-menu-btn.secondary-btn {
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  color: #e2e8f0;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+}
+
+.lobby-menu-btn.secondary-btn:hover {
+  background: linear-gradient(180deg, #334155 0%, #1e293b 100%);
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.lobby-footer-info {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #64748b;
+  letter-spacing: 0.5px;
+}
+
+/* ==========================================================
+   환경 설정 모달 (Settings Modal)
+   ========================================================== */
+.settings-modal-card {
+  max-width: 440px;
+  width: 90%;
+  padding: 16px 20px;
+}
+
+.settings-content-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.settings-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #38bdf8;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+  padding-bottom: 4px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settings-label {
+  font-size: 12px;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+.settings-options {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.setting-opt-btn {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-family: inherit;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.setting-opt-btn.active {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+}
+
+.settings-badge-ok {
+  font-size: 11px;
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.emerald-gem {
+  background: linear-gradient(180deg, #10b981 0%, #047857 100%) !important;
+  border-color: #6ee7b7 !important;
+  color: #ffffff !important;
+}
+
+.gameover-btn-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 14px;
+  width: 100%;
+}
+
+.emerald-glow {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  border-color: #6ee7b7 !important;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4) !important;
+}
+
