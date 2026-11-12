@@ -706,6 +706,49 @@ const UNIT_SKILL_HANDLERS: Record<string, SkillHandler> = {
       }
     }
   },
+
+  // ==========================================================================
+  // 크립 라운드 전용 몬스터/동물 7종 스킬 핸들러
+  // ==========================================================================
+  creep_minion_scavenger: (caster, primaryTarget, _allUnits, ctx) => {
+    ctx.dealDamage(caster, primaryTarget, caster.atk * 1.25, 'PHYSICAL', false, true);
+  },
+  creep_toxic_sprite: (caster, primaryTarget, _allUnits, ctx) => {
+    ctx.dealDamage(caster, primaryTarget, 28 + caster.atk * 0.8, 'MAGICAL', false, true);
+  },
+  creep_stone_golem: (caster, primaryTarget, _allUnits, ctx) => {
+    ctx.addShield(caster, caster, 140 * caster.starLevel);
+    ctx.dealDamage(caster, primaryTarget, 90 + caster.atk * 1.1, 'PHYSICAL', false, true);
+  },
+  creep_wild_wolf: (caster, primaryTarget, _allUnits, ctx) => {
+    caster.atkSpeed = Math.min(2.5, Number((caster.atkSpeed * 1.2).toFixed(3)));
+    ctx.dealDamage(caster, primaryTarget, 110 + caster.atk * 1.35, 'PHYSICAL', true, true);
+  },
+  creep_razor_beak: (caster, primaryTarget, allUnits, ctx) => {
+    const cluster = getLivingEnemies(caster, allUnits).filter(
+      (e) => chebyshevDist(primaryTarget.row, primaryTarget.col, e.row, e.col) <= 1
+    );
+    for (const enemy of cluster) {
+      ctx.dealDamage(caster, enemy, 125 + caster.atk * 0.9, 'PHYSICAL', false, true);
+    }
+  },
+  creep_ancient_dragon: (caster, primaryTarget, allUnits, ctx) => {
+    const cluster = getLivingEnemies(caster, allUnits).filter(
+      (e) => chebyshevDist(primaryTarget.row, primaryTarget.col, e.row, e.col) <= 2
+    );
+    for (const enemy of cluster) {
+      ctx.dealDamage(caster, enemy, 260 + caster.atk * 1.2, 'MAGICAL', false, true);
+    }
+  },
+  creep_void_behemoth: (caster, _primaryTarget, allUnits, ctx) => {
+    const enemies = getLivingEnemies(caster, allUnits);
+    for (const enemy of enemies) {
+      ctx.dealDamage(caster, enemy, 320 + caster.atk * 1.1, 'MAGICAL', false, true);
+      if (enemy.currentHp > 0) {
+        ctx.applyStun(caster, enemy, 900);
+      }
+    }
+  },
 };
 
 const SKILL_TYPE_FALLBACK_MAP: Record<SkillType, string> = {
@@ -759,3 +802,4 @@ export class SkillRegistry {
     }
   }
 }
+

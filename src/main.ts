@@ -1,5 +1,6 @@
 // src/main.ts
 
+import { getCreepMonsterTemplate } from './CreepMonsterData';
 import {
   AUGMENT_DEFINITIONS,
   ITEM_DEFINITIONS,
@@ -58,6 +59,7 @@ class FantasyAutoBattlerApp {
   private pixelRenderer: PixelGameRenderer;
 
   private lastProcessedCombatTick: number = -1;
+  private lastTriggeredLaserKey: string = '';
   private lastKnownPhase: string = '';
   private knownThreeStarUnits: Set<string> = new Set();
 
@@ -133,7 +135,10 @@ class FantasyAutoBattlerApp {
   }
 
   private isShopCurrentlyExpanded(): boolean {
-    if (this.game.phase === 'COMBAT_PHASE') {
+    if (
+      this.game.phase === 'COMBAT_PHASE' ||
+      this.game.phase === 'RESOLUTION_PHASE'
+    ) {
       return false;
     }
     return !this.isShopManuallyCollapsed;
@@ -713,6 +718,15 @@ class FantasyAutoBattlerApp {
       }
     }
 
+    // 전투 종료 직후 승자 아바타 -> 패자 아바타 피니시 레이저 연출 발동
+    if (this.game.activeFinisherLaser) {
+      const laserKey = `${this.game.stage}-${this.game.roundInStage}-${this.game.activeFinisherLaser.winnerSide}-${this.game.activeFinisherLaser.damage}`;
+      if (this.lastTriggeredLaserKey !== laserKey) {
+        this.lastTriggeredLaserKey = laserKey;
+        this.pixelRenderer.triggerAvatarFinisherLaser(this.game.activeFinisherLaser);
+      }
+    }
+
     this.checkNewStarUpgrades();
     this.renderAllHUD();
   }
@@ -750,6 +764,48 @@ class FantasyAutoBattlerApp {
       phaseLabel.textContent = phaseNames[this.game.phase] ?? this.game.phase;
     }
 
+    // TFT 순정 실시간 정비 카운트다운 타이머 & 5초 이하 긴박 붉은 맥동(Pulse)
+    const timerPill = document.getElementById('prep-timer-pill');
+    const timerText = document.getElementById('prep-timer-text');
+    const timerFill = document.getElementById('prep-timer-fill');
+    const centerBanner = document.getElementById('hud-center-banner');
+    const urgentVignette = document.getElementById('urgent-vignette-overlay');
+
+    const isPrep = this.game.phase === 'PREPARATION_PHASE';
+    const isUrgentFiveSec =
+      isPrep && this.game.prepRemainingSec <= 5 && this.game.prepRemainingSec > 0;
+
+    if (timerPill && timerText && timerFill) {
+      if (isPrep) {
+        timerPill.classList.remove('hidden');
+        timerText.textContent = `⏱️${this.game.prepRemainingSec}s`;
+        const pct =
+          this.game.prepTotalSec > 0
+            ? Math.max(
+                0,
+                Math.min(
+                  100,
+                  Math.round(
+                    (this.game.prepRemainingSec / this.game.prepTotalSec) * 100
+                  )
+                )
+              )
+            : 100;
+        timerFill.style.width = `${pct}%`;
+        timerPill.classList.toggle('urgent-pulse', isUrgentFiveSec);
+      } else {
+        timerPill.classList.add('hidden');
+        timerPill.classList.remove('urgent-pulse');
+      }
+    }
+
+    if (centerBanner) {
+      centerBanner.classList.toggle('urgent-pulse', isUrgentFiveSec);
+    }
+    if (urgentVignette) {
+      urgentVignette.classList.toggle('hidden', !isUrgentFiveSec);
+    }
+
     const viewed = this.game.getViewedParticipant();
     const deployCounter = document.getElementById('deploy-counter');
     if (deployCounter) {
@@ -758,7 +814,10 @@ class FantasyAutoBattlerApp {
 
     const oppIndicator = document.getElementById('opponent-indicator');
     if (oppIndicator) {
-      if (this.game.phase === 'COMBAT_PHASE') {
+      if (
+        this.game.phase === 'COMBAT_PHASE' ||
+        this.game.phase === 'RESOLUTION_PHASE'
+      ) {
         oppIndicator.textContent = `VS ${this.game.playerCurrentOpponentName}`;
       } else {
         const rType = this.game.getCurrentRoundType();
@@ -917,6 +976,9 @@ class FantasyAutoBattlerApp {
     }
   }
 
+  /**
+   * ? / ! 미스터리 보물상자(Mystery Box) 렌더링 & 터치 시 화려한 파티클 개봉 연출
+   */
   private renderLootOrbs(): void {
     const orbLayer = document.getElementById('loot-orb-layer');
     if (!orbLayer) return;
@@ -926,36 +988,50 @@ class FantasyAutoBattlerApp {
 
     for (const orb of this.game.playerLootOrbs) {
       const btn = document.createElement('div');
-      btn.className = `loot-orb-btn orb-${orb.tier}`;
-      btn.style.left = `${Math.round(20 + orb.x * 58)}%`;
-      btn.style.top = `${Math.round(20 + orb.y * 38)}%`;
+      btn.className = `loot-orb-btn mystery-box-chest orb-${orb.tier}`;
+      btn.style.left = `${Math.round(22 + orb.x * 54)}%`;
+      btn.style.top = `${Math.round(22 + orb.y * 36)}%`;
 
-      const icon =
+      // 프리즘/고등급 상자는 강렬한 '!' 마크, 일반/골드/블루 상자는 호기심을 자극하는 '?' 마크 표시
+      const isExclaim =
+        orb.tier === 'PRISMATIC' || (orb.label && orb.label.startsWith('!'));
+      const mysteryMark = isExclaim ? '!' : '?';
+      const chestIcon =
         orb.tier === 'PRISMATIC'
-          ? '💎'
+          ? '👑'
           : orb.tier === 'GOLD'
-          ? '🪙'
-          : orb.tier === 'BLUE'
-          ? '🔹'
-          : '🎁';
-      btn.innerHTML = `<span>${icon}</span><span>${orb.label ?? '전리품'}</span>`;
+          ? '🧰'
+          : '📦';
+
+      btn.innerHTML = `
+        <div class="mystery-badge-mark ${isExclaim ? 'mark-exclaim' : 'mark-question'}">${mysteryMark}</div>
+        <div class="mystery-chest-body">
+          <span class="chest-sprite-icon">${chestIcon}</span>
+          <span class="chest-sub-tag">${isExclaim ? '대박상자' : '미스터리'}</span>
+        </div>
+      `;
 
       btn.addEventListener('pointerup', (e) => {
         e.stopPropagation();
         const pt = this.clientToCanvasPoint(e.clientX, e.clientY);
+        this.pixelRenderer.triggerImpactShake(5, 160, 0);
         this.pixelRenderer.spawnPixelSparks(
           pt.x,
           pt.y,
-          orb.tier === 'PRISMATIC' ? '#4cc9f0' : '#ffea00',
-          32
+          orb.tier === 'PRISMATIC'
+            ? '#f472b6'
+            : orb.tier === 'GOLD'
+            ? '#ffea00'
+            : '#38bdf8',
+          38
         );
         const rewards = this.game.openPlayerLootOrb(orb.id);
         if (rewards.length > 0) {
           this.pixelRenderer.spawnArcadePopupText(
             pt.x,
-            pt.y - 15,
-            `🎁 ${rewards.join(' + ')}`,
-            '#ffea00',
+            pt.y - 18,
+            `🎉 ${rewards.join(' + ')}`,
+            orb.tier === 'PRISMATIC' ? '#f472b6' : '#ffea00',
             15
           );
         }
@@ -1019,7 +1095,9 @@ class FantasyAutoBattlerApp {
    */
   private renderShopAndControls(): void {
     const player = this.game.player;
-    const inCombat = this.game.phase === 'COMBAT_PHASE';
+    const inCombat =
+      this.game.phase === 'COMBAT_PHASE' ||
+      this.game.phase === 'RESOLUTION_PHASE';
     const isExpanded = this.isShopCurrentlyExpanded();
 
     const shopBar = document.getElementById('bottom-shop-bar');
@@ -1042,6 +1120,9 @@ class FantasyAutoBattlerApp {
     }
     if (quickCombatBtn) {
       quickCombatBtn.classList.toggle('hidden', inCombat);
+      if (this.game.phase === 'PREPARATION_PHASE') {
+        quickCombatBtn.textContent = `⏱️ ${this.game.prepRemainingSec}s (출격)`;
+      }
     }
 
     const lvlText = document.getElementById('player-level-text');
@@ -1088,6 +1169,14 @@ class FantasyAutoBattlerApp {
     const startCombatBtn = document.getElementById('start-combat-btn');
     if (startCombatBtn) {
       startCombatBtn.classList.toggle('hidden', inCombat);
+      if (this.game.phase === 'PREPARATION_PHASE') {
+        const isUrgent = this.game.prepRemainingSec <= 5;
+        startCombatBtn.classList.toggle('urgent-pulse', isUrgent);
+        startCombatBtn.innerHTML = `
+          <span class="sword-emblem" style="font-size:15px;">⏱️${this.game.prepRemainingSec}s</span>
+          <span class="battle-label">즉시출격</span>
+        `;
+      }
     }
 
     const shopContainer = document.getElementById('shop-cards-container');
@@ -1374,9 +1463,12 @@ class FantasyAutoBattlerApp {
   }
 
   private showCombatUnitTooltip(cu: CombatUnit): void {
-    const template = UNIT_TEMPLATES[cu.unitId];
+    const template =
+      UNIT_TEMPLATES[cu.unitId] ?? getCreepMonsterTemplate(cu.unitId);
+    const skillName = template?.skill.name ?? '야생 본능';
+    const skillDesc = template?.skill.description ?? '야생 몬스터의 특수 공격을 수행합니다.';
     this.showTapTooltip(
-      `<strong>${cu.icon} ${cu.name} (${cu.starLevel}성)</strong> | HP ${cu.currentHp}/${cu.maxHp} · 공격 ${cu.atk} · 딜량 ${cu.totalDamageDealt}<br/><span style="color:#fde047">[${template?.skill.name}]:</span> ${template?.skill.description}`
+      `<strong>${cu.icon} ${cu.name} (${cu.starLevel}성)</strong> | HP ${cu.currentHp}/${cu.maxHp} · 공격 ${cu.atk} · 딜량 ${cu.totalDamageDealt}<br/><span style="color:#fde047">[${skillName}]:</span> ${skillDesc}`
     );
   }
 
@@ -1446,7 +1538,8 @@ class FantasyAutoBattlerApp {
 
       const viewed = this.game.getViewedParticipant();
       const inCombat =
-        this.game.phase === 'COMBAT_PHASE' &&
+        (this.game.phase === 'COMBAT_PHASE' ||
+          this.game.phase === 'RESOLUTION_PHASE') &&
         viewed.id === this.game.player.id;
 
       const activeSelectedOrDraggedId =
@@ -1467,6 +1560,7 @@ class FantasyAutoBattlerApp {
             : null,
         selectedInstanceId: activeSelectedOrDraggedId,
         hasPandoraBench: viewed.augments.includes('AUG_PANDORA_BENCH'),
+        opponentName: this.game.playerCurrentOpponentName,
       });
 
       requestAnimationFrame(frame);

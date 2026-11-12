@@ -2,6 +2,7 @@
 
 import { AIBotController } from './AIBotController';
 import { CombatEngine, CombatSummary } from './CombatEngine';
+import { CreepRoundManager } from './CreepRoundManager';
 import { DopamineEngine, LootOrb } from './DopamineEngine';
 import {
   AugmentDefinition,
@@ -13,10 +14,9 @@ import {
   UNIT_TEMPLATES,
   UNITS_BY_COST,
 } from './GameData';
-import { Participant, UnitInstance } from './Participant';
+import { Participant } from './Participant';
 import { RankManager, RankUpdateResult } from './RankManager';
 import { SharedPoolManager } from './SharedPoolManager';
-import { CombatEvent } from './SkillRegistry';
 import { SynergyEngine } from './SynergyEngine';
 
 export type GamePhase =
@@ -62,6 +62,15 @@ export interface RoundMatchResult {
   survivingAwayUnits: number;
 }
 
+export interface AvatarFinisherLaserPayload {
+  id: number;
+  winnerSide: 'HOME' | 'AWAY';
+  winnerName: string;
+  loserName: string;
+  damage: number;
+  survivingUnits: number;
+}
+
 export class GameLoopManager {
   public sharedPool: SharedPoolManager;
   public rankManager: RankManager;
@@ -76,12 +85,27 @@ export class GameLoopManager {
   public playbackSpeed: 1 | 2 = 1;
 
   /**
+   * 실제 TFT 순정 정비 시간표 카운트다운 상태 (초반 1~2스테이지 30초, 3스테이지 35초, 4스테이지 이후 40초)
+   */
+  public prepTotalSec: number = 30;
+  public prepRemainingSec: number = 30;
+  private prepRemainingMs: number = 30000;
+  private prepTimerIntervalId: number | null = null;
+  private resolutionTimeoutId: number | null = null;
+
+  /**
+   * 전투 종료 직후 승리 아바타 -> 패배 아바타 레이저 피니시 연출 페이로드
+   */
+  public activeFinisherLaser: AvatarFinisherLaserPayload | null = null;
+  private finisherSeqCounter: number = 1;
+
+  /**
    * 현재 플레이어가 정찰(Scouting) 중인 참가자 ID (기본값: 플레이어 자신)
    */
   public viewedParticipantId: string = 'player_1';
 
   /**
-   * 플레이어 보드 위에 드랍된 전리품 구슬(Loot Orbs) 목록
+   * 플레이어 보드 위에 드랍된 ?/! 미스터리 박스(Loot Orbs) 목록
    */
   public playerLootOrbs: LootOrb[] = [];
 
@@ -155,7 +179,9 @@ export class GameLoopManager {
    * 새 게임(8인 로비: 플레이어 1명 + 7인 7색 AI 봇 7명)을 초기화하고 1-1 라운드를 시작한다.
    */
   public startNewGame(): void {
+    this.stopPrepTimer();
     this.stopCombatLoopTimer();
+    this.clearResolutionTimeout();
     this.sharedPool.resetPool();
 
     this.player = new Participant('player_1', '나 (전설이)', false, null);
@@ -172,6 +198,7 @@ export class GameLoopManager {
     this.lastOpponentMap.clear();
     this.finalPlacement = null;
     this.rankSettlementResult = null;
+    this.activeFinisherLaser = null;
 
     // 8인 전원 초기 골드(10G), 레벨 1, 시작 1코스트 기물 1기 지급 및 첫 상점 추첨
     for (const p of this.participants) {
@@ -196,7 +223,7 @@ export class GameLoopManager {
     }
 
     this.pushBannerNotification(
-      '⚔️ 판타지 오토배틀러 8인 로비 매치가 시작되었습니다! (라운드 1-1: 고블린 정찰병)'
+      '⚔️ 판타지 오토배틀러 8인 로비 매치가 시작되었습니다! (라운드 1-1: 들판 미니언 포식자)'
     );
     this.beginRoundEntrySequence();
   }
@@ -231,11 +258,26 @@ export class GameLoopManager {
     );
   }
 
+  /**
+   * 실제 TFT 순정 스테이지별 정비 시간(초):
+   * - 1~2스테이지: 30초
+   * - 3스테이지: 35초
+   * - 4스테이지 이후: 40초
+   */
+  public getStandardPrepDurationSec(): number {
+    if (this.stage <= 2) return 30;
+    if (this.stage === 3) return 35;
+    return 40;
+  }
+
   // ==========================================================================
   // 1. 라운드 진입 시퀀스 (증강체 2-1/3-2/4-2 -> 운명의 모루 2-4/3-4/4-4 -> 정비 페이즈)
   // ==========================================================================
 
   private beginRoundEntrySequence(): void {
+    this.stopPrepTimer();
+    this.clearResolutionTimeout();
+    this.activeFinisherLaser = null;
     const label = this.getRoundLabel();
 
     // 1) 2-1, 3-2, 4-2 라운드 시작 시: 증강체 선택 페이즈(AUGMENT_PHASE) 발동
@@ -449,11 +491,13 @@ export class GameLoopManager {
   }
 
   // ==========================================================================
-  // 2. 정비 페이즈 (PREPARATION_PHASE)
+  // 2. 정비 페이즈 (PREPARATION_PHASE): 실시간 카운트다운(30s/35s/40s) + AI 동적 올인 APM
   // ==========================================================================
 
   private enterPreparationPhase(): void {
+    this.stopPrepTimer();
     this.phase = 'PREPARATION_PHASE';
+    this.activeFinisherLaser = null;
     const roundLabel = this.getRoundLabel();
 
     // 1. 생존자 전원 라운드 시작 증강체 효과(판도라의 대기석 등) 발동
@@ -468,10 +512,10 @@ export class GameLoopManager {
       }
     }
 
-    // 2. 생존한 AI 봇 7명이 0.1초 이내에 자신의 상점 리롤/구매/배치/아이템 장착을 완료
+    // 2. 생존한 AI 봇 7명의 실시간 동적 APM(평상시 1~5초 간격 vs 올인 Rolldown 시 0.6~1초 '다다다다' 리롤) 초기화
     for (const p of this.participants) {
       if (p.isAI && !p.isEliminated) {
-        this.aiController.executeAITurn(
+        this.aiController.prepareBotForRealTimePrep(
           p,
           this.participants,
           this.sharedPool,
@@ -491,11 +535,77 @@ export class GameLoopManager {
       }
     }
 
+    // 4. 실제 TFT 순정 정비 타이머 가동 (초반 1~2스테이지 30초, 3스테이지 35초, 4스테이지 이후 40초)
+    this.prepTotalSec = this.getStandardPrepDurationSec();
+    this.prepRemainingSec = this.prepTotalSec;
+    this.prepRemainingMs = this.prepTotalSec * 1000;
+    this.startPrepCountdownTimer();
+
     this.notifyStateChange();
   }
 
+  private startPrepCountdownTimer(): void {
+    this.stopPrepTimer();
+    if (typeof window === 'undefined') return;
+
+    const tickMs = 200;
+    this.prepTimerIntervalId = window.setInterval(() => {
+      if (this.phase !== 'PREPARATION_PHASE') {
+        this.stopPrepTimer();
+        return;
+      }
+
+      const prevSec = this.prepRemainingSec;
+      this.prepRemainingMs = Math.max(0, this.prepRemainingMs - tickMs);
+      this.prepRemainingSec = Math.ceil(this.prepRemainingMs / 1000);
+
+      // AI 봇 7명의 실시간 동적 APM 스텝 실행 (평상시 1~5초, 올인 타이밍 0.6~1.0초 초고속 리롤)
+      let anyBotActed = false;
+      const roundLabel = this.getRoundLabel();
+      for (const p of this.participants) {
+        if (p.isAI && !p.isEliminated) {
+          if (
+            this.aiController.stepBotRealTimeAPM(
+              p,
+              tickMs,
+              this.participants,
+              this.sharedPool,
+              roundLabel
+            )
+          ) {
+            anyBotActed = true;
+          }
+        }
+      }
+
+      if (this.prepRemainingMs <= 0) {
+        this.stopPrepTimer();
+        this.startCombatPhase();
+        return;
+      }
+
+      if (this.prepRemainingSec !== prevSec || anyBotActed) {
+        this.notifyStateChange();
+      }
+    }, tickMs);
+  }
+
+  private stopPrepTimer(): void {
+    if (this.prepTimerIntervalId !== null && typeof window !== 'undefined') {
+      window.clearInterval(this.prepTimerIntervalId);
+      this.prepTimerIntervalId = null;
+    }
+  }
+
+  private clearResolutionTimeout(): void {
+    if (this.resolutionTimeoutId !== null && typeof window !== 'undefined') {
+      window.clearTimeout(this.resolutionTimeoutId);
+      this.resolutionTimeoutId = null;
+    }
+  }
+
   /**
-   * 플레이어가 보드 위의 전리품 구슬(LootOrb)을 터치하여 오픈한다.
+   * 플레이어가 보드 위의 ?/! 미스터리 박스(LootOrb)를 터치하여 오픈한다.
    */
   public openPlayerLootOrb(orbId: string): string[] {
     const idx = this.playerLootOrbs.findIndex((o) => o.id === orbId);
@@ -508,7 +618,7 @@ export class GameLoopManager {
       this.sharedPool
     );
     this.pushBannerNotification(
-      `🎁 전리품 구슬 오픈: ${rewards.join(', ')}`
+      `🎁 [${orb.label ?? '미스터리 상자'}] 오픈: ${rewards.join(', ')}`
     );
     this.notifyStateChange();
     return rewards;
@@ -519,15 +629,49 @@ export class GameLoopManager {
   // ==========================================================================
 
   /**
-   * 플레이어가 [전투 시작] 버튼을 누르면 즉시 전투 페이즈로 진입한다.
+   * 정비 카운트다운 종료(0초) 또는 유저의 [즉시 전투] 단축 버튼 클릭 시 전투 페이즈로 진입한다.
    */
   public startCombatPhase(): void {
     if (this.phase !== 'PREPARATION_PHASE') return;
+    this.stopPrepTimer();
+
+    // 만약 유저가 타이머 종료 전에 수동으로 빨리 넘겼다면, AI 봇들의 남은 정비 턴을 즉시 완료시켜 공정성 유지
+    const roundLabel = this.getRoundLabel();
+    for (const p of this.participants) {
+      if (p.isAI && !p.isEliminated) {
+        this.aiController.executeAITurn(
+          p,
+          this.participants,
+          this.sharedPool,
+          roundLabel
+        );
+      }
+    }
+
+    // 전투 돌입 시 플레이어 보드에 빈자리가 있고 대기석에 기물이 있으면 자동 충원 보조
+    while (this.player.getBoardUnitCount() < this.player.level) {
+      const benchIdx = this.player.bench.findIndex((u) => u !== null);
+      if (benchIdx === -1) break;
+      let placed = false;
+      for (let r = 0; r < Participant.BOARD_ROWS && !placed; r++) {
+        for (let c = 0; c < Participant.BOARD_COLS && !placed; c++) {
+          if (this.player.board[r][c] === null) {
+            this.player.moveUnit(
+              { area: 'BENCH', index: benchIdx },
+              { area: 'BOARD', row: r, col: c }
+            );
+            placed = true;
+          }
+        }
+      }
+      if (!placed) break;
+    }
 
     this.phase = 'COMBAT_PHASE';
     this.viewedParticipantId = this.player.id;
     this.currentPairings = this.buildRoundPairings();
     this.lastRoundResults = [];
+    this.activeFinisherLaser = null;
 
     // 1. 플레이어 매치 찾기 및 실시간 CombatEngine 초기화
     const playerPairing = this.currentPairings.find(
@@ -607,17 +751,21 @@ export class GameLoopManager {
   }
 
   /**
-   * 크립 라운드 또는 대인전(홀수 생존자 고스트 매칭 포함) 페어링 생성
+   * 크립 라운드(전용 몬스터/동물 스폰) 또는 대인전(홀수 생존자 고스트 매칭 포함) 페어링 생성
    */
   private buildRoundPairings(): MatchPairing[] {
     const roundType = this.getCurrentRoundType();
+    const roundLabel = this.getRoundLabel();
     const aliveList = this.participants.filter((p) => !p.isEliminated);
     const pairings: MatchPairing[] = [];
 
-    // A. 크립 / 보스 크립 라운드: 생존자 각자가 몬스터 군단과 1:1 전투
+    // A. 크립 / 보스 크립 라운드: 전용 야생 몬스터/동물 군단(CreepRoundManager)과 1:1 전투
     if (roundType === 'CREEP' || roundType === 'BOSS_CREEP') {
       for (const p of aliveList) {
-        const creepOpponent = this.createCreepOpponentForRound();
+        const creepOpponent = CreepRoundManager.createCreepOpponentForRound(
+          roundLabel,
+          roundType
+        );
         pairings.push({
           home: p,
           away: creepOpponent,
@@ -713,62 +861,15 @@ export class GameLoopManager {
     return ghost;
   }
 
-  /**
-   * 1-1, 1-2 크립 라운드 및 2-5, 3-5, 4-5, 5-5 보스 크립 라운드용 몬스터 군단 생성
-   */
-  private createCreepOpponentForRound(): Participant {
-    const label = this.getRoundLabel();
-    const creep = new Participant(
-      `creep_${label}`,
-      this.stage === 1
-        ? label === '1-1'
-          ? '고블린 정찰대'
-          : '그림자 늑대 무리'
-        : this.stage === 2
-        ? '고대 바위 골렘'
-        : this.stage === 3
-        ? '심연의 화염 드래곤'
-        : '공허의 종말 거수',
-      true,
-      null
-    );
-
-    if (label === '1-1') {
-      creep.board[0][2] = Participant.createUnitInstance('u1_pip', 1);
-      creep.board[0][4] = Participant.createUnitInstance('u1_skel', 1);
-    } else if (label === '1-2') {
-      creep.board[0][1] = Participant.createUnitInstance('u1_skel', 1);
-      creep.board[0][3] = Participant.createUnitInstance('u1_garen', 1);
-      creep.board[1][5] = Participant.createUnitInstance('u1_aria', 1);
-    } else if (this.stage === 2) {
-      creep.board[0][2] = Participant.createUnitInstance('u2_ent', 2);
-      creep.board[0][4] = Participant.createUnitInstance('u2_ent', 2);
-      creep.board[2][3] = Participant.createUnitInstance('u2_tink', 2);
-    } else if (this.stage === 3) {
-      creep.board[0][3] = Participant.createUnitInstance('u3_sieg', 2, [
-        'SUNFIRE_CAPE',
-      ]);
-      creep.board[1][1] = Participant.createUnitInstance('u3_grom', 2);
-      creep.board[1][5] = Participant.createUnitInstance('u3_vlad', 2);
-    } else {
-      creep.board[0][3] = Participant.createUnitInstance('u5_ignis', 2, [
-        'BRAMBLE_VEST',
-        'RABADONS_DEATHCAP',
-      ]);
-      creep.board[1][1] = Participant.createUnitInstance('u4_arthur', 2);
-      creep.board[1][5] = Participant.createUnitInstance('u4_merlin', 2);
-    }
-
-    return creep;
-  }
-
   // ==========================================================================
-  // 4. 정산 페이즈 (RESOLUTION_PHASE): 황금 고블린 캐시아웃, 탈락자 풀 환원, 이자 지급
+  // 4. 정산 페이즈 (RESOLUTION_PHASE): 아바타 레이저 피니시 연출, 공정성 ?/! 미스터리 상자, 황금 고블린, 이자 지급
   // ==========================================================================
 
   private resolveAllMatchesAndAdvance(): void {
     this.phase = 'RESOLUTION_PHASE';
     const results: RoundMatchResult[] = [];
+    const roundLabel = this.getRoundLabel();
+    const roundType = this.getCurrentRoundType();
 
     for (const pairing of this.currentPairings) {
       let summary: CombatSummary;
@@ -791,17 +892,41 @@ export class GameLoopManager {
       let awayDamageTaken = 0;
 
       if (summary.winner === 'HOME') {
-        awayDamageTaken = pairing.isGhostMatch || pairing.isCreepMatch
-          ? 0
-          : baseStageDmg + summary.survivingHomeUnits * 2;
+        awayDamageTaken =
+          pairing.isGhostMatch || pairing.isCreepMatch
+            ? baseStageDmg + summary.survivingHomeUnits * 2
+            : baseStageDmg + summary.survivingHomeUnits * 2;
       } else if (summary.winner === 'AWAY') {
         homeDamageTaken = baseStageDmg + summary.survivingAwayUnits * 2;
       } else {
         homeDamageTaken = 2;
-        awayDamageTaken = pairing.isGhostMatch || pairing.isCreepMatch ? 0 : 2;
+        awayDamageTaken = 2;
       }
 
-      // 1) HOME 참가자 승패/연승/연패/체력/크립 구슬/황금 고블린 처리
+      // 플레이어 매치 종료 시: 승리한 지휘관 아바타가 패배한 지휘관 아바타에게 거대한 마법 레이저/투사체를 발사하는 피니시 연출 트리거!
+      if (pairing.home.id === this.player.id) {
+        if (summary.winner === 'HOME') {
+          this.activeFinisherLaser = {
+            id: this.finisherSeqCounter++,
+            winnerSide: 'HOME',
+            winnerName: this.player.name,
+            loserName: pairing.away.name,
+            damage: awayDamageTaken,
+            survivingUnits: summary.survivingHomeUnits,
+          };
+        } else if (summary.winner === 'AWAY') {
+          this.activeFinisherLaser = {
+            id: this.finisherSeqCounter++,
+            winnerSide: 'AWAY',
+            winnerName: pairing.away.name,
+            loserName: this.player.name,
+            damage: homeDamageTaken,
+            survivingUnits: summary.survivingAwayUnits,
+          };
+        }
+      }
+
+      // 1) HOME 참가자 승패/연승/연패/체력/황금 고블린 처리
       this.applyCombatOutcomeToParticipant(
         pairing.home,
         summary.winner === 'HOME',
@@ -838,7 +963,24 @@ export class GameLoopManager {
 
     this.lastRoundResults = results;
 
-    // 3) 체력 0 이하 탈락자 처리 및 공유 풀 100% 환원
+    // 3) 크립 라운드 종료 시: 8인 공정성 보장 법칙(Loot Equity Rule)에 따라 ?/! 미스터리 박스 및 AI 동기화 전리품 지급!
+    if (roundType === 'CREEP' || roundType === 'BOSS_CREEP') {
+      const aiBots = this.participants.filter((p) => p.isAI && !p.isEliminated);
+      const mysteryBoxes = CreepRoundManager.distributeEquityCreepLoot(
+        roundLabel,
+        roundType,
+        this.player,
+        aiBots
+      );
+      if (mysteryBoxes.length > 0) {
+        this.playerLootOrbs.push(...mysteryBoxes);
+        this.pushBannerNotification(
+          `🎁 [${roundLabel} 크립 처치!] 전장에 ?/! 미스터리 보물상자 ${mysteryBoxes.length}개가 드랍되었습니다! 터치하여 오픈하세요!`
+        );
+      }
+    }
+
+    // 4) 체력 0 이하 탈락자 처리 및 공유 풀 100% 환원
     for (const p of this.participants) {
       if (!p.isEliminated && p.hp <= 0) {
         p.eliminate(this.sharedPool);
@@ -850,23 +992,32 @@ export class GameLoopManager {
       }
     }
 
-    // 4) 게임 종료 조건 확인 (플레이어 탈락 또는 생존자 1명 이하)
+    // 5) 게임 종료 조건 확인 (플레이어 탈락 또는 생존자 1명 이하)
     const aliveParticipants = this.participants.filter((p) => !p.isEliminated);
     if (this.player.isEliminated || aliveParticipants.length <= 1) {
       this.finalizeGameAndRank();
       return;
     }
 
-    // 5) 생존자 전원에게 라운드 골드(기본 5G + 이자 + 연승/연패) 및 경험치(+2 XP) 지급, 상점 갱신
-    this.distributeRoundIncomeAndRefreshShops();
+    // 6) 아바타 레이저 피니시 연출을 감상할 수 있도록 약 1.15초 동안 RESOLUTION_PHASE를 유지한 뒤 다음 라운드로 전진!
+    this.notifyStateChange();
 
-    // 6) 다음 라운드로 스테이지/라운드 카운터 전진
-    this.advanceRoundCounter();
-    this.beginRoundEntrySequence();
+    if (typeof window !== 'undefined') {
+      this.clearResolutionTimeout();
+      this.resolutionTimeoutId = window.setTimeout(() => {
+        this.distributeRoundIncomeAndRefreshShops();
+        this.advanceRoundCounter();
+        this.beginRoundEntrySequence();
+      }, 1150);
+    } else {
+      this.distributeRoundIncomeAndRefreshShops();
+      this.advanceRoundCounter();
+      this.beginRoundEntrySequence();
+    }
   }
 
   /**
-   * 개별 참가자에게 전투 승패, 연승/연패, 체력 차감, 황금 고블린 스택/캐시아웃, 크립 구슬 보상을 적용한다.
+   * 개별 참가자에게 전투 승패, 연승/연패, 체력 차감, 황금 고블린 스택/캐시아웃을 적용한다.
    */
   private applyCombatOutcomeToParticipant(
     participant: Participant,
@@ -911,7 +1062,7 @@ export class GameLoopManager {
           if (!participant.isAI) {
             this.playerLootOrbs.push(...cashoutOrbs);
             this.pushBannerNotification(
-              `💥🪙 [황금 고블린 금고 대폭발!] 전리품 구슬 ${cashoutOrbs.length}개가 보드에 쏟아졌습니다! 터치하여 오픈하세요!`
+              `💥🪙 [황금 고블린 금고 대폭발!] ! 대박 미스터리 상자 ${cashoutOrbs.length}개가 보드에 쏟아졌습니다! 터치하여 오픈하세요!`
             );
           } else {
             // AI 봇은 캐시아웃 구슬을 즉시 오픈하여 보상 획득
@@ -922,22 +1073,6 @@ export class GameLoopManager {
               `💥🪙 [${participant.name}] 황금 고블린 금고 캐시아웃 성공!`
             );
           }
-        }
-      }
-    }
-
-    // 크립 라운드 종료 시 전리품 구슬 드랍
-    if (isCreepMatch && participant.hp > 0) {
-      const creepOrbs = DopamineEngine.generateCreepRoundOrbs(
-        participant,
-        this.stage,
-        this.sharedPool
-      );
-      if (!participant.isAI) {
-        this.playerLootOrbs.push(...creepOrbs);
-      } else {
-        for (const orb of creepOrbs) {
-          DopamineEngine.claimLootOrb(participant, orb, this.sharedPool);
         }
       }
     }
@@ -997,7 +1132,9 @@ export class GameLoopManager {
    * 게임 종료 시 플레이어 최종 등수(1~8위) 산출 및 RankManager LP 업데이트
    */
   private finalizeGameAndRank(): void {
+    this.stopPrepTimer();
     this.stopCombatLoopTimer();
+    this.clearResolutionTimeout();
     this.phase = 'GAME_OVER_PHASE';
 
     const aliveCount = this.participants.filter((p) => !p.isEliminated).length;

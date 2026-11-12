@@ -107,6 +107,27 @@ img {
   display: block;
 }
 
+/* 정비 시간 5초 이하 긴박 붉은 맥동 비네팅 오버레이 */
+.urgent-vignette-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  box-shadow: inset 0 0 85px rgba(220, 38, 38, 0.72);
+  animation: urgentVignettePulse 0.48s infinite ease-in-out alternate;
+}
+
+@keyframes urgentVignettePulse {
+  from {
+    opacity: 0.35;
+    box-shadow: inset 0 0 55px rgba(220, 38, 38, 0.52);
+  }
+  to {
+    opacity: 0.95;
+    box-shadow: inset 0 0 115px rgba(239, 68, 68, 0.88);
+  }
+}
+
 .loot-orb-layer {
   position: absolute;
   inset: 0;
@@ -114,43 +135,98 @@ img {
   pointer-events: none;
 }
 
-.loot-orb-btn {
+/* ? / ! 미스터리 보물상자 (Mystery Box Chest) */
+.loot-orb-btn.mystery-box-chest {
   position: absolute;
   transform: translate(-50%, -50%);
   pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  animation: orbPulse 0.95s infinite ease-in-out alternate;
+}
+
+.mystery-badge-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-family: 'Black Han Sans', 'Jua', sans-serif;
+  font-size: 16px;
+  font-weight: 900;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  animation: markBounce 0.55s infinite ease-in-out alternate;
+}
+
+.mystery-badge-mark.mark-question {
+  background: linear-gradient(180deg, #ffea00 0%, #ea580c 100%);
+  color: #fffbeb;
+  box-shadow: 0 3px 0 #7c2d12, 0 0 14px rgba(255, 234, 0, 0.95);
+}
+
+.mystery-badge-mark.mark-exclaim {
+  background: linear-gradient(180deg, #f43f5e 0%, #9333ea 100%);
+  color: #ffffff;
+  box-shadow: 0 3px 0 #4c0519, 0 0 18px rgba(244, 63, 94, 1);
+}
+
+@keyframes markBounce {
+  from {
+    transform: translateY(0px) scale(1);
+  }
+  to {
+    transform: translateY(-4px) scale(1.12);
+  }
+}
+
+.mystery-chest-body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: 9px;
   font-size: 11px;
   color: #ffffff;
-  background: radial-gradient(circle at 30% 30%, #ffd54f, #b45309);
-  border: 2px solid #fffbeb;
-  box-shadow: 0 3px 0 #78350f, 0 0 14px rgba(255, 213, 79, 0.85);
-  cursor: pointer;
-  white-space: nowrap;
-  animation: orbPulse 1.1s infinite ease-in-out alternate;
+  background: linear-gradient(180deg, #b45309 0%, #451a03 100%);
+  border: 2px solid #fde047;
+  box-shadow: 0 4px 0 #270e02, 0 0 15px rgba(250, 204, 21, 0.75);
 }
 
-.loot-orb-btn.orb-PRISMATIC {
-  background: radial-gradient(circle at 30% 30%, #4cc9f0, #7209b7);
-  border-color: #e0f2fe;
-  box-shadow: 0 3px 0 #3b0764, 0 0 16px rgba(76, 201, 240, 0.95);
+.loot-orb-btn.orb-PRISMATIC .mystery-chest-body {
+  background: linear-gradient(180deg, #7e22ce 0%, #3b0764 100%);
+  border-color: #f472b6;
+  box-shadow: 0 4px 0 #1e0338, 0 0 18px rgba(244, 114, 182, 0.95);
 }
 
-.loot-orb-btn.orb-BLUE {
-  background: radial-gradient(circle at 30% 30%, #38bdf8, #1d4ed8);
-  border-color: #e0f2fe;
-  box-shadow: 0 3px 0 #1e3a8a, 0 0 12px rgba(56, 189, 248, 0.8);
+.loot-orb-btn.orb-BLUE .mystery-chest-body {
+  background: linear-gradient(180deg, #0284c7 0%, #1e3a8a 100%);
+  border-color: #7dd3fc;
+  box-shadow: 0 4px 0 #0f172a, 0 0 14px rgba(56, 189, 248, 0.85);
+}
+
+.chest-sprite-icon {
+  font-size: 15px;
+}
+
+.chest-sub-tag {
+  font-size: 10px;
+  color: #fef08a;
 }
 
 @keyframes orbPulse {
   from {
-    transform: translate(-50%, -50%) scale(0.95);
+    transform: translate(-50%, -50%) scale(0.96);
   }
   to {
-    transform: translate(-50%, -56%) scale(1.06);
+    transform: translate(-50%, -55%) scale(1.05);
   }
 }
 
@@ -208,6 +284,53 @@ img {
 .phase-ribbon {
   font-size: 11px;
   color: #7dd3fc;
+}
+
+/* TFT 실시간 정비 카운트다운 타이머 알약 */
+.prep-timer-pill {
+  border-color: #facc15;
+  background: linear-gradient(180deg, #3b230b 0%, #1c1005 100%);
+  padding: 0 8px;
+  gap: 6px;
+  cursor: default;
+}
+
+.prep-timer-text {
+  font-size: 12px;
+  color: #ffea00;
+}
+
+.prep-timer-bar {
+  width: 34px;
+  height: 6px;
+  background: #090d16;
+  border: 1px solid #475569;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.prep-timer-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #facc15);
+  transition: width 0.2s linear;
+}
+
+.urgent-pulse {
+  border-color: #ef4444 !important;
+  background: linear-gradient(180deg, #991b1b 0%, #450a0a 100%) !important;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.95) !important;
+  animation: redUrgentPulse 0.42s infinite ease-in-out alternate !important;
+}
+
+@keyframes redUrgentPulse {
+  from {
+    transform: scale(0.98);
+    filter: brightness(1);
+  }
+  to {
+    transform: scale(1.04);
+    filter: brightness(1.28);
+  }
 }
 
 .deploy-emblem {

@@ -1,6 +1,8 @@
 // src/PixelGameRenderer.ts
 
-import { CostTier, ITEM_DEFINITIONS, ItemId, StarLevel, UNIT_TEMPLATES } from './GameData';
+import { getCreepMonsterTemplate, isCreepMonsterUnitId } from './CreepMonsterData';
+import { CostTier, ITEM_DEFINITIONS, ItemId, StarLevel } from './GameData';
+import { AvatarFinisherLaserPayload } from './GameLoopManager';
 import { HexBoardViewportMetrics, HexCoord, HexGridMath } from './HexGridMath';
 import { Participant, UnitInstance } from './Participant';
 import { CombatEvent, CombatUnit } from './SkillRegistry';
@@ -888,6 +890,18 @@ interface ArcadeDamagePopFX {
   maxLifeMs: number;
 }
 
+interface AvatarLaserFinisherFX {
+  id: number;
+  winnerSide: 'HOME' | 'AWAY';
+  winnerName: string;
+  loserName: string;
+  damage: number;
+  survivingUnits: number;
+  lifeMs: number;
+  maxLifeMs: number;
+  impactTriggered: boolean;
+}
+
 const COST_BORDER_COLORS: Record<CostTier, string> = {
   1: '#94a3b8',
   2: '#2ec4b6',
@@ -916,6 +930,10 @@ export class PixelGameRenderer {
   private projectiles: ProjectileFX[] = [];
   private pixelSparks: PixelSparkFX[] = [];
   private damagePops: ArcadeDamagePopFX[] = [];
+
+  // 전투 종료 승리 지휘관 아바타 -> 패배 지휘관 아바타 레이저 피니시 연출 상태
+  private activeLaserFX: AvatarLaserFinisherFX | null = null;
+  private lastTriggeredFinisherId: number = 0;
 
   // 역경직(Hit-Stop 45ms) & 카메라 쉐이크(Screen Shake) 타이머
   private hitStopRemainingMs: number = 0;
@@ -1041,6 +1059,28 @@ export class PixelGameRenderer {
     this.slashSmears = [];
     this.projectiles = [];
     this.hitStopRemainingMs = 0;
+  }
+
+  /**
+   * 전투 종료 직후 승리 플레이어 아바타가 패배 플레이어 아바타에게 거대한 마법 레이저/에너지 투사체를 쏘아
+   * 직접 체력을 깎는 피니시 연출을 트리거한다.
+   */
+  public triggerAvatarFinisherLaser(payload: AvatarFinisherLaserPayload | null): void {
+    if (!payload) return;
+    if (payload.id === this.lastTriggeredFinisherId) return;
+    this.lastTriggeredFinisherId = payload.id;
+
+    this.activeLaserFX = {
+      id: payload.id,
+      winnerSide: payload.winnerSide,
+      winnerName: payload.winnerName,
+      loserName: payload.loserName,
+      damage: payload.damage,
+      survivingUnits: payload.survivingUnits,
+      lifeMs: 0,
+      maxLifeMs: 1050,
+      impactTriggered: false,
+    };
   }
 
   public spawnPixelSparks(
@@ -1475,6 +1515,7 @@ export class PixelGameRenderer {
     params: {
       inCombat: boolean;
       viewedParticipant: Participant;
+      opponentName?: string;
       combatUnits: CombatUnit[];
       hoveredHex: HexCoord | null;
       hoveredBenchIndex: number | null;
@@ -1527,7 +1568,15 @@ export class PixelGameRenderer {
       );
     }
 
-    // 3. 하단 1x9 대기석(Bench Row) 슬롯 및 기물 렌더링
+    // 3. 전장 양측 아군 지휘관(전설이) 아바타 & 상대 지휘관 아바타 단상 렌더링
+    this.drawCommanderAvatarsOnArena(
+      ctx,
+      params.viewedParticipant,
+      params.opponentName ?? '적 지휘관',
+      params.inCombat || this.activeLaserFX !== null
+    );
+
+    // 4. 하단 1x9 대기석(Bench Row) 슬롯 및 기물 렌더링
     this.drawBenchSlotsAndUnits(
       ctx,
       params.viewedParticipant,
@@ -1537,7 +1586,7 @@ export class PixelGameRenderer {
       params.hasPandoraBench
     );
 
-    // 4. 전장 위 기물들 렌더링 (Y-Sorting: screenY 오름차순 정렬)
+    // 5. 전장 위 기물들 렌더링 (Y-Sorting: screenY 오름차순 정렬)
     if (params.inCombat) {
       this.updateAndDrawCombatUnits(
         ctx,
@@ -1554,8 +1603,9 @@ export class PixelGameRenderer {
       );
     }
 
-    // 5. 전투 타격 이펙트 렌더링
+    // 6. 전투 타격 이펙트 및 승리 지휘관 아바타 -> 패배 지휘관 아바타 피니시 레이저 연출 렌더링
     this.updateAndDrawCombatVFX(ctx, effectiveDt);
+    this.updateAndDrawAvatarFinisherLaser(ctx, effectiveDt);
 
     ctx.restore();
   }
@@ -2859,7 +2909,7 @@ export class PixelGameRenderer {
   }
 
   // ==========================================================================
-  // 20종 챔피언 고유 28x28 도트 스프라이트 생성기
+  // 60종 챔피언 & 7종 크립 몬스터/동물 고유 28x28 도트 스프라이트 생성기
   // ==========================================================================
 
   public getOrCreateUnitPixelSprite(
@@ -2871,6 +2921,17 @@ export class PixelGameRenderer {
     const key = `${unitId}_s${starLevel}_f${frame}_${whiteHitFlash ? 'FLASH' : 'NORM'}`;
     const cached = this.spriteCache.get(key);
     if (cached) return cached;
+
+    if (isCreepMonsterUnitId(unitId)) {
+      const creepCanvas = this.createCreepMonsterPixelSprite(
+        unitId,
+        starLevel,
+        frame,
+        whiteHitFlash
+      );
+      this.spriteCache.set(key, creepCanvas);
+      return creepCanvas;
+    }
 
     const size = 28;
     const off = document.createElement('canvas');
@@ -3085,6 +3146,412 @@ export class PixelGameRenderer {
 
     this.spriteCache.set(key, off);
     return off;
+  }
+
+  /**
+   * 크립 라운드 전용 7종 야생 몬스터/동물(미니언 포식자, 독성 포자 정령, 바위 돌거북 골렘, 야생 늑대, 칼날부리 괴조, 고대 드래곤, 공허 대괴수)
+   * 전용 28x28 도트 스프라이트를 생성한다 (인간형 챔피언과 100% 차별화된 비인간형 실루엣).
+   */
+  private createCreepMonsterPixelSprite(
+    unitId: string,
+    starLevel: StarLevel,
+    frame: 0 | 1,
+    whiteHitFlash: boolean
+  ): HTMLCanvasElement {
+    const size = 28;
+    const off = document.createElement('canvas');
+    off.width = size;
+    off.height = size;
+    const g = off.getContext('2d')!;
+    g.imageSmoothingEnabled = false;
+
+    const tmpl = getCreepMonsterTemplate(unitId);
+    const arch = tmpl?.archetype ?? 'MINION_SCAVENGER';
+    const c1 = tmpl?.primaryBodyColor ?? '#6d28d9';
+    const c2 = tmpl?.secondaryBodyColor ?? '#a78bfa';
+    const acc = tmpl?.accentColor ?? '#fde047';
+    const eye = tmpl?.eyeColor ?? '#ffea00';
+
+    const pixels: (string | null)[][] = Array.from({ length: size }, () =>
+      Array<string | null>(size).fill(null)
+    );
+    const setPx = (x: number, y: number, color: string) => {
+      const ix = Math.round(x);
+      const iy = Math.round(y);
+      if (ix >= 0 && ix < size && iy >= 0 && iy < size) {
+        pixels[iy][ix] = color;
+      }
+    };
+    const fillRectPx = (
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+      color: string
+    ) => {
+      for (let py = y; py < y + h; py++) {
+        for (let px = x; px < x + w; px++) {
+          setPx(px, py, color);
+        }
+      }
+    };
+
+    const dy = frame === 1 ? -1 : 0;
+
+    if (arch === 'MINION_SCAVENGER') {
+      // 귀여우면서도 장난스러운 꼬마 미니언 포식자 (작은 망토 + 커다란 외눈/쌍눈 + 나무 몽둥이)
+      fillRectPx(9, 13 + dy, 10, 9, c1);
+      fillRectPx(10, 10 + dy, 8, 5, '#1e1b4b');
+      fillRectPx(8, 8 + dy, 12, 3, c2);
+      setPx(12, 12 + dy, eye);
+      setPx(15, 12 + dy, eye);
+      fillRectPx(10, 22, 3, 3 - (frame === 1 ? 1 : 0), c2);
+      fillRectPx(15, 22, 3, 3, c2);
+      // 작은 나무 단검
+      fillRectPx(20, 14 + dy, 3, 5, acc);
+    } else if (arch === 'TOXIC_SPRITE') {
+      // 버섯 갓을 쓴 숲의 포자 슬라임 정령
+      fillRectPx(6, 7 + dy, 16, 5, c1);
+      fillRectPx(8, 5 + dy, 12, 3, c1);
+      // 버섯 반점
+      fillRectPx(8, 8 + dy, 3, 2, acc);
+      fillRectPx(16, 7 + dy, 3, 2, acc);
+      fillRectPx(12, 6 + dy, 2, 2, '#ffffff');
+      // 말랑한 몸통
+      fillRectPx(9, 12 + dy, 10, 10, c2);
+      fillRectPx(8, 19 + dy, 12, 4, c2);
+      setPx(11, 15 + dy, '#052e16');
+      setPx(16, 15 + dy, '#052e16');
+      setPx(11, 14 + dy, eye);
+      setPx(16, 14 + dy, eye);
+    } else if (arch === 'STONE_GOLEM') {
+      // 육중한 바위산 돌거북 골렘 (넓은 어깨와 이끼 낀 암석 동체)
+      fillRectPx(5, 9 + dy, 18, 12, c1);
+      fillRectPx(7, 6 + dy, 14, 5, c2);
+      fillRectPx(8, 7 + dy, 6, 2, acc); // 초록 이끼 패치
+      fillRectPx(15, 11 + dy, 5, 3, acc);
+      // 빛나는 고대 코어 눈
+      fillRectPx(10, 11 + dy, 3, 2, eye);
+      fillRectPx(15, 11 + dy, 3, 2, eye);
+      // 굵은 바위 팔다리
+      fillRectPx(3, 12 + dy, 3, 9, c2);
+      fillRectPx(22, 12 + dy, 3, 9, c2);
+      fillRectPx(7, 21, 5, 4 - (frame === 1 ? 1 : 0), c1);
+      fillRectPx(16, 21, 5, 4, c1);
+    } else if (arch === 'WILD_WOLF') {
+      // 네 발로 달리는 날렵한 4족보행 야생 늑대 (뾰족한 귀, 긴 주둥이, 복슬한 꼬리)
+      fillRectPx(7, 13 + dy, 13, 7, c1);
+      fillRectPx(9, 14 + dy, 9, 4, c2);
+      // 늑대 머리와 주둥이 (우측 지향)
+      fillRectPx(16, 9 + dy, 7, 6, c1);
+      fillRectPx(21, 11 + dy, 4, 3, c2);
+      // 뾰족한 두 귀
+      fillRectPx(16, 6 + dy, 2, 3, c1);
+      fillRectPx(19, 6 + dy, 2, 3, c1);
+      // 붉은 야수 안광 & 흰 송곳니
+      setPx(20, 10 + dy, eye);
+      setPx(22, 14 + dy, '#ffffff');
+      setPx(24, 14 + dy, '#ffffff');
+      // 더부룩한 꼬리
+      fillRectPx(3, 10 + dy, 4, 4, c2);
+      // 4족 다리
+      const step = frame === 1 ? 1 : 0;
+      fillRectPx(8, 20, 2, 5 - step, c1);
+      fillRectPx(11, 20, 2, 5, c2);
+      fillRectPx(16, 20, 2, 5, c1);
+      fillRectPx(19, 20, 2, 5 - step, c2);
+    } else if (arch === 'RAZOR_BEAK') {
+      // 붉은 벼슬과 날카로운 부리를 가진 칼날부리 괴조 (날개 퍼덕임)
+      fillRectPx(9, 12 + dy, 10, 9, c1);
+      // 붉은/황금 깃털 날개
+      fillRectPx(4, 10 + (frame === 1 ? -2 : 1), 6, 7, c2);
+      fillRectPx(18, 11 + dy, 5, 6, c2);
+      // 머리와 벼슬
+      fillRectPx(13, 7 + dy, 6, 6, c1);
+      fillRectPx(14, 4 + dy, 4, 3, acc);
+      // 거대한 황금 칼날 부리
+      fillRectPx(19, 9 + dy, 6, 3, acc);
+      setPx(24, 10 + dy, '#ffffff');
+      setPx(17, 8 + dy, eye);
+      // 새 발톱 다리
+      fillRectPx(11, 21, 2, 4, acc);
+      fillRectPx(15, 21, 2, 4 - (frame === 1 ? 1 : 0), acc);
+    } else if (arch === 'ANCIENT_DRAGON') {
+      // 거대한 날개와 뿔, 화염 아우라를 두른 고대 드래곤 보스
+      for (let wy = 5; wy <= 18; wy++) {
+        fillRectPx(2, wy + dy, 6, 1, c2);
+        fillRectPx(20, wy + dy, 6, 1, c2);
+      }
+      fillRectPx(8, 11 + dy, 12, 11, c1);
+      fillRectPx(10, 13 + dy, 8, 8, acc);
+      fillRectPx(9, 5 + dy, 10, 6, c1);
+      // 드래곤 뿔
+      fillRectPx(7, 2 + dy, 2, 4, acc);
+      fillRectPx(19, 2 + dy, 2, 4, acc);
+      setPx(12, 8 + dy, eye);
+      setPx(16, 8 + dy, eye);
+      // 입가의 화염 불꽃
+      fillRectPx(20, 9 + dy, 4, 3, '#ffea00');
+      fillRectPx(9, 22, 4, 4, c1);
+      fillRectPx(15, 22, 4, 4, c1);
+    } else {
+      // VOID_BEHEMOTH: 공허의 촉수와 여러 개의 눈을 지닌 심연 대괴수
+      fillRectPx(5, 7 + dy, 18, 14, c1);
+      fillRectPx(7, 9 + dy, 14, 10, c2);
+      // 3개의 공허 안광
+      fillRectPx(9, 11 + dy, 2, 2, eye);
+      fillRectPx(13, 9 + dy, 2, 3, acc);
+      fillRectPx(17, 11 + dy, 2, 2, eye);
+      // 어깨 가시 & 촉수 다리
+      fillRectPx(3, 5 + dy, 3, 5, acc);
+      fillRectPx(22, 5 + dy, 3, 5, acc);
+      fillRectPx(6, 21, 3, 5 - (frame === 1 ? 1 : 0), c1);
+      fillRectPx(12, 21, 4, 5, c2);
+      fillRectPx(19, 21, 3, 5 - (frame === 1 ? 1 : 0), c1);
+    }
+
+    const outlineColor = starLevel >= 2 ? '#fde047' : '#05070d';
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        if (pixels[y][x] !== null) continue;
+        const hasNeighbor =
+          (y > 0 && pixels[y - 1][x] !== null) ||
+          (y < size - 1 && pixels[y + 1][x] !== null) ||
+          (x > 0 && pixels[y][x - 1] !== null) ||
+          (x < size - 1 && pixels[y][x + 1] !== null);
+        if (hasNeighbor) {
+          g.fillStyle = outlineColor;
+          g.fillRect(x, y, 1, 1);
+        }
+      }
+    }
+
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const col = pixels[y][x];
+        if (!col) continue;
+        g.fillStyle = whiteHitFlash ? '#ffffff' : col;
+        g.fillRect(x, y, 1, 1);
+      }
+    }
+
+    return off;
+  }
+
+  // ==========================================================================
+  // 전장 좌우 지휘관(전설이) 아바타 단상 & 전투 종료 아바타 레이저 피니시 연출
+  // ==========================================================================
+
+  private getHomeCommanderAnchor(): { x: number; y: number } {
+    const m = this.hexMetrics;
+    const boardSpanW = m.hexWidth * 7.65;
+    const slabLeft = Math.floor(m.centerX - boardSpanW * 0.5 - 14);
+    return {
+      x: Math.max(82, slabLeft + 18),
+      y: Math.round(m.originY + 5.8 * m.rowStepY),
+    };
+  }
+
+  private getAwayCommanderAnchor(): { x: number; y: number } {
+    const m = this.hexMetrics;
+    const boardSpanW = m.hexWidth * 7.65;
+    const slabRight = Math.ceil(m.centerX + boardSpanW * 0.5 + 14);
+    return {
+      x: Math.min(this.viewportWidth - 92, slabRight - 18),
+      y: Math.round(m.originY + 1.2 * m.rowStepY),
+    };
+  }
+
+  private drawCommanderAvatarsOnArena(
+    ctx: CanvasRenderingContext2D,
+    homeParticipant: Participant,
+    awayName: string,
+    showAwayAvatar: boolean
+  ): void {
+    const homePos = this.getHomeCommanderAnchor();
+    const bob = Math.sin(this.globalAnimClockMs * 0.005) * 2;
+
+    // 1) 아군 지휘관(꼬마 전설이) 단상 및 도트 아바타
+    this.drawSingleCommanderAvatar(
+      ctx,
+      homePos.x,
+      homePos.y + bob,
+      'HOME',
+      homeParticipant.isAI ? homeParticipant.name.slice(0, 5) : '내 전설이',
+      homeParticipant.hp
+    );
+
+    // 2) 전투 중이거나 피니시 레이저 연출 중일 때 적 지휘관 아바타 표시
+    if (showAwayAvatar) {
+      const awayPos = this.getAwayCommanderAnchor();
+      this.drawSingleCommanderAvatar(
+        ctx,
+        awayPos.x,
+        awayPos.y - bob,
+        'AWAY',
+        awayName.slice(0, 6),
+        null
+      );
+    }
+  }
+
+  private drawSingleCommanderAvatar(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    side: 'HOME' | 'AWAY',
+    label: string,
+    hp: number | null
+  ): void {
+    ctx.save();
+
+    // 마법 단상 패드
+    ctx.fillStyle =
+      side === 'HOME' ? 'rgba(14, 116, 144, 0.55)' : 'rgba(153, 27, 27, 0.55)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 12, 16, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = side === 'HOME' ? '#38bdf8' : '#f87171';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 꼬마 전설이 몸통/망토/왕관 도트
+    ctx.fillStyle = side === 'HOME' ? '#0284c7' : '#dc2626';
+    this.fillBeveledRect(ctx, cx - 9, cy - 8, 18, 18, 5);
+    ctx.strokeStyle = '#fde047';
+    ctx.lineWidth = 1.2;
+    this.strokeBeveledRect(ctx, cx - 9, cy - 8, 18, 18, 5);
+
+    // 전설이 얼굴과 눈빛
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(cx - 6, cy - 4, 12, 7);
+    ctx.fillStyle = side === 'HOME' ? '#00f5d4' : '#ffea00';
+    ctx.fillRect(cx - 4, cy - 2, 3, 3);
+    ctx.fillRect(cx + 1, cy - 2, 3, 3);
+
+    // 머리 위 작은 왕관
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(cx - 5, cy - 12, 10, 4);
+
+    // 이름표 & 체력 뱃지
+    ctx.font = '900 8.5px "Jua", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(7, 10, 18, 0.86)';
+    this.fillBeveledRect(ctx, cx - 24, cy + 16, 48, 12, 3);
+    ctx.fillStyle = side === 'HOME' ? '#7dd3fc' : '#fca5a5';
+    ctx.fillText(
+      hp !== null ? `${label} ♥${hp}` : label,
+      cx,
+      cy + 25
+    );
+
+    ctx.restore();
+  }
+
+  /**
+   * 전투 종료 순간 승리한 플레이어 아바타에서 패배한 플레이어 아바타에게
+   * 거대한 마법 레이저 빔과 응축된 에너지 구체가 날아가 꽂히며 체력을 깎는 피니시 연출!
+   */
+  private updateAndDrawAvatarFinisherLaser(
+    ctx: CanvasRenderingContext2D,
+    dtMs: number
+  ): void {
+    const fx = this.activeLaserFX;
+    if (!fx) return;
+
+    fx.lifeMs += dtMs;
+    if (fx.lifeMs >= fx.maxLifeMs) {
+      this.activeLaserFX = null;
+      return;
+    }
+
+    const homePos = this.getHomeCommanderAnchor();
+    const awayPos = this.getAwayCommanderAnchor();
+
+    const fromPos = fx.winnerSide === 'HOME' ? homePos : awayPos;
+    const toPos = fx.winnerSide === 'HOME' ? awayPos : homePos;
+
+    const prog = Math.min(1, fx.lifeMs / fx.maxLifeMs);
+    const beamReach = Math.min(1, prog / 0.38); // 첫 0.38구간 동안 레이저가 상대 아바타까지 관통!
+
+    const curX = fromPos.x + (toPos.x - fromPos.x) * beamReach;
+    const curY = fromPos.y + (toPos.y - fromPos.y) * beamReach;
+
+    // 명중 순간(beamReach >= 1) 강력한 카메라 흔들림 + 파편 스파크 + 피해량 팝업!
+    if (beamReach >= 1 && !fx.impactTriggered) {
+      fx.impactTriggered = true;
+      this.triggerImpactShake(12, 360, 50);
+      this.spawnPixelSparks(
+        toPos.x,
+        toPos.y,
+        fx.winnerSide === 'HOME' ? '#38bdf8' : '#f43f5e',
+        42
+      );
+      this.spawnPixelSparks(toPos.x, toPos.y, '#ffea00', 24);
+      this.spawnArcadePopupText(
+        toPos.x,
+        toPos.y - 22,
+        `⚡ -${fx.damage} HP!`,
+        '#ff2a85',
+        21
+      );
+    }
+
+    const fadeAlpha = prog > 0.72 ? 1 - (prog - 0.72) / 0.28 : 1;
+    const outerColor = fx.winnerSide === 'HOME' ? '#00f5d4' : '#f43f5e';
+    const midColor = fx.winnerSide === 'HOME' ? '#38bdf8' : '#fb923c';
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, fadeAlpha);
+
+    // 1) 발사자 아바타 주변 마력 차징 링
+    ctx.strokeStyle = '#ffea00';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(
+      fromPos.x,
+      fromPos.y,
+      14 + Math.sin(this.globalAnimClockMs * 0.03) * 4,
+      0,
+      Math.PI * 2
+    );
+    ctx.stroke();
+
+    // 2) 외곽 거대 마법 레이저 줄기
+    ctx.strokeStyle = outerColor;
+    ctx.lineWidth = 14 * (1 - prog * 0.3);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(fromPos.x, fromPos.y);
+    ctx.lineTo(curX, curY);
+    ctx.stroke();
+
+    // 3) 중간 고열 플라즈마 코어
+    ctx.strokeStyle = midColor;
+    ctx.lineWidth = 8 * (1 - prog * 0.25);
+    ctx.beginPath();
+    ctx.moveTo(fromPos.x, fromPos.y);
+    ctx.lineTo(curX, curY);
+    ctx.stroke();
+
+    // 4) 중심부 순백색 절대 광선 코어
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(fromPos.x, fromPos.y);
+    ctx.lineTo(curX, curY);
+    ctx.stroke();
+
+    // 5) 레이저 선단 에너지 구체 & 피격 폭발 링
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(curX, curY, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffea00';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.restore();
   }
 
   private updateAndDrawCombatVFX(

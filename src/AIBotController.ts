@@ -23,6 +23,12 @@ export interface BotBrainState {
   secondaryTrait: TraitId;
   deniedUnitInstanceIds: Set<string>;
   pivotedCount: number;
+  isRolldownActive: boolean;
+  nextActionDelayMs: number;
+  rerollsExecutedThisRound: number;
+  maxRerollsAllowedThisRound: number;
+  targetGoldFloorThisRound: number;
+  unitsToDenyCache: Set<string>;
 }
 
 const STANDARD_ORIGIN_TRAITS: TraitId[] = [
@@ -127,6 +133,12 @@ export class AIBotController {
       secondaryTrait,
       deniedUnitInstanceIds: new Set<string>(),
       pivotedCount: 0,
+      isRolldownActive: false,
+      nextActionDelayMs: 900,
+      rerollsExecutedThisRound: 0,
+      maxRerollsAllowedThisRound: 6,
+      targetGoldFloorThisRound: 20,
+      unitsToDenyCache: new Set<string>(),
     };
     this.botBrains.set(bot.id, state);
     return state;
@@ -144,11 +156,201 @@ export class AIBotController {
   }
 
   /**
-   * 매 라운드 정비 페이즈 시작 시 0.1초 이내에 실행되는 AI 봇 턴 메인 함수
-   * 1) 정찰(Scouting) 및 덱 전환(Pivot)
-   * 2) 고티어 전용 3성 견제(Holding/Denying)
-   * 3) 경제 운영 및 상점 리롤/구매 루프 (인간적 오차 temperature 반영)
-   * 4) 지능형 보드 배치, 상대 주력 캐리 저격 배치 및 아이템 자동 장착
+   * 정비 페이즈 진입 시 7명 AI 봇의 실시간 동적 APM(평상시 1.0~5.0초 간격 vs 올인 Rolldown 시 0.6~1.0초 초고속 다다다다 리롤) 스케줄러를 초기화한다.
+   */
+  public prepareBotForRealTimePrep(
+    bot: Participant,
+    allParticipants: Participant[],
+    sharedPool: SharedPoolManager,
+    currentRound: string
+  ): void {
+    if (bot.isEliminated) return;
+
+    const brain = this.getOrCreateBrain(bot);
+    const aiParams = this.rankManager.getAISkillParameters();
+
+    // 1. 라운드 시작 정찰(Scouting) 및 덱 전환(Pivot)
+    brain.unitsToDenyCache = this.performScoutingAndPivot(
+      bot,
+      brain,
+      allParticipants,
+      sharedPool,
+      aiParams
+    );
+
+    const persona = brain.persona;
+    const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
+    const isEmergencySurvival = bot.hp <= 30;
+    const isGoblinCashoutTurn =
+      persona === 'GOBLIN_GAMBLER' &&
+      (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
+    const isHighStageAllIn =
+      (stageNum >= 4 && bot.gold >= 40) || bot.gold >= 50;
+
+    brain.isRolldownActive =
+      isEmergencySurvival || isGoblinCashoutTurn || isHighStageAllIn;
+    brain.rerollsExecutedThisRound = 0;
+
+    brain.targetGoldFloorThisRound = this.getPersonaGoldFloor(
+      bot,
+      persona,
+      isEmergencySurvival,
+      isGoblinCashoutTurn,
+      aiParams
+    );
+
+    if (isEmergencySurvival || isGoblinCashoutTurn) {
+      brain.maxRerollsAllowedThisRound = 20;
+    } else if (brain.isRolldownActive) {
+      brain.maxRerollsAllowedThisRound = 14;
+    } else if (
+      (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') &&
+      bot.level >= 5 &&
+      bot.level <= 6
+    ) {
+      brain.maxRerollsAllowedThisRound = 12;
+    } else if (
+      (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') &&
+      bot.level < 8
+    ) {
+      brain.maxRerollsAllowedThisRound = bot.freeRerolls > 0 ? bot.freeRerolls : 1;
+    } else {
+      brain.maxRerollsAllowedThisRound = 7;
+    }
+
+    // 2. 현재 열린 첫 상점에서 유효 기물 즉시 구매 및 기본 배치 수행
+    this.buyDesirableUnitsFromCurrentShop(
+      bot,
+      brain,
+      brain.unitsToDenyCache,
+      sharedPool,
+      aiParams
+    );
+    this.performPersonaLevelUpStep(bot, brain, currentRound);
+    this.tryUseBotDuplicators(bot, brain, sharedPool);
+
+    const humanPlayer =
+      allParticipants.find((p) => !p.isAI && !p.isEliminated) ?? null;
+    this.optimizeBoardAndItems(bot, brain, humanPlayer, sharedPool, aiParams);
+
+    // 3. 첫 번째 동적 APM 행동 타이머 설정 (올인 Rolldown: 0.6~1.0초, 평상시: 1.0~5.0초)
+    brain.nextActionDelayMs = this.computeNextBotActionDelayMs(brain.isRolldownActive);
+  }
+
+  /**
+   * 정비 페이즈 실시간 카운트다운 중 매 틱(200ms)마다 호출되어
+   * AI 봇이 진짜 사람처럼 천천히(1~5초) 또는 초고속 올인 롤다운(0.6~1.0초 '다다다다')으로
+   * 상점 리롤, 기물 매수, 배치 수정을 수행한다.
+   */
+  public stepBotRealTimeAPM(
+    bot: Participant,
+    deltaMs: number,
+    allParticipants: Participant[],
+    sharedPool: SharedPoolManager,
+    currentRound: string
+  ): boolean {
+    if (bot.isEliminated) return false;
+    const brain = this.getOrCreateBrain(bot);
+
+    brain.nextActionDelayMs -= deltaMs;
+    if (brain.nextActionDelayMs > 0) {
+      return false;
+    }
+
+    const aiParams = this.rankManager.getAISkillParameters();
+    const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
+    const isEmergencySurvival = bot.hp <= 30;
+    const isGoblinCashoutTurn =
+      brain.persona === 'GOBLIN_GAMBLER' &&
+      (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
+
+    brain.isRolldownActive =
+      isEmergencySurvival ||
+      isGoblinCashoutTurn ||
+      bot.gold >= 50 ||
+      (stageNum >= 4 && bot.gold >= 30);
+
+    // 다음 액션 딜레이 재설정 (올인 타이밍: 600ms~1000ms 초고속 다다다다 리롤, 평상시: 1000ms~5000ms 여유로운 운영)
+    brain.nextActionDelayMs = this.computeNextBotActionDelayMs(brain.isRolldownActive);
+
+    // 1. 레벨업 체크
+    this.performPersonaLevelUpStep(bot, brain, currentRound);
+
+    // 2. 상점 리롤 및 기물 쓸어담기 1스텝 실행
+    let didAct = false;
+    const nextRerollCost = bot.freeRerolls > 0 ? 0 : 2;
+    if (
+      brain.rerollsExecutedThisRound < brain.maxRerollsAllowedThisRound &&
+      bot.gold - nextRerollCost >= brain.targetGoldFloorThisRound
+    ) {
+      this.cleanupBenchIfFull(bot, brain, sharedPool);
+      if (bot.rerollShop(sharedPool)) {
+        brain.rerollsExecutedThisRound += 1;
+        didAct = true;
+        this.buyDesirableUnitsFromCurrentShop(
+          bot,
+          brain,
+          brain.unitsToDenyCache,
+          sharedPool,
+          aiParams
+        );
+      }
+    }
+
+    // 3. 복제기 사용 및 실시간 보드 재배치/아이템 장착 갱신
+    this.tryUseBotDuplicators(bot, brain, sharedPool);
+    const humanPlayer =
+      allParticipants.find((p) => !p.isAI && !p.isEliminated) ?? null;
+    this.optimizeBoardAndItems(bot, brain, humanPlayer, sharedPool, aiParams);
+
+    return didAct;
+  }
+
+  private computeNextBotActionDelayMs(isRolldown: boolean): number {
+    if (isRolldown) {
+      // 초고속 올인 롤다운: 0.6초 ~ 1.0초 간격으로 '다다다다다' 리롤!
+      return Math.round(600 + Math.random() * 400);
+    }
+    // 평상시 여유로운 리롤/배치: 1.0초 ~ 5.0초 간격
+    return Math.round(1000 + Math.random() * 4000);
+  }
+
+  private performPersonaLevelUpStep(
+    bot: Participant,
+    brain: BotBrainState,
+    currentRound: string
+  ): void {
+    const persona = brain.persona;
+    const targetGoldFloor = brain.targetGoldFloorThisRound;
+
+    if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
+      const threeStarCount = this.countTotalThreeStarUnits(bot);
+      if ((bot.level < 5 || threeStarCount >= 2) && bot.level < 10) {
+        if (bot.gold - 4 >= targetGoldFloor && bot.level < 9) {
+          bot.buyXp();
+        }
+      }
+    } else if (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') {
+      while (bot.gold - 4 >= targetGoldFloor && bot.level < 10) {
+        if (!bot.buyXp()) break;
+      }
+    } else if (persona === 'GOBLIN_GAMBLER') {
+      const isGoblinCashoutTurn = bot.hp <= 35 || bot.goblinVaultStacks >= 55;
+      const desiredLevel = isGoblinCashoutTurn ? 9 : 6;
+      if (bot.gold - 4 >= targetGoldFloor && bot.level < desiredLevel) {
+        bot.buyXp();
+      }
+    } else {
+      const stageNum = parseInt(currentRound.split('-')[0] || '2', 10);
+      const standardTargetLevel = Math.min(10, Math.max(4, stageNum + 3));
+      if (bot.gold - 4 >= targetGoldFloor && bot.level < standardTargetLevel) {
+        bot.buyXp();
+      }
+    }
+  }
+
+  /**
+   * 즉시 턴 완료가 필요한 경우(유저가 즉시 전투 시작 버튼을 눌렀을 때) 남은 AI 행동을 일괄 마무리한다.
    */
   public executeAITurn(
     bot: Participant,
@@ -161,7 +363,6 @@ export class AIBotController {
     const brain = this.getOrCreateBrain(bot);
     const aiParams = this.rankManager.getAISkillParameters();
 
-    // 1. 정찰(Scouting) 및 덱 전환(Pivot) + 플레이어 4~5코 3성 견제 타겟 탐색
     const unitsToDenyFromPlayer = this.performScoutingAndPivot(
       bot,
       brain,
@@ -170,7 +371,6 @@ export class AIBotController {
       aiParams
     );
 
-    // 2. 경제 운영 및 상점 루프 (고티어 3성 견제 구매 포함)
     this.runEconomyAndShopLoop(
       bot,
       brain,
@@ -180,13 +380,12 @@ export class AIBotController {
       aiParams
     );
 
-    // 3. 챔피언 복제기 보유 시 핵심 기물에 지능적 사용
     this.tryUseBotDuplicators(bot, brain, sharedPool);
 
-    // 4. 지능형 보드 배치, 저격 배치 및 아이템 장착
     const humanPlayer = allParticipants.find((p) => !p.isAI && !p.isEliminated) ?? null;
     this.optimizeBoardAndItems(bot, brain, humanPlayer, sharedPool, aiParams);
   }
+
 
   /**
    * 증강체 라운드(2-1, 3-2, 4-2) 진입 시 AI 봇이 자신의 페르소나와 덱에 맞는 증강체를 선택한다.
