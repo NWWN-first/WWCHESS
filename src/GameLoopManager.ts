@@ -184,7 +184,7 @@ export class GameLoopManager {
     this.clearResolutionTimeout();
     this.sharedPool.resetPool();
 
-    this.player = new Participant('player_1', '나 (전설이)', false, null);
+    this.player = new Participant('player_1', '지휘관', false, null);
     const bots = this.aiController.createSevenAIBots();
     this.participants = [this.player, ...bots];
 
@@ -903,8 +903,8 @@ export class GameLoopManager {
         awayDamageTaken = 2;
       }
 
-      // 플레이어 매치 종료 시: 승리한 지휘관 아바타가 패배한 지휘관 아바타에게 거대한 마법 레이저/투사체를 발사하는 피니시 연출 트리거!
-      if (pairing.home.id === this.player.id) {
+      // 플레이어 매치 종료 시: 크립전이 아닐 때만 승리 지휘관 아바타 -> 패배 지휘관 아바타 피니시 레이저 발사!
+      if (pairing.home.id === this.player.id && !pairing.isCreepMatch) {
         if (summary.winner === 'HOME') {
           this.activeFinisherLaser = {
             id: this.finisherSeqCounter++,

@@ -267,8 +267,13 @@ export class AIBotController {
     brain.isRolldownActive =
       isEmergencySurvival ||
       isGoblinCashoutTurn ||
-      bot.gold >= 50 ||
-      (stageNum >= 4 && bot.gold >= 30);
+      (bot.gold >= 50 && bot.level >= 8) ||
+      (stageNum >= 4 && bot.hp <= 40);
+
+    // 올인 상태일 때는 하한선을 비상용 0G 또는 10G로 동적 하향하여 '다다다다' 리롤이 실제로 동작하도록 보장!
+    const effectiveGoldFloor = brain.isRolldownActive
+      ? (isEmergencySurvival || isGoblinCashoutTurn ? 0 : 10)
+      : brain.targetGoldFloorThisRound;
 
     // 다음 액션 딜레이 재설정 (올인 타이밍: 600ms~1000ms 초고속 다다다다 리롤, 평상시: 1000ms~5000ms 여유로운 운영)
     brain.nextActionDelayMs = this.computeNextBotActionDelayMs(brain.isRolldownActive);
@@ -281,7 +286,7 @@ export class AIBotController {
     const nextRerollCost = bot.freeRerolls > 0 ? 0 : 2;
     if (
       brain.rerollsExecutedThisRound < brain.maxRerollsAllowedThisRound &&
-      bot.gold - nextRerollCost >= brain.targetGoldFloorThisRound
+      bot.gold - nextRerollCost >= effectiveGoldFloor
     ) {
       this.cleanupBenchIfFull(bot, brain, sharedPool);
       if (bot.rerollShop(sharedPool)) {
@@ -837,7 +842,8 @@ export class AIBotController {
       }
     }
 
-    if (worstBenchUnit && worstValue < 45) {
+    // 대기석이 완전히 찼을 때(빈칸 0개)는 worstValue 기준치와 무관하게 2성 미완성 기물 중 가장 점수 낮은 1기를 과감히 매각하여 상점 락 해제!
+    if (worstBenchUnit && (emptyCount === 0 || worstValue < 65)) {
       bot.sellUnit(worstBenchUnit.instanceId, sharedPool);
     }
   }

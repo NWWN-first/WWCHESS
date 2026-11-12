@@ -425,9 +425,15 @@ class FantasyAutoBattlerApp {
       }
     }
 
-    // 빈 곳 터치 시 선택 해제
+    // 4. 빈 곳 터치 시: 선택 해제 및 내 지휘관 아바타를 터치한 위치로 즉시 이동!
     this.selectedUnitInstanceId = null;
     document.getElementById('tap-tooltip-bar')?.classList.add('hidden');
+
+    if (viewed.id === this.game.player.id) {
+      this.pixelRenderer.movePlayerAvatarTo(px, py);
+      // 터치 지점에 반짝이는 마법 핑 이펙트 스폰
+      this.pixelRenderer.spawnPixelSparks(px, py, '#38bdf8', 12);
+    }
   }
 
   private startPointerInteraction(
@@ -1003,38 +1009,24 @@ class FantasyAutoBattlerApp {
           ? '🧰'
           : '📦';
 
+      // 불필요한 '미스터리', '대박상자' 텍스트 라벨 완전 삭제하고 순수한 ? / ! 도트 룬 심볼 및 보물상자만 직관적으로 표시
       btn.innerHTML = `
         <div class="mystery-badge-mark ${isExclaim ? 'mark-exclaim' : 'mark-question'}">${mysteryMark}</div>
         <div class="mystery-chest-body">
           <span class="chest-sprite-icon">${chestIcon}</span>
-          <span class="chest-sub-tag">${isExclaim ? '대박상자' : '미스터리'}</span>
         </div>
       `;
 
       btn.addEventListener('pointerup', (e) => {
         e.stopPropagation();
-        const pt = this.clientToCanvasPoint(e.clientX, e.clientY);
-        this.pixelRenderer.triggerImpactShake(5, 160, 0);
-        this.pixelRenderer.spawnPixelSparks(
-          pt.x,
-          pt.y,
-          orb.tier === 'PRISMATIC'
-            ? '#f472b6'
-            : orb.tier === 'GOLD'
-            ? '#ffea00'
-            : '#38bdf8',
-          38
+        // 터치했을 때도 아바타가 해당 상자로 달려가서 먹도록 유도
+        const orbCanvasX = Math.round(
+          this.pixelRenderer.viewportWidth * (0.22 + orb.x * 0.54)
         );
-        const rewards = this.game.openPlayerLootOrb(orb.id);
-        if (rewards.length > 0) {
-          this.pixelRenderer.spawnArcadePopupText(
-            pt.x,
-            pt.y - 18,
-            `🎉 ${rewards.join(' + ')}`,
-            orb.tier === 'PRISMATIC' ? '#f472b6' : '#ffea00',
-            15
-          );
-        }
+        const orbCanvasY = Math.round(
+          this.pixelRenderer.viewportHeight * (0.22 + orb.y * 0.36)
+        );
+        this.pixelRenderer.movePlayerAvatarTo(orbCanvasX, orbCanvasY);
       });
 
       orbLayer.appendChild(btn);
@@ -1561,7 +1553,50 @@ class FantasyAutoBattlerApp {
         selectedInstanceId: activeSelectedOrDraggedId,
         hasPandoraBench: viewed.augments.includes('AUG_PANDORA_BENCH'),
         opponentName: this.game.playerCurrentOpponentName,
+        isCreepMatch: this.game.getCurrentRoundType() !== 'PVP',
       });
+
+      // 내 아바타가 전장을 이동하다가 ? / ! 미스터리 상자와 접촉(거리 36px 이내)하면 상자 폭발 & 획득!
+      if (
+        viewed.id === this.game.player.id &&
+        this.game.playerLootOrbs.length > 0
+      ) {
+        const avatarPos = this.pixelRenderer.getPlayerAvatarCurrentPos();
+        for (const orb of [...this.game.playerLootOrbs]) {
+          const orbX = Math.round(
+            this.pixelRenderer.viewportWidth * (0.22 + orb.x * 0.54)
+          );
+          const orbY = Math.round(
+            this.pixelRenderer.viewportHeight * (0.22 + orb.y * 0.36)
+          );
+          const dist = Math.hypot(avatarPos.x - orbX, avatarPos.y - orbY);
+
+          if (dist <= 40) {
+            this.pixelRenderer.triggerImpactShake(6, 180, 0);
+            this.pixelRenderer.spawnPixelSparks(
+              orbX,
+              orbY,
+              orb.tier === 'PRISMATIC'
+                ? '#f472b6'
+                : orb.tier === 'GOLD'
+                ? '#ffea00'
+                : '#38bdf8',
+              38
+            );
+            const rewards = this.game.openPlayerLootOrb(orb.id);
+            if (rewards.length > 0) {
+              this.pixelRenderer.spawnArcadePopupText(
+                orbX,
+                orbY - 20,
+                `🎉 ${rewards.join(' + ')}`,
+                orb.tier === 'PRISMATIC' ? '#f472b6' : '#ffea00',
+                16
+              );
+            }
+            this.renderLootOrbs();
+          }
+        }
+      }
 
       requestAnimationFrame(frame);
     };

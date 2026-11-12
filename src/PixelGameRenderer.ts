@@ -942,10 +942,30 @@ export class PixelGameRenderer {
   private cataclysmFlashMs: number = 0;
   private globalAnimClockMs: number = 0;
 
+  // 유저 지휘관 아바타 실시간 자유 이동 위치 (터치한 전장 좌표로 이동)
+  public playerAvatarPos: { x: number; y: number } | null = null;
+  public playerAvatarTarget: { x: number; y: number } | null = null;
+
   // 현재 프레임의 육각형 보드 메트릭스 & 하단 1x9 대기석 슬롯 히트박스
   public hexMetrics!: HexBoardViewportMetrics;
   public benchSlotRects: Array<{ x: number; y: number; w: number; h: number }> = [];
   public isShopExpanded: boolean = true;
+
+  /**
+   * 유저가 화면(전장)을 터치했을 때 아바타의 목표 이동 좌표를 설정
+   */
+  public movePlayerAvatarTo(x: number, y: number): void {
+    const clampedX = Math.max(30, Math.min(this.viewportWidth - 30, x));
+    const clampedY = Math.max(40, Math.min(this.viewportHeight - 70, y));
+    this.playerAvatarTarget = { x: clampedX, y: clampedY };
+  }
+
+  public getPlayerAvatarCurrentPos(): { x: number; y: number } {
+    if (!this.playerAvatarPos) {
+      return this.getHomeCommanderAnchor();
+    }
+    return { ...this.playerAvatarPos };
+  }
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -1523,6 +1543,7 @@ export class PixelGameRenderer {
       draggedInstanceId: string | null;
       selectedInstanceId: string | null;
       hasPandoraBench: boolean;
+      isCreepMatch?: boolean;
     }
   ): void {
     const ctx = this.ctx;
@@ -1568,12 +1589,16 @@ export class PixelGameRenderer {
       );
     }
 
-    // 3. 전장 양측 아군 지휘관(전설이) 아바타 & 상대 지휘관 아바타 단상 렌더링
+    // 3. 전장 양측 아군 지휘관 아바타 & 상대 지휘관 아바타 단상 렌더링
+    // 크립전일 때는 상대 아바타를 일절 띄우지 않음!
+    const showAway =
+      !params.isCreepMatch && (params.inCombat || this.activeLaserFX !== null);
     this.drawCommanderAvatarsOnArena(
       ctx,
+      effectiveDt,
       params.viewedParticipant,
       params.opponentName ?? '적 지휘관',
-      params.inCombat || this.activeLaserFX !== null
+      showAway
     );
 
     // 4. 하단 1x9 대기석(Bench Row) 슬롯 및 기물 렌더링
@@ -3364,24 +3389,54 @@ export class PixelGameRenderer {
 
   private drawCommanderAvatarsOnArena(
     ctx: CanvasRenderingContext2D,
+    dtMs: number,
     homeParticipant: Participant,
     awayName: string,
     showAwayAvatar: boolean
   ): void {
-    const homePos = this.getHomeCommanderAnchor();
-    const bob = Math.sin(this.globalAnimClockMs * 0.005) * 2;
+    const homeAnchor = this.getHomeCommanderAnchor();
 
-    // 1) 아군 지휘관(꼬마 전설이) 단상 및 도트 아바타
+    // 초기화: 아바타 위치가 없으면 홈 단상에 위치
+    if (!this.playerAvatarPos) {
+      this.playerAvatarPos = { x: homeAnchor.x, y: homeAnchor.y };
+    }
+
+    // 목표 위치(playerAvatarTarget)가 있으면 부드럽게 걸어서 이동!
+    let isWalking = false;
+    if (this.playerAvatarTarget) {
+      const dx = this.playerAvatarTarget.x - this.playerAvatarPos.x;
+      const dy = this.playerAvatarTarget.y - this.playerAvatarPos.y;
+      const dist = Math.hypot(dx, dy);
+      const moveSpeed = 240; // 초당 240px 도트 달리기 속도
+      const step = (moveSpeed * dtMs) / 1000;
+
+      if (dist <= step) {
+        this.playerAvatarPos.x = this.playerAvatarTarget.x;
+        this.playerAvatarPos.y = this.playerAvatarTarget.y;
+        this.playerAvatarTarget = null;
+      } else {
+        isWalking = true;
+        this.playerAvatarPos.x += (dx / dist) * step;
+        this.playerAvatarPos.y += (dy / dist) * step;
+      }
+    }
+
+    const bob = isWalking
+      ? Math.sin(this.globalAnimClockMs * 0.02) * 4
+      : Math.sin(this.globalAnimClockMs * 0.005) * 2;
+
+    // 1) 아군 지휘관 도트 아바타: '나 (전설이)' 대신 참가자 실제 닉네임 표기 & 터치 좌표로 자유 이동
+    const avatarDisplayName = homeParticipant.name || '지휘관';
     this.drawSingleCommanderAvatar(
       ctx,
-      homePos.x,
-      homePos.y + bob,
+      this.playerAvatarPos.x,
+      this.playerAvatarPos.y + bob,
       'HOME',
-      homeParticipant.isAI ? homeParticipant.name.slice(0, 5) : '내 전설이',
+      avatarDisplayName.slice(0, 7),
       homeParticipant.hp
     );
 
-    // 2) 전투 중이거나 피니시 레이저 연출 중일 때 적 지휘관 아바타 표시
+    // 2) 크립전이 아니거나 대인전/피니시 레이저 시에만 적 지휘관 아바타 표시
     if (showAwayAvatar) {
       const awayPos = this.getAwayCommanderAnchor();
       this.drawSingleCommanderAvatar(
