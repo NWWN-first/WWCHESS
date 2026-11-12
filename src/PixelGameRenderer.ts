@@ -14,6 +14,7 @@ import { AvatarFinisherLaserPayload } from './GameLoopManager';
 import { HexBoardViewportMetrics, HexCoord, HexGridMath } from './HexGridMath';
 import { Participant, UnitInstance } from './Participant';
 import { CombatEvent, CombatUnit } from './SkillRegistry';
+import { soundFX } from './SoundFXManager';
 
 /**
  * 20종 판타지 챔피언 전용 28x28 도트 스프라이트 아키타입 및 컬러 팔레트
@@ -1361,6 +1362,8 @@ export class PixelGameRenderer {
       } else if (ev.type === 'FIVE_COST_3STAR_CATACLYSM') {
         this.cataclysmFlashMs = 900;
         this.triggerImpactShake(14, 550, 75);
+        soundFX.playFanfare(true);
+        soundFX.playMagicSpell();
         const cx = this.viewportWidth * 0.5;
         const cy = this.viewportHeight * 0.42;
         this.spawnArcadePopupText(cx, cy, '⚡ 99,999! 5코 3성 절대 권능! ⚡', '#ffea00', 22);
@@ -1373,6 +1376,11 @@ export class PixelGameRenderer {
         ev.toRow !== undefined &&
         ev.toCol !== undefined
       ) {
+        if (ev.type === 'SKILL_CAST') {
+          soundFX.playMagicSpell();
+        } else {
+          soundFX.playSlash(false);
+        }
         const attacker = unitById.get(ev.sourceId);
         const pFrom = HexGridMath.hexToScreenCenter(
           ev.fromRow,

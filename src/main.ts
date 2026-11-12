@@ -24,7 +24,9 @@ import {
   RankTier,
 } from './RankManager';
 import { CombatEngine } from './CombatEngine';
+import { PixiVfxEngine } from './PixiVfxEngine';
 import { CombatUnit } from './SkillRegistry';
+import { soundFX } from './SoundFXManager';
 import { SynergyEngine } from './SynergyEngine';
 
 type DragPayload =
@@ -59,7 +61,9 @@ const PERSONA_BADGE_LABELS: Record<AIPersona, string> = {
 class FantasyAutoBattlerApp {
   private game: GameLoopManager;
   private fxCanvas: HTMLCanvasElement;
+  private pixiCanvas: HTMLCanvasElement;
   private pixelRenderer: PixelGameRenderer;
+  private pixiVfx: PixiVfxEngine;
 
   private lastProcessedCombatTick: number = -1;
   private lastProcessedCombatEngine: CombatEngine | null = null;
@@ -96,7 +100,10 @@ class FantasyAutoBattlerApp {
 
   constructor() {
     this.fxCanvas = document.getElementById('fx-canvas') as HTMLCanvasElement;
+    this.pixiCanvas = document.getElementById('pixi-canvas') as HTMLCanvasElement;
     this.pixelRenderer = new PixelGameRenderer(this.fxCanvas);
+    this.pixiVfx = new PixiVfxEngine(this.pixiCanvas);
+    this.pixiVfx.init();
 
     // 로비 화면 대기 상태로 초기화 (autoStart = false)
     this.game = new GameLoopManager(undefined, false);
@@ -175,6 +182,16 @@ class FantasyAutoBattlerApp {
         const btn = document.getElementById('map-theme-btn');
         if (btn) {
           btn.textContent = nextTheme === 'FOREST' ? '🌲숲맵' : '🏰도시맵';
+        }
+      });
+
+    document
+      .getElementById('sound-toggle-btn')
+      ?.addEventListener('pointerup', () => {
+        const isMuted = soundFX.toggleMute();
+        const btn = document.getElementById('sound-toggle-btn');
+        if (btn) {
+          btn.textContent = isMuted ? '🔇' : '🔊';
         }
       });
 
@@ -345,6 +362,7 @@ class FantasyAutoBattlerApp {
     document
       .getElementById('toggle-shop-btn')
       ?.addEventListener('pointerup', () => {
+        soundFX.playPickup();
         this.isShopManuallyCollapsed = !this.isShopManuallyCollapsed;
         this.pixelRenderer.recomputeLayoutMetrics(this.isShopCurrentlyExpanded());
         this.renderShopAndControls();
@@ -353,6 +371,7 @@ class FantasyAutoBattlerApp {
     document
       .getElementById('quick-open-shop-btn')
       ?.addEventListener('pointerup', () => {
+        soundFX.playPickup();
         this.isShopManuallyCollapsed = false;
         this.pixelRenderer.recomputeLayoutMetrics(this.isShopCurrentlyExpanded());
         this.renderShopAndControls();
@@ -361,6 +380,7 @@ class FantasyAutoBattlerApp {
     document.getElementById('buy-xp-btn')?.addEventListener('pointerup', (e) => {
       const pt = this.clientToCanvasPoint(e.clientX, e.clientY);
       if (this.game.player.buyXp()) {
+        soundFX.playCoin(1.2);
         this.pixelRenderer.spawnPixelSparks(pt.x, pt.y, '#38bdf8', 14);
         this.renderAllHUD();
       } else if (this.game.player.lastActionMessage) {
@@ -373,6 +393,7 @@ class FantasyAutoBattlerApp {
       if (this.game.phase !== 'PREPARATION_PHASE') return;
       const pt = this.clientToCanvasPoint(e.clientX, e.clientY);
       if (this.game.player.rerollShop(this.game.sharedPool)) {
+        soundFX.playReroll();
         this.pixelRenderer.spawnPixelSparks(pt.x, pt.y, '#facc15', 14);
         if (this.game.player.lastActionMessage) {
           this.game.pushBannerNotification(this.game.player.lastActionMessage);
@@ -387,12 +408,14 @@ class FantasyAutoBattlerApp {
     document
       .getElementById('lock-shop-btn')
       ?.addEventListener('pointerup', () => {
+        soundFX.playPickup();
         this.game.player.isShopLocked = !this.game.player.isShopLocked;
         this.renderShopAndControls();
       });
 
     const triggerStartCombat = () => {
       if (this.game.phase !== 'PREPARATION_PHASE') return;
+      soundFX.playCombatHorn();
       this.lastProcessedCombatTick = -1;
       this.selectedUnitInstanceId = null;
       this.pixelRenderer.resetCombatJuiceStates();
@@ -639,6 +662,7 @@ class FantasyAutoBattlerApp {
         this.game.viewedParticipantId === this.game.player.id
       ) {
         this.isDragging = true;
+        soundFX.playPickup();
         if (this.dragPayload.kind === 'UNIT') {
           this.selectedUnitInstanceId = this.dragPayload.instanceId;
           // 주의: 상점을 수동으로 접어둔 상태라면, 배치 시야를 가리지 않도록 강제로 펼치지 않음!
@@ -860,6 +884,7 @@ class FantasyAutoBattlerApp {
       if (isSellingArea) {
         const earned = player.sellUnit(payload.instanceId, this.game.sharedPool);
         if (earned > 0) {
+          soundFX.playCoin(1.15);
           this.selectedUnitInstanceId = null;
           this.pixelRenderer.spawnPixelSparks(px, py, '#facc15', 26);
           this.pixelRenderer.spawnArcadePopupText(
@@ -887,6 +912,8 @@ class FantasyAutoBattlerApp {
       const benchIdx = this.pixelRenderer.screenPointToBenchIndex(px, py);
       if (benchIdx !== null) {
         player.moveUnit(fromLoc, { area: 'BENCH', index: benchIdx });
+        soundFX.playPlaceThud();
+        this.pixiVfx.triggerPlacementShockwave(px, py, 0x38bdf8);
         this.pixelRenderer.spawnPixelSparks(px, py, '#38bdf8', 10);
         this.renderAllHUD();
         return;
@@ -921,6 +948,8 @@ class FantasyAutoBattlerApp {
             hitHex.col,
             this.pixelRenderer.hexMetrics
           );
+          soundFX.playPlaceThud();
+          this.pixiVfx.triggerPlacementShockwave(center.x, center.y, 0x4cc9f0);
           this.pixelRenderer.spawnPixelSparks(center.x, center.y, '#4cc9f0', 14);
         } else if (player.lastActionMessage) {
           this.game.pushBannerNotification(player.lastActionMessage);
@@ -1024,7 +1053,11 @@ class FantasyAutoBattlerApp {
   private onGameStateUpdated(): void {
     // 새 정비 페이즈 진입 시 상점 자동 펼침 & 전투 진입 시 상점 자동 접힘
     if (this.game.phase !== this.lastKnownPhase) {
-      if (this.game.phase === 'PREPARATION_PHASE') {
+      if (this.game.phase === 'COMBAT_PHASE') {
+        soundFX.playCombatHorn();
+      } else if (this.game.phase === 'RESOLUTION_PHASE') {
+        soundFX.playFanfare(false);
+      } else if (this.game.phase === 'PREPARATION_PHASE') {
         this.isShopManuallyCollapsed = false;
       }
       this.lastKnownPhase = this.game.phase;
@@ -1589,6 +1622,7 @@ class FantasyAutoBattlerApp {
       card.addEventListener('pointerup', (e) => {
         const pt = this.clientToCanvasPoint(e.clientX, e.clientY);
         if (player.buyUnit(slotIdx, this.game.sharedPool)) {
+          soundFX.playCoin(1.0);
           this.pixelRenderer.spawnPixelSparks(pt.x, pt.y, '#fde047', 22);
           this.checkNewStarUpgrades();
           this.renderAllHUD();
@@ -1644,6 +1678,8 @@ class FantasyAutoBattlerApp {
             .querySelector('.select-aug-btn')
             ?.addEventListener('pointerup', () => {
               restoreAugBar?.classList.add('hidden');
+              soundFX.playAugmentSelect();
+              this.pixiVfx.triggerSkillExplosion(window.innerWidth * 0.5, window.innerHeight * 0.5, 0x818cf8);
               this.game.selectPlayerAugment(idx);
             });
           card
@@ -1834,9 +1870,11 @@ class FantasyAutoBattlerApp {
         !this.knownThreeStarUnits.has(loc.unit.instanceId)
       ) {
         this.knownThreeStarUnits.add(loc.unit.instanceId);
+        soundFX.playFanfare(true);
         this.pixelRenderer.triggerImpactShake(11, 380, 50);
         const cx = this.pixelRenderer.viewportWidth * 0.5;
         const cy = this.pixelRenderer.viewportHeight * 0.45;
+        this.pixiVfx.triggerSkillExplosion(cx, cy, 0xffea00);
         this.pixelRenderer.spawnPixelSparks(cx, cy, '#ffea00', 55);
         this.pixelRenderer.spawnArcadePopupText(
           cx,
@@ -1872,6 +1910,7 @@ class FantasyAutoBattlerApp {
         dpr,
         this.isShopCurrentlyExpanded()
       );
+      this.pixiVfx.resize(rawH, rawW, dpr);
     } else {
       this.isPortraitRotated = false;
       appEl?.classList.remove('force-landscape-rotated');
@@ -1881,6 +1920,7 @@ class FantasyAutoBattlerApp {
         dpr,
         this.isShopCurrentlyExpanded()
       );
+      this.pixiVfx.resize(rawW, rawH, dpr);
     }
   }
 
@@ -1890,6 +1930,8 @@ class FantasyAutoBattlerApp {
     const frame = (now: number) => {
       const dt = Math.min(50, now - lastTime);
       lastTime = now;
+
+      this.pixiVfx.update(dt);
 
       const viewed = this.game.getViewedParticipant();
       const isCombatPhase =
@@ -1944,6 +1986,8 @@ class FantasyAutoBattlerApp {
           const dist = Math.hypot(avatarPos.x - orbX, avatarPos.y - orbY);
 
           if (dist <= 40) {
+            soundFX.playCoin(1.4);
+            this.pixiVfx.triggerPlacementShockwave(orbX, orbY, 0xffea00);
             this.pixelRenderer.triggerImpactShake(6, 180, 0);
             this.pixelRenderer.spawnPixelSparks(
               orbX,

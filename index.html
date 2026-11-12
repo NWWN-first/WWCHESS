@@ -77,6 +77,8 @@
 
       <!-- 100vw x 100vh 전체화면 픽셀 아트 + 판타지 결투장 + 육각형 전장 & 석조 대기석 단일 게임 캔버스 -->
       <canvas id="fx-canvas" class="game-viewport-canvas"></canvas>
+      <!-- Pixi.js v8 WebGL 하드웨어 가속 발광 파티클 & 육각형 배치 충격파 캔버스 -->
+      <canvas id="pixi-canvas" class="pixi-viewport-canvas"></canvas>
 
       <!-- 정비 시간 5초 이하 긴박 붉은 맥동 비네팅 오버레이 -->
       <div id="urgent-vignette-overlay" class="urgent-vignette-overlay hidden"></div>
@@ -133,6 +135,10 @@
 
           <div id="map-theme-btn" class="rune-icon-btn" role="button" tabindex="0" title="전장 배경 변경 (판타지 숲 / 왕도 광장)">
             🌲숲맵
+          </div>
+
+          <div id="sound-toggle-btn" class="rune-icon-btn sound-gem" role="button" tabindex="0" title="효과음 켜기/끄기">
+            🔊
           </div>
 
           <div id="pool-inspector-btn" class="rune-icon-btn gold-gem" role="button" tabindex="0" title="공유 풀 도감">
