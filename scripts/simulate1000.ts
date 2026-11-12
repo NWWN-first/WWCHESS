@@ -4,7 +4,7 @@
 // 원본 src는 수정하지 않고, GameLoopManager 인스턴스만 몽키패치한다.
 
 import { GameLoopManager } from '../src/GameLoopManager';
-import { UNIT_TEMPLATES, TRAIT_DEFINITIONS } from '../src/GameData';
+import { UNIT_TEMPLATES, TRAIT_DEFINITIONS, AUGMENT_DEFINITIONS, ITEM_DEFINITIONS } from '../src/GameData';
 import { Participant } from '../src/Participant';
 import { SynergyEngine } from '../src/SynergyEngine';
 
@@ -29,6 +29,25 @@ const get = (m: Map<string, Agg>, k: string) => {
   if (!a) { a = newAgg(); m.set(k, a); }
   return a;
 };
+
+// 증강체(Augment) 통계 집계
+interface AugStat {
+  pickCount: number;
+  rankSum: number;
+  top1: number;
+  top4: number;
+}
+const augmentStats = new Map<string, AugStat>();
+
+// 아이템(Item) 통계 집계
+interface ItemStat {
+  equipCount: number;
+  rankSum: number;
+  top1: number;
+  top4: number;
+  equippedUnits: Map<string, number>;
+}
+const itemStats = new Map<string, ItemStat>();
 
 // APM
 const apm = {
@@ -80,7 +99,17 @@ function runOneGame(): void {
   game.player.persona = 'FLEX_MASTER';
 
   const everyone = () => game.participants;
-  const lastBoards = new Map<string, { units: Set<string>; traits: Set<string>; prismaticTraits: Set<string>; lowCost3Stars: number }>();
+  const lastBoards = new Map<
+    string,
+    {
+      units: Set<string>;
+      traits: Set<string>;
+      prismaticTraits: Set<string>;
+      lowCost3Stars: number;
+      items: { itemId: string; unitId: string }[];
+      augments: string[];
+    }
+  >();
   const placementOf = new Map<string, number>();
   let playSec = 0;
   let rounds = 0;
@@ -187,12 +216,16 @@ function runOneGame(): void {
       for (const p of sides) {
         const ids = new Set<string>();
         let lowCost3 = 0;
+        const bItems: { itemId: string; unitId: string }[] = [];
         for (let r = 0; r < Participant.BOARD_ROWS; r++) {
           for (let c = 0; c < Participant.BOARD_COLS; c++) {
             const u = p.board[r][c];
             if (u) {
               ids.add(u.unitId);
               if (u.starLevel === 3 && u.cost <= 3) lowCost3++;
+              for (const it of u.items) {
+                bItems.push({ itemId: it, unitId: u.unitId });
+              }
             }
           }
         }
@@ -208,6 +241,8 @@ function runOneGame(): void {
           traits: new Set(tr),
           prismaticTraits: new Set(prismTr),
           lowCost3Stars: lowCost3,
+          items: bItems,
+          augments: [...p.augments],
         });
         const cnt = p.getBoardUnitCount();
         if (cnt < p.level) { flaws.boardUnderfill++; flaws.boardUnderfillUnits += p.level - cnt; }
@@ -302,6 +337,23 @@ function runOneGame(): void {
         if (place === 1) reroll3StarStats.top1++;
         if (place <= 4) reroll3StarStats.top4++;
       }
+      for (const augId of lb.augments) {
+        let as = augmentStats.get(augId);
+        if (!as) { as = { pickCount: 0, rankSum: 0, top1: 0, top4: 0 }; augmentStats.set(augId, as); }
+        as.pickCount++;
+        as.rankSum += place;
+        if (place === 1) as.top1++;
+        if (place <= 4) as.top4++;
+      }
+      for (const it of lb.items) {
+        let is = itemStats.get(it.itemId);
+        if (!is) { is = { equipCount: 0, rankSum: 0, top1: 0, top4: 0, equippedUnits: new Map() }; itemStats.set(it.itemId, is); }
+        is.equipCount++;
+        is.rankSum += place;
+        if (place === 1) is.top1++;
+        if (place <= 4) is.top4++;
+        is.equippedUnits.set(it.unitId, (is.equippedUnits.get(it.unitId) ?? 0) + 1);
+      }
     }
     const key = p.id === game.player.id ? 'PLAYER(FLEX)' : (p.persona ?? 'NONE');
     const pe = placementWinsByPersona.get(key) ?? { n: 0, sum: 0, top1: 0 };
@@ -393,6 +445,66 @@ if (reroll3StarStats.count > 0) {
   console.log(`  -> 평균 순위:     ${(reroll3StarStats.rankSum / reroll3StarStats.count).toFixed(2)}위`);
 } else {
   console.log('  리롤 3성 덱 표본 없음');
+}
+
+console.log('\n[1-F] 증강체(Augment) 티어별 픽수, 순방률(TOP 4), 우승률(1위) 및 평균 순위');
+const augRows = [...augmentStats.entries()]
+  .map(([id, a]) => {
+    const def = AUGMENT_DEFINITIONS.find((d) => d.id === id);
+    return {
+      id,
+      name: def?.name ?? id,
+      tier: def?.tier ?? 'SILVER',
+      category: def?.category ?? 'COMBAT',
+      picks: a.pickCount,
+      top1Rate: a.pickCount ? a.top1 / a.pickCount : 0,
+      top4Rate: a.pickCount ? a.top4 / a.pickCount : 0,
+      avgPlace: a.pickCount ? a.rankSum / a.pickCount : 0,
+    };
+  })
+  .sort((a, b) => b.top4Rate - a.top4Rate);
+
+for (const tier of ['SILVER', 'GOLD', 'PRISMATIC'] as const) {
+  console.log(`\n  --- [${tier} 증강체] ---`);
+  const tierRows = augRows.filter((r) => r.tier === tier);
+  for (const r of tierRows.slice(0, 10)) {
+    console.log(`    ${r.name.padEnd(16)} 픽 ${r.picks}회  순방률(TOP4) ${(r.top4Rate * 100).toFixed(1)}%  우승률(1위) ${(r.top1Rate * 100).toFixed(1)}%  평균순위 ${r.avgPlace.toFixed(2)}위`);
+  }
+}
+const heroAugs = augRows.filter((r) => r.category === 'HERO');
+if (heroAugs.length > 0) {
+  console.log(`\n  --- [영웅 증강 (Hero Augments)] ---`);
+  for (const r of heroAugs) {
+    console.log(`    ${r.name.padEnd(16)} 픽 ${r.picks}회  순방률(TOP4) ${(r.top4Rate * 100).toFixed(1)}%  우승률(1위) ${(r.top1Rate * 100).toFixed(1)}%  평균순위 ${r.avgPlace.toFixed(2)}위`);
+  }
+}
+
+console.log('\n[1-G] 완성 아이템(Item) 15종 전체 밸런스 순위표');
+const itemRows = [...itemStats.entries()]
+  .map(([id, a]) => {
+    const def = ITEM_DEFINITIONS[id as keyof typeof ITEM_DEFINITIONS];
+    let topUnit = '없음';
+    let maxCount = 0;
+    for (const [uId, cnt] of a.equippedUnits.entries()) {
+      if (cnt > maxCount) {
+        maxCount = cnt;
+        topUnit = UNIT_TEMPLATES[uId]?.name ?? uId;
+      }
+    }
+    return {
+      id,
+      name: def?.name ?? id,
+      equips: a.equipCount,
+      top1Rate: a.equipCount ? a.top1 / a.equipCount : 0,
+      top4Rate: a.equipCount ? a.top4 / a.equipCount : 0,
+      avgPlace: a.equipCount ? a.rankSum / a.equipCount : 0,
+      topUnit,
+    };
+  })
+  .sort((a, b) => b.top4Rate - a.top4Rate);
+
+for (const r of itemRows) {
+  console.log(`  ${r.name.padEnd(14)} 장착 ${String(r.equips).padStart(4)}회  순방률(TOP4) ${(r.top4Rate * 100).toFixed(1)}%  우승률 ${(r.top1Rate * 100).toFixed(1)}%  평균순위 ${r.avgPlace.toFixed(2)}위  (최다 장착: ${r.topUnit})`);
 }
 
 console.log('\n[1-C] 페르소나별 평균 순위 (1위=최고)');

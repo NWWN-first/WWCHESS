@@ -630,6 +630,67 @@ const UNIT_SKILL_HANDLERS: Record<string, SkillHandler> = {
   },
 
   /**
+   * [5코 전설] 심연의 여왕 릴리스 (u5_lilith): 피의 여왕 연쇄 학살
+   * 체력이 가장 낮은 적 뒤로 순간이동하여 단일 대상 처형 강타 + 주변 1칸 적들에게 40% 스플래시 피해!
+   * 처치 성공 시 즉시 마나 100% 회복하여 연속 학살 발동! (3성 달성 시: 99,999 피해로 적 전체 즉사)
+   */
+  u5_lilith: (caster, primaryTarget, allUnits, ctx) => {
+    const enemies = getLivingEnemies(caster, allUnits);
+    let lowestEnemy = primaryTarget;
+
+    if (enemies.length > 0) {
+      enemies.sort((a, b) => a.currentHp - b.currentHp);
+      lowestEnemy = enemies[0];
+    }
+
+    const behindTile = ctx.findEmptyTileBehindTarget(caster, lowestEnemy);
+    if (behindTile) {
+      ctx.teleportUnit(caster, behindTile.row, behindTile.col);
+    }
+
+    const executeDamage = getSkillPrimaryValue(caster) + caster.atk * 1.5;
+    const result = ctx.dealDamage(
+      caster,
+      lowestEnemy,
+      executeDamage,
+      'PHYSICAL',
+      true,
+      true
+    );
+
+    // 주변 1칸 적들에게 40% 스플래시 피해 부여
+    const splashTargets = getLivingEnemies(caster, allUnits).filter(
+      (e) =>
+        e.instanceId !== lowestEnemy.instanceId &&
+        chebyshevDist(lowestEnemy.row, lowestEnemy.col, e.row, e.col) <= 1
+    );
+    for (const splTarget of splashTargets) {
+      ctx.dealDamage(
+        caster,
+        splTarget,
+        executeDamage * 0.4,
+        'PHYSICAL',
+        caster.enableSkillCrit,
+        true
+      );
+    }
+
+    if (result.killed) {
+      caster.currentMana = caster.maxMana;
+      caster.manaLockTimerMs = 0;
+      ctx.emitEvent({
+        type: 'MANA_RESET',
+        tick: ctx.currentTick,
+        sourceId: caster.instanceId,
+        targetId: lowestEnemy.instanceId,
+        team: caster.team,
+        unitId: caster.unitId,
+        message: '🩸 [심연의 여왕 릴리스] 피의 처형 성공! 마나 100% 즉시 리셋!',
+      });
+    }
+  },
+
+  /**
    * 18. [5코 전설] 고대 종말룡 이그니스 (u5_ignis): 종말의 지옥불 브레스
    * 공중으로 날아올라 적 보드 전체(8x7)에 지옥불 브레스를 퍼부어 모든 적에게 피해 및 2초 기절!
    * (3성 달성 시 스킬 피해량 99,999로 적 보드 전체 즉사!)

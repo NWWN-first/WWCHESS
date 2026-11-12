@@ -317,11 +317,11 @@ export class CombatEngine implements SkillCombatContext {
     // TFT 시즌 18 신규 실버/골드 증강 전투 버프
     if (owner.augments.includes('AUG_STAND_UNITED_1')) {
       const activeTraits = synergyMap.size;
-      cu.atk = Math.round(cu.atk * (1 + activeTraits * 0.03));
-      cu.baseAtk = Math.round(cu.baseAtk * (1 + activeTraits * 0.03));
-      cu.spellPower = Number((cu.spellPower + activeTraits * 0.03).toFixed(2));
-      cu.def += activeTraits * 3;
-      cu.baseDef += activeTraits * 3;
+      cu.atk = Math.round(cu.atk * (1 + activeTraits * 0.02));
+      cu.baseAtk = Math.round(cu.baseAtk * (1 + activeTraits * 0.02));
+      cu.spellPower = Number((cu.spellPower + activeTraits * 0.02).toFixed(2));
+      cu.def += activeTraits * 2;
+      cu.baseDef += activeTraits * 2;
     }
     if (owner.augments.includes('AUG_BOXING_LESSON')) {
       cu.maxHp += 180;
@@ -1001,7 +1001,7 @@ export class CombatEngine implements SkillCombatContext {
         this.dealDamage(
           unit,
           enemy,
-          Math.round(unit.atk * 2.2 * unit.spellPower),
+          Math.round(unit.atk * 1.8 * unit.spellPower),
           'PHYSICAL',
           unit.enableSkillCrit,
           true
@@ -1237,9 +1237,9 @@ export class CombatEngine implements SkillCombatContext {
 
     let modifiedRaw = Math.max(1, rawAmount);
 
-    // 거인 학살자(GIANT_SLAYER): 대상 최대 체력 1400 이상일 때 피해량 +35%
+    // 거인 학살자(GIANT_SLAYER): 대상 최대 체력 1300 이상일 때 피해량 +35%
     if (
-      target.maxHp >= 1400 &&
+      target.maxHp >= 1300 &&
       attacker.items.some((id) => ITEM_DEFINITIONS[id]?.passiveFlags.giantSlayerBonus)
     ) {
       modifiedRaw *= 1.35;
@@ -1668,7 +1668,7 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // 아케인 빅토리! (AUG_ARCANE_VICTORY): 전투 8초 후 적 전체 2.5초 기절 및 마나 0 소멸
+    // 아케인 빅토리! (AUG_ARCANE_VICTORY): 전투 8초 후 적 전체 20% 마법 피해, 2.5초 기절 및 마나 0 소멸
     if (this.elapsedMs >= 8000 && this.elapsedMs - deltaMs < 8000) {
       for (const homeOrAway of ['HOME', 'AWAY'] as const) {
         const owner = homeOrAway === 'HOME' ? this.homeParticipant : this.awayParticipant;
@@ -1677,9 +1677,12 @@ export class CombatEngine implements SkillCombatContext {
           const caster = this.units.find((u) => u.team === homeOrAway && u.currentHp > 0);
           for (const e of enemies) {
             e.currentMana = 0;
+            const lightningDmg = Math.round(e.maxHp * 0.2);
             if (caster) {
+              this.dealDamage(caster, e, lightningDmg, 'MAGICAL', false, true);
               this.applyStun(caster, e, 2500);
             } else {
+              e.currentHp = Math.max(1, e.currentHp - lightningDmg);
               e.stunTimerMs = Math.max(e.stunTimerMs, 2500);
             }
           }
@@ -1770,10 +1773,10 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // 대천사의 지팡이(ARCHANGELS_STAFF): 매 4초마다 주문력 +25% 영구 중첩
+    // 대천사의 지팡이(ARCHANGELS_STAFF): 매 3초마다 주문력 +25% 영구 중첩
     this.archangelTickTimerMs += deltaMs;
-    if (this.archangelTickTimerMs >= 4000) {
-      this.archangelTickTimerMs -= 4000;
+    if (this.archangelTickTimerMs >= 3000) {
+      this.archangelTickTimerMs -= 3000;
       for (const u of this.units) {
         if (u.currentHp <= 0 || u.isReviving) continue;
         const count = u.items.filter(
