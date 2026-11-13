@@ -731,7 +731,7 @@ img {
    ========================================================================== */
 .right-player-dock {
   position: absolute;
-  top: 132px;
+  top: 42px;
   right: 5px;
   bottom: 18px;
   width: 70px;
@@ -743,8 +743,9 @@ img {
   transition: top 0.2s ease;
 }
 
+/* 상점 접힘: 우측 빠른출격 바 아래로 순위표를 내려 겹침 방지 */
 #app:not(.shop-dock-top-expanded) .right-player-dock {
-  top: 42px;
+  top: 114px;
 }
 
 .right-player-dock.shop-collapsed {
@@ -1085,7 +1086,8 @@ img {
   top: 34px;
   bottom: auto;
   left: 6px;
-  right: 6px;
+  /* 우측 순위표(70px)와 즉시출격 버튼이 겹치지 않도록 여백 */
+  right: 82px;
   height: 90px;
   z-index: 10;
   display: flex;
@@ -1099,28 +1101,35 @@ img {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.85);
 }
 
-/* 상점이 접혔을 때 우상단 근처 빠른 액션 */
+/* 상점 접힘: 우측 열에 세로 스택 → 순위표와 같은 X축에서 위아래로만 배치 */
 .collapsed-quick-bar {
   position: absolute;
-  top: 38px;
-  right: 8px;
+  top: 42px;
+  right: 5px;
   bottom: auto;
-  z-index: 11;
+  width: 70px;
+  z-index: 16;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
 }
 
 .quick-action-gem {
-  height: 34px;
-  padding: 0 14px;
+  width: 100%;
+  height: 30px;
+  padding: 0 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  font-size: 12px;
+  border-radius: 8px;
+  font-size: 10px;
   cursor: pointer;
-  box-shadow: 0 3px 0 #000;
+  box-shadow: 0 2px 0 #000;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .quick-action-gem.gold-gem {

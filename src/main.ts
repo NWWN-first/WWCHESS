@@ -1887,7 +1887,8 @@ class FantasyAutoBattlerApp {
     if (quickCombatBtn) {
       quickCombatBtn.classList.toggle('hidden', inCombat);
       if (this.game.phase === 'PREPARATION_PHASE') {
-        quickCombatBtn.textContent = `⏱️ ${this.game.prepRemainingSec}s (출격)`;
+        // 우측 70px 열에 맞춤 — 짧은 라벨로 순위표와 겹침/넘침 방지
+        quickCombatBtn.textContent = `⚔️ ${this.game.prepRemainingSec}s`;
       }
     }
 
