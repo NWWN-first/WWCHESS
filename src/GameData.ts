@@ -118,13 +118,13 @@ export const STAR_STAT_MULTIPLIER: Record<
 > = {
   1: {
     1: { hpMult: 1.0, atkMult: 1.0, skillMult: 1.0 },
-    2: { hpMult: 1.85, atkMult: 1.85, skillMult: 1.0 },
-    3: { hpMult: 3.55, atkMult: 3.55, skillMult: 1.15 }, // 1코 3성 뽕맛 강화
+    2: { hpMult: 1.9, atkMult: 1.9, skillMult: 1.05 },
+    3: { hpMult: 3.75, atkMult: 3.75, skillMult: 1.28 }, // 1코 3성 뽕맛 강화
   },
   2: {
     1: { hpMult: 1.0, atkMult: 1.0, skillMult: 1.0 },
-    2: { hpMult: 1.85, atkMult: 1.85, skillMult: 1.0 },
-    3: { hpMult: 3.62, atkMult: 3.62, skillMult: 1.25 }, // 2코 3성 캐리력 강화
+    2: { hpMult: 1.88, atkMult: 1.88, skillMult: 1.05 },
+    3: { hpMult: 3.78, atkMult: 3.78, skillMult: 1.35 }, // 2코 3성 캐리력 강화
   },
   3: {
     1: { hpMult: 1.0, atkMult: 1.0, skillMult: 1.0 },
@@ -141,6 +141,21 @@ export const STAR_STAT_MULTIPLIER: Record<
     2: { hpMult: 1.75, atkMult: 1.75, skillMult: 1.0 }, // 5코 2성 미세 완만화
     3: { hpMult: 4.0, atkMult: 3.5, skillMult: 20.0 }, // 5코 3성은 여전히 전장 즉사급
   },
+};
+
+/**
+ * 코스트별 전투력 보정 (플레이 피드백: 저코스트가 지나치게 약함).
+ * Participant 스탯 재계산 및 SkillRegistry 스킬 피해에 공통 적용.
+ */
+export const COST_COMBAT_BALANCE: Record<
+  CostTier,
+  { hp: number; atk: number; skill: number }
+> = {
+  1: { hp: 1.2, atk: 1.18, skill: 1.22 },
+  2: { hp: 1.12, atk: 1.1, skill: 1.14 },
+  3: { hp: 1.03, atk: 1.03, skill: 1.05 },
+  4: { hp: 1.0, atk: 1.0, skill: 1.0 },
+  5: { hp: 1.0, atk: 1.0, skill: 1.0 },
 };
 
 // ============================================================================

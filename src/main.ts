@@ -2,8 +2,10 @@
 
 import { getCreepMonsterTemplate } from './CreepMonsterData';
 import {
+  ALL_UNIT_LIST,
   AUGMENT_DEFINITIONS,
   BaseItemId,
+  CostTier,
   ITEM_DEFINITIONS,
   ItemId,
   SHOP_ODDS_BY_LEVEL,
@@ -25,7 +27,7 @@ import {
 } from './RankManager';
 import { CombatEngine } from './CombatEngine';
 import { PixiVfxEngine } from './PixiVfxEngine';
-import { CombatUnit } from './SkillRegistry';
+import { CombatUnit, estimateSkillDamagePreview } from './SkillRegistry';
 import { soundFX } from './SoundFXManager';
 import { SynergyEngine } from './SynergyEngine';
 import { ThreeJsGameRenderer } from './ThreeJsGameRenderer';
@@ -1433,13 +1435,7 @@ class FantasyAutoBattlerApp {
           <span>${st.count}/${nextThresh}</span>
         `;
         badge.addEventListener('pointerup', () => {
-          this.showTapTooltip(
-            `<strong>${st.definition.icon} ${st.definition.name} (${st.count}명)</strong><br/>${
-              st.definition.description
-            }<br/><span style="color:#fde047">${
-              st.activeEffect ? st.activeEffect.label : '임계값 미달'
-            }</span>`
-          );
+          this.showSynergyDetailTooltip(st.definition.id, st.count);
         });
         synContainer.appendChild(badge);
       }
@@ -2010,49 +2006,167 @@ class FantasyAutoBattlerApp {
     bar.classList.remove('hidden');
   }
 
+  private formatTraitsLine(traits: TraitId[]): string {
+    return traits
+      .map((t) => {
+        const def = TRAIT_DEFINITIONS[t];
+        return def ? `${def.icon}${def.name}` : t;
+      })
+      .join(' · ');
+  }
+
+  private formatSkillTooltipBlock(opts: {
+    unitId: string;
+    starLevel: 1 | 2 | 3;
+    atk: number;
+    spellPower: number;
+    fallbackName?: string;
+    fallbackDesc?: string;
+  }): string {
+    const preview = estimateSkillDamagePreview({
+      unitId: opts.unitId,
+      starLevel: opts.starLevel,
+      atk: opts.atk,
+      spellPower: opts.spellPower,
+    });
+    if (!preview) {
+      return `<span style="color:#fde047">[${opts.fallbackName ?? '스킬'}]:</span> ${
+        opts.fallbackDesc ?? '설명 없음'
+      }`;
+    }
+    const secondary =
+      preview.secondaryValue !== null
+        ? ` · 부가수치 ${preview.secondaryValue}`
+        : '';
+    const atkNote =
+      preview.atkRatio > 0
+        ? ` (계수 피해 + 공격력×${preview.atkRatio})`
+        : ' (주문력·성급 반영)';
+    return `<span style="color:#fde047">[${preview.skillName}]</span> ${preview.description}<br/><span class="tooltip-skill-dmg">예상 스킬 피해 ~${preview.primaryDamage}${secondary}${atkNote}</span>`;
+  }
+
   private showUnitDetailTooltip(unit: UnitInstance): void {
     const template = UNIT_TEMPLATES[unit.unitId];
-    const traitsStr = unit.traits
-      .map((t) => `${TRAIT_DEFINITIONS[t].icon}${TRAIT_DEFINITIONS[t].name}`)
-      .join(', ');
+    const traitsStr = this.formatTraitsLine(unit.traits);
     const itemsStr =
       unit.items.length > 0
         ? unit.items.map((i) => ITEM_DEFINITIONS[i]?.name).join(', ')
         : '없음';
+    const apPct = Math.round((unit.spellPower ?? 1) * 100);
 
     const portrait3d = this.is3DViewMode
       ? this.threeRenderer.getChampion3DPortraitDataUrl(unit.unitId, unit.cost)
       : null;
     const thumbHtml = portrait3d
-      ? `<img src="${portrait3d}" style="width:40px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #38bdf8;float:left;margin-right:8px;background:#090d16;" />`
+      ? `<img src="${portrait3d}" class="tooltip-thumb" />`
+      : '';
+
+    const skillHtml = template
+      ? this.formatSkillTooltipBlock({
+          unitId: unit.unitId,
+          starLevel: unit.starLevel,
+          atk: unit.atk,
+          spellPower: unit.spellPower ?? 1,
+        })
       : '';
 
     this.showTapTooltip(
-      `${thumbHtml}<strong>${unit.icon} ${unit.name} (${'★'.repeat(unit.starLevel)} · ${
-        unit.cost
-      }코)</strong> [${traitsStr}]<br/>HP ${unit.maxHp} · 공격 ${
-        unit.atk
-      } · 방어 ${unit.def} · 사거리 ${unit.range}칸 · 아이템: ${itemsStr}<br/><span style="color:#fde047">[${
-        template.skill.name
-      }]:</span> ${template.skill.description}`
+      `${thumbHtml}<div class="tooltip-body"><strong>${unit.icon} ${unit.name}</strong> (${'★'.repeat(
+        unit.starLevel
+      )} · ${unit.cost}코)<br/><span class="tooltip-traits">${traitsStr}</span><br/>HP ${
+        unit.maxHp
+      } · 공격력 ${unit.atk} · 주문력 ${apPct}% · 방어 ${unit.def} · 공속 ${
+        unit.atkSpeed
+      } · 사거리 ${unit.range}칸<br/>아이템: ${itemsStr}<br/>${skillHtml}</div>`
     );
   }
 
   private showCombatUnitTooltip(cu: CombatUnit): void {
     const template =
       UNIT_TEMPLATES[cu.unitId] ?? getCreepMonsterTemplate(cu.unitId);
-    const skillName = template?.skill.name ?? '야생 본능';
-    const skillDesc = template?.skill.description ?? '야생 몬스터의 특수 공격을 수행합니다.';
+    const traitsStr =
+      cu.traits?.length > 0
+        ? this.formatTraitsLine(cu.traits)
+        : '야생/크립';
+    const apPct = Math.round((cu.spellPower ?? 1) * 100);
+    const itemsStr =
+      cu.items?.length > 0
+        ? cu.items.map((i) => ITEM_DEFINITIONS[i]?.name ?? i).join(', ')
+        : '없음';
 
-    const portrait3d = this.is3DViewMode && UNIT_TEMPLATES[cu.unitId]
-      ? this.threeRenderer.getChampion3DPortraitDataUrl(cu.unitId, cu.cost)
-      : null;
+    const portrait3d =
+      this.is3DViewMode && UNIT_TEMPLATES[cu.unitId]
+        ? this.threeRenderer.getChampion3DPortraitDataUrl(cu.unitId, cu.cost)
+        : null;
     const thumbHtml = portrait3d
-      ? `<img src="${portrait3d}" style="width:40px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #38bdf8;float:left;margin-right:8px;background:#090d16;" />`
+      ? `<img src="${portrait3d}" class="tooltip-thumb" />`
       : '';
 
+    const skillHtml = UNIT_TEMPLATES[cu.unitId]
+      ? this.formatSkillTooltipBlock({
+          unitId: cu.unitId,
+          starLevel: cu.starLevel,
+          atk: cu.atk,
+          spellPower: cu.spellPower ?? 1,
+        })
+      : `<span style="color:#fde047">[${
+          template?.skill.name ?? '야생 본능'
+        }]:</span> ${
+          template?.skill.description ?? '야생 몬스터의 특수 공격을 수행합니다.'
+        }`;
+
+    const teamTag = cu.team === 'AWAY' ? '<span class="tooltip-enemy-tag">적</span> ' : '';
+
     this.showTapTooltip(
-      `${thumbHtml}<strong>${cu.icon} ${cu.name} (${cu.starLevel}성)</strong> | HP ${cu.currentHp}/${cu.maxHp} · 공격 ${cu.atk} · 딜량 ${cu.totalDamageDealt}<br/><span style="color:#fde047">[${skillName}]:</span> ${skillDesc}`
+      `${thumbHtml}<div class="tooltip-body">${teamTag}<strong>${cu.icon} ${
+        cu.name
+      }</strong> (${'★'.repeat(cu.starLevel)} · ${cu.cost}코)<br/><span class="tooltip-traits">${traitsStr}</span><br/>HP ${
+        cu.currentHp
+      }/${cu.maxHp} · 공격력 ${cu.atk} · 주문력 ${apPct}% · 방어 ${
+        cu.def
+      } · 딜량 ${cu.totalDamageDealt}<br/>아이템: ${itemsStr}<br/>${skillHtml}</div>`
+    );
+  }
+
+  private showSynergyDetailTooltip(traitId: TraitId, activeCount: number): void {
+    const def = TRAIT_DEFINITIONS[traitId];
+    if (!def) return;
+
+    const units = ALL_UNIT_LIST.filter((u) => u.traits.includes(traitId)).sort(
+      (a, b) => a.cost - b.cost || a.name.localeCompare(b.name)
+    );
+    const byCost = new Map<CostTier, typeof units>();
+    for (const u of units) {
+      const list = byCost.get(u.cost) ?? [];
+      list.push(u);
+      byCost.set(u.cost, list);
+    }
+
+    const rosterHtml = [1, 2, 3, 4, 5]
+      .map((cost) => {
+        const list = byCost.get(cost as CostTier);
+        if (!list || list.length === 0) return '';
+        const chips = list
+          .map(
+            (u) =>
+              `<span class="tooltip-unit-chip cost-${u.cost}">${u.icon} ${u.name} <em>${u.cost}</em></span>`
+          )
+          .join('');
+        return `<div class="tooltip-cost-row"><span class="tooltip-cost-label">${cost}코</span><div class="tooltip-unit-grid">${chips}</div></div>`;
+      })
+      .filter(Boolean)
+      .join('');
+
+    const tiersHtml = def.effects
+      .map((eff) => {
+        const reached = activeCount >= eff.threshold;
+        const cls = reached ? 'tooltip-tier-active' : 'tooltip-tier-inactive';
+        return `<div class="${cls}">${reached ? '✓' : '○'} ${eff.label}</div>`;
+      })
+      .join('');
+
+    this.showTapTooltip(
+      `<div class="tooltip-body tooltip-synergy-detail"><strong>${def.icon} ${def.name}</strong> <span class="tooltip-synergy-count">${activeCount}명 활성</span><br/>${def.description}<br/><div class="tooltip-tier-list">${tiersHtml}</div><div class="tooltip-roster-title">소속 유닛</div>${rosterHtml}</div>`
     );
   }
 

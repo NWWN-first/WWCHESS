@@ -21,6 +21,13 @@ import { AISkillParameters, RankManager } from './RankManager';
 import { SharedPoolManager } from './SharedPoolManager';
 import { SynergyEngine } from './SynergyEngine';
 import { NeuralBotEngine, NeuralInferenceResult } from './NeuralBotEngine';
+import {
+  defaultRuleBasedPlanner,
+  isDynamicStrategyExperimentEnabled,
+  ObservableStateSummary,
+  StrategyChangeReason,
+  validateStrategicPlan,
+} from './strategy';
 
 export interface MissedDesirableBuyEvent {
   botId: string;
@@ -47,6 +54,12 @@ export interface BotBrainState {
   unitsToDenyCache: Set<string>;
   lastNeuralResult?: NeuralInferenceResult;
   currentRoundLabel?: string;
+  /** Step 7b: 페르소나 전환 횟수 (판당 최대 1) */
+  personaSwitchCount: number;
+  lastPersonaSwitchRoundLabel?: string;
+  lastStrategyReason?: StrategyChangeReason;
+  absoluteRoundIndex: number;
+  lastPersonaSwitchRoundIndex?: number;
 }
 
 
@@ -283,6 +296,8 @@ export class AIBotController {
       maxRerollsAllowedThisRound: 6,
       targetGoldFloorThisRound: 20,
       unitsToDenyCache: new Set<string>(),
+      personaSwitchCount: 0,
+      absoluteRoundIndex: 0,
     };
     this.botBrains.set(bot.id, state);
     return state;
@@ -297,6 +312,172 @@ export class AIBotController {
       brain = this.initializeBotBrain(bot, persona, trait);
     }
     return brain;
+  }
+
+  /**
+   * Step 7b: EXPERIMENT_DYNAMIC_STRATEGY=1 일 때만 스테이지 시작(X-1/X-2)에 페르소나 전환을 평가한다.
+   * 시너지 피봇과는 분리(Decision #1). prepareBotForRealTimePrep 직전에 호출해야 골드/리롤 캐시가 새 페르소나로 갱신된다.
+   */
+  public evaluateDynamicStrategies(
+    allParticipants: Participant[],
+    sharedPool: SharedPoolManager,
+    roundLabel: string,
+    absoluteRoundIndex: number
+  ): void {
+    if (!isDynamicStrategyExperimentEnabled()) return;
+
+    for (const bot of allParticipants) {
+      if (!bot.isAI || bot.isEliminated) continue;
+      const brain = this.getOrCreateBrain(bot);
+      brain.absoluteRoundIndex = absoluteRoundIndex;
+      brain.currentRoundLabel = roundLabel;
+
+      const summary = this.buildObservableStateSummary(
+        bot,
+        brain,
+        allParticipants,
+        sharedPool,
+        roundLabel
+      );
+      const plan = defaultRuleBasedPlanner.propose(summary);
+      const boardTwoStarCount = bot.board
+        .flat()
+        .filter((u): u is UnitInstance => !!u && u.starLevel >= 2).length;
+      const ownedUnitsOfRecommendedTrait = bot
+        .getAllUnitLocations()
+        .filter((loc) => loc.unit.traits.includes(plan.recommendedMainTrait))
+        .length;
+      const roundsSinceLastSwitch =
+        brain.lastPersonaSwitchRoundIndex === undefined
+          ? null
+          : absoluteRoundIndex - brain.lastPersonaSwitchRoundIndex;
+
+      const validated = validateStrategicPlan(plan, {
+        currentPersona: brain.persona,
+        currentTrait: brain.targetTrait,
+        boardTwoStarCount,
+        ownedUnitsOfRecommendedTrait,
+        personaSwitchCount: brain.personaSwitchCount,
+        roundsSinceLastSwitch,
+      });
+      if (!validated) continue;
+      if (validated.recommendedPersona === brain.persona) continue;
+
+      this.applyPersonaSwitch(
+        bot,
+        brain,
+        validated.recommendedPersona,
+        validated.reason,
+        roundLabel,
+        absoluteRoundIndex
+      );
+    }
+  }
+
+  private buildObservableStateSummary(
+    bot: Participant,
+    brain: BotBrainState,
+    allParticipants: Participant[],
+    sharedPool: SharedPoolManager,
+    roundLabel: string
+  ): ObservableStateSummary {
+    const alive = allParticipants.filter((p) => !p.isEliminated);
+    const boardValue = bot.board
+      .flat()
+      .filter((u): u is UnitInstance => !!u)
+      .reduce((sum, u) => sum + u.cost * Math.pow(3, u.starLevel - 1) * 3, 0);
+    const benchUnitCount = bot.bench.filter((u) => u !== null).length;
+    const threeStarCount = bot
+      .getAllUnitLocations()
+      .filter((loc) => loc.unit.starLevel >= 3).length;
+
+    const traitContestCounts: Partial<Record<TraitId, number>> = {};
+    for (const p of alive) {
+      if (p.id === bot.id) continue;
+      const states = SynergyEngine.calculateActiveSynergies(p).filter(
+        (s) => s.count > 0 && s.activeEffect
+      );
+      for (const st of states) {
+        traitContestCounts[st.definition.id] =
+          (traitContestCounts[st.definition.id] ?? 0) + 1;
+      }
+    }
+
+    const powerScores = alive.map((p) => {
+      const value = p.board
+        .flat()
+        .filter((u): u is UnitInstance => !!u)
+        .reduce((sum, u) => sum + u.cost * Math.pow(3, u.starLevel - 1) * 3, 0);
+      return { id: p.id, score: value + p.hp * 0.35 + p.level * 8 };
+    });
+    powerScores.sort((a, b) => b.score - a.score);
+    const relativePowerRank =
+      powerScores.findIndex((x) => x.id === bot.id) + 1 || alive.length;
+    const averageTableLevel =
+      alive.reduce((s, p) => s + p.level, 0) / Math.max(1, alive.length);
+
+    const coreIds = Object.values(UNIT_TEMPLATES)
+      .filter((t) => t.traits.includes(brain.targetTrait))
+      .map((t) => t.id);
+    let remaining = 0;
+    let total = 0;
+    for (const id of coreIds) {
+      remaining += sharedPool.getRemainingCount(id);
+      total += sharedPool.getMaxCount(id);
+    }
+    const coreUnitsRemainingRatio =
+      total > 0 ? remaining / total : 0.5;
+
+    const streak =
+      bot.winStreak > 0
+        ? bot.winStreak
+        : bot.loseStreak > 0
+        ? -bot.loseStreak
+        : 0;
+
+    return {
+      botId: bot.id,
+      self: {
+        hp: bot.hp,
+        gold: bot.gold,
+        level: bot.level,
+        xp: bot.xp,
+        streak,
+        boardValue,
+        benchUnitCount,
+        currentMainTrait: brain.targetTrait,
+        coreUnitsRemainingRatio,
+        persona: brain.persona,
+        threeStarCount,
+        goblinVaultStacks: bot.goblinVaultStacks,
+      },
+      table: {
+        stage: roundLabel,
+        traitContestCounts,
+        relativePowerRank,
+        averageTableLevel,
+      },
+    };
+  }
+
+  private applyPersonaSwitch(
+    bot: Participant,
+    brain: BotBrainState,
+    nextPersona: AIPersona,
+    reason: StrategyChangeReason,
+    roundLabel: string,
+    absoluteRoundIndex: number
+  ): void {
+    brain.persona = nextPersona;
+    bot.persona = nextPersona;
+    brain.personaSwitchCount += 1;
+    brain.lastPersonaSwitchRoundLabel = roundLabel;
+    brain.lastPersonaSwitchRoundIndex = absoluteRoundIndex;
+    brain.lastStrategyReason = reason;
+    // 고블린 이탈 시 롤다운 플래그는 다음 prepareBotForRealTimePrep에서 재평가
+    if (nextPersona !== 'GOBLIN_GAMBLER') {
+      brain.isRolldownActive = false;
+    }
   }
 
   /**

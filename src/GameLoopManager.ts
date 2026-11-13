@@ -584,6 +584,28 @@ export class GameLoopManager {
       }
     }
 
+    // 1.5 Step 7b: 동적 전략/페르소나 전환 평가 (EXPERIMENT_DYNAMIC_STRATEGY=1, X-1/X-2만)
+    // prepareBotForRealTimePrep보다 먼저 실행해야 골드 하한·리롤 상한이 새 페르소나로 갱신된다.
+    {
+      const stage = this.stage;
+      const roundInStage = this.roundInStage;
+      const isStrategyEvalWindow =
+        stage >= 2 && (roundInStage === 1 || roundInStage === 2);
+      if (
+        typeof process !== 'undefined' &&
+        process.env?.EXPERIMENT_DYNAMIC_STRATEGY === '1' &&
+        isStrategyEvalWindow
+      ) {
+        const absoluteRoundIndex = (stage - 1) * 5 + roundInStage;
+        this.aiController.evaluateDynamicStrategies(
+          this.participants,
+          this.sharedPool,
+          roundLabel,
+          absoluteRoundIndex
+        );
+      }
+    }
+
     // 2. 생존한 AI 봇 7명의 실시간 동적 APM(평상시 1~5초 간격 vs 올인 Rolldown 시 0.6~1초 '다다다다' 리롤) 초기화
     for (const p of this.participants) {
       if (p.isAI && !p.isEliminated) {

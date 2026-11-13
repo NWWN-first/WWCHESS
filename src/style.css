@@ -769,23 +769,128 @@ img {
 
 .tap-tooltip-bar {
   position: absolute;
-  top: 40px;
+  top: 36px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 25;
-  max-width: 72%;
+  max-width: min(92%, 540px);
+  max-height: 48vh;
+  overflow-y: auto;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  padding: 6px 12px;
-  background: rgba(11, 16, 31, 0.96);
+  padding: 8px 12px;
+  background: rgba(11, 16, 31, 0.97);
   border: 2px solid #facc15;
   border-radius: 10px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.85);
   font-size: 11px;
-  line-height: 1.35;
+  line-height: 1.4;
   color: #f8fafc;
 }
+
+.tooltip-thumb {
+  width: 40px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #38bdf8;
+  float: left;
+  margin-right: 8px;
+  background: #090d16;
+  flex-shrink: 0;
+}
+
+.tooltip-body {
+  overflow: hidden;
+}
+
+.tooltip-traits {
+  color: #7dd3fc;
+}
+
+.tooltip-enemy-tag {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #7f1d1d;
+  color: #fecaca;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.tooltip-skill-dmg {
+  color: #fde68a;
+}
+
+.tooltip-synergy-count {
+  color: #fde047;
+  font-weight: 700;
+}
+
+.tooltip-tier-list {
+  margin: 6px 0 8px;
+}
+
+.tooltip-tier-active {
+  color: #fde047;
+  font-weight: 600;
+}
+
+.tooltip-tier-inactive {
+  color: #94a3b8;
+}
+
+.tooltip-roster-title {
+  margin-top: 4px;
+  margin-bottom: 4px;
+  color: #e2e8f0;
+  font-weight: 700;
+}
+
+.tooltip-cost-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+  align-items: flex-start;
+}
+
+.tooltip-cost-label {
+  flex: 0 0 28px;
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.tooltip-unit-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tooltip-unit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(30, 41, 59, 0.95);
+  border: 1px solid #334155;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.tooltip-unit-chip em {
+  font-style: normal;
+  opacity: 0.7;
+  margin-left: 2px;
+}
+
+.tooltip-unit-chip.cost-1 { border-color: #64748b; }
+.tooltip-unit-chip.cost-2 { border-color: #22c55e; }
+.tooltip-unit-chip.cost-3 { border-color: #38bdf8; }
+.tooltip-unit-chip.cost-4 { border-color: #a855f7; }
+.tooltip-unit-chip.cost-5 { border-color: #f59e0b; }
 
 .tooltip-close-gem {
   padding: 2px 7px;

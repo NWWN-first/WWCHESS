@@ -6,6 +6,7 @@ import {
   CompletedItemId,
   combineBaseItems,
   CostTier,
+  COST_COMBAT_BALANCE,
   ITEM_DEFINITIONS,
   ItemId,
   STAR_STAT_MULTIPLIER,
@@ -169,9 +170,10 @@ export class Participant implements PoolParticipant {
     if (!template) return;
 
     const mult = STAR_STAT_MULTIPLIER[template.cost][unit.starLevel];
+    const costBal = COST_COMBAT_BALANCE[template.cost];
 
-    let maxHp = Math.round(template.stats.hp * mult.hpMult);
-    let atk = Math.round(template.stats.atk * mult.atkMult);
+    let maxHp = Math.round(template.stats.hp * mult.hpMult * costBal.hp);
+    let atk = Math.round(template.stats.atk * mult.atkMult * costBal.atk);
     let def = template.stats.def;
     let atkSpeedBonus = 0;
     let range = template.stats.range;
