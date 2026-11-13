@@ -111,9 +111,22 @@ class FantasyAutoBattlerApp {
     this.pixelRenderer = new PixelGameRenderer(this.fxCanvas);
     this.pixiVfx = new PixiVfxEngine(this.pixiCanvas);
     this.threeRenderer = new ThreeJsGameRenderer(this.threeCanvas);
-    this.threeRenderer.setOverheadLayer(
-      document.getElementById('unit-overhead-layer')
-    );
+    const overheadLayer = document.getElementById('unit-overhead-layer');
+    this.threeRenderer.setOverheadLayer(overheadLayer);
+    // 장착 아이템 아이콘 탭 → 능력치 툴팁
+    overheadLayer?.addEventListener('pointerdown', (e) => {
+      const chip = (e.target as HTMLElement | null)?.closest?.(
+        '.uoh-item'
+      ) as HTMLElement | null;
+      const itemId = chip?.dataset.itemId;
+      if (!itemId || !ITEM_DEFINITIONS[itemId as ItemId]) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.showEquippedItemTooltip(itemId as ItemId, {
+        x: e.clientX,
+        y: e.clientY,
+      });
+    });
     this.threeRenderer.onModelsLoaded = () => {
       if (this.is3DViewMode) {
         this.renderShopAndControls();
@@ -607,6 +620,13 @@ class FantasyAutoBattlerApp {
     const pt = this.clientToCanvasPoint(e.clientX, e.clientY);
     const px = pt.x;
     const py = pt.y;
+
+    // 상점 열린 상태에서 필드(캔버스) 아무 곳이나 탭하면 상점 접기
+    if (this.isShopCurrentlyExpanded()) {
+      this.isShopManuallyCollapsed = true;
+      this.pixelRenderer.recomputeLayoutMetrics(false);
+      this.renderShopAndControls();
+    }
 
     const viewed = this.game.getViewedParticipant();
     const hit3D = this.is3DViewMode
@@ -1610,8 +1630,12 @@ class FantasyAutoBattlerApp {
               ? { kind: 'ITEM', itemBenchIndex: idx, itemId }
               : null,
             () => {
+              const stats = this.formatItemStatLines(itemId);
+              const statsHtml = stats.length
+                ? `<div style="margin-top:4px;color:#fef08a">${stats.join('<br/>')}</div>`
+                : '';
               this.showTapTooltip(
-                `<strong>${def.icon} ${def.name}</strong><br/>${def.description}<br/><span style="color:#7dd3fc">기물 위로 드래그하여 장착하거나, 다른 재료 아이템 위로 올려 대기석에서 즉시 합성</span>`,
+                `<strong>${def.icon} ${def.name}</strong><br/>${def.description}${statsHtml}<br/><span style="color:#7dd3fc">기물 위로 드래그하여 장착하거나, 다른 재료 위로 올려 대기석에서 즉시 합성</span>`,
                 { x: e.clientX, y: e.clientY }
               );
             }
@@ -2208,6 +2232,41 @@ class FantasyAutoBattlerApp {
     modal.classList.remove('hidden');
   }
 
+  private formatItemStatLines(itemId: ItemId): string[] {
+    const def = ITEM_DEFINITIONS[itemId];
+    if (!def) return [];
+    const s = def.stats;
+    const lines: string[] = [];
+    if (s.hp) lines.push(`❤️ 체력 +${s.hp}`);
+    if (s.atk) lines.push(`⚔️ 공격력 +${s.atk}`);
+    if (s.def) lines.push(`🛡️ 방어력 +${s.def}`);
+    if (s.atkSpeed) lines.push(`💨 공속 +${Math.round(s.atkSpeed * 100)}%`);
+    if (s.spellPower) lines.push(`✨ 주문력 +${Math.round(s.spellPower * 100)}%`);
+    if (s.startMana) lines.push(`💧 시작 마나 +${s.startMana}`);
+    if (s.critChance) lines.push(`🎯 치확 +${Math.round(s.critChance * 100)}%`);
+    if (s.critDamage) lines.push(`💥 치피 +${Math.round(s.critDamage * 100)}%`);
+    if (s.omnivamp) lines.push(`🩸 흡혈 +${Math.round(s.omnivamp * 100)}%`);
+    if (s.bonusRange) lines.push(`🏹 사거리 +${s.bonusRange}`);
+    return lines;
+  }
+
+  private showEquippedItemTooltip(
+    itemId: ItemId,
+    anchorClient?: { x: number; y: number }
+  ): void {
+    const def = ITEM_DEFINITIONS[itemId];
+    if (!def) return;
+    const stats = this.formatItemStatLines(itemId);
+    const statsHtml = stats.length
+      ? `<div style="margin-top:4px;color:#fef08a">${stats.join('<br/>')}</div>`
+      : '';
+    const kind = def.isCompleted ? '완성 아이템' : '기본 재료';
+    this.showTapTooltip(
+      `<strong>${def.icon} ${def.name}</strong> <span style="color:#94a3b8;font-size:11px">(${kind})</span><br/>${def.description}${statsHtml}`,
+      anchorClient
+    );
+  }
+
   private showTapTooltip(
     html: string,
     anchorClient?: { x: number; y: number }
@@ -2219,13 +2278,14 @@ class FantasyAutoBattlerApp {
     bar.classList.remove('hidden');
     // 아이템 등 클릭 지점 근처로 고정 — 화면 중앙을 떠다니지 않게
     if (anchorClient) {
+      // #app force-landscape 회전 시에도 올바른 로컬 좌표 사용
+      const pt = this.clientToCanvasPoint(anchorClient.x, anchorClient.y);
       const app = document.getElementById('app');
-      const rect = (app ?? document.body).getBoundingClientRect();
-      const localX = anchorClient.x - rect.left;
-      const localY = anchorClient.y - rect.top;
-      const maxW = Math.min(rect.width * 0.92, 540);
-      const left = Math.max(8, Math.min(rect.width - maxW - 8, localX - maxW * 0.5));
-      const top = Math.max(8, Math.min(rect.height - 80, localY + 18));
+      const w = app?.clientWidth || window.innerWidth || 360;
+      const h = app?.clientHeight || window.innerHeight || 640;
+      const maxW = Math.min(w * 0.92, 540);
+      const left = Math.max(8, Math.min(w - maxW - 8, pt.x - maxW * 0.5));
+      const top = Math.max(8, Math.min(h - 80, pt.y + 18));
       bar.style.left = `${left}px`;
       bar.style.top = `${top}px`;
       bar.style.transform = 'none';

@@ -145,16 +145,25 @@ img {
 }
 
 .uoh-item {
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: rgba(15, 23, 42, 0.92);
-  border: 1px solid #facc15;
-  border-radius: 3px;
-  font-size: 11px;
+  border: 1.5px solid #facc15;
+  border-radius: 4px;
+  font-size: 13px;
   line-height: 1;
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.uoh-item:active {
+  border-color: #38bdf8;
+  transform: scale(1.12);
 }
 
 .uoh-hp-track,

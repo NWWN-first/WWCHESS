@@ -1969,6 +1969,10 @@ export class ThreeJsGameRenderer {
           if (!def) continue;
           const chip = document.createElement('div');
           chip.className = 'uoh-item';
+          chip.dataset.itemId = itemId;
+          chip.title = `${def.name} — ${def.description}`;
+          chip.setAttribute('role', 'button');
+          chip.setAttribute('aria-label', def.name);
           chip.textContent = def.icon;
           itemsRow.appendChild(chip);
         }
