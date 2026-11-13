@@ -643,6 +643,125 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     stunAnim: 'DragonArmature|DragonArmature|Dragon_Hit',
     aura: 'GOBLIN_GOLD',
   },
+
+  // -------------------------------------------------------------
+  // [6차 최종 추가 10종 (총 60/60종 - 100% 완전 정복)]
+  // -------------------------------------------------------------
+  // 51. 칼드로스 (절대영도 리치왕 칼드로스) - 4코 Undead Scourge / Arcane Tower / Archmage (빙하 절대영도 리치왕)
+  u4_lichking: {
+    modelKey: 'Skeleton_Mage',
+    scale: 1.28,
+    primaryColor: 0x0ea5e9,
+    emissiveColor: 0x38bdf8,
+    attackAnim: 'Spellcast_Shoot',
+    skillAnim: 'Spellcast_Long',
+    deathAnim: 'Death_C_Skeletons',
+    stunAnim: 'Skeleton_Inactive_Standing_Pose',
+    aura: 'FROST_CYAN',
+  },
+  // 52. 미다스 (황금 연금술사 미다스) - 4코 Golden Goblin / Archmage / Arcane Tower (만물 황금 연금술 대가)
+  u4_midas: {
+    modelKey: 'Mage',
+    scale: 1.18,
+    primaryColor: 0xfacc15,
+    emissiveColor: 0xfde047,
+    attackAnim: 'Spellcast_Shoot',
+    skillAnim: 'Spellcast_Raise',
+    stunAnim: 'Lie_Idle',
+    aura: 'GOBLIN_GOLD',
+  },
+  // 53. 아르테미스 (용사냥꾼 아르테미스) - 4코 Dragonkin / Ranger / Berserker (용린 갑주 전설의 용 학살자)
+  u4_artemis: {
+    modelKey: 'Rogue_Hooded',
+    scale: 1.22,
+    primaryColor: 0xb91c1c,
+    emissiveColor: 0xf59e0b,
+    attackAnim: '2H_Ranged_Shoot',
+    skillAnim: '1H_Ranged_Shoot',
+    stunAnim: 'Lie_Idle',
+    aura: 'FIRE_RED',
+  },
+  // 54. 오베론 (숲의 고대수호자 오베론) - 4코 Elven Sylvan / Vanguard / Paladin (고대 요정왕 수호 기사)
+  u4_diablo: {
+    modelKey: 'Knight',
+    scale: 1.32,
+    primaryColor: 0x065f46,
+    emissiveColor: 0x22c55e,
+    attackAnim: '1H_Melee_Attack_Slice_Horizontal',
+    skillAnim: '2H_Melee_Attack_Spin',
+    stunAnim: 'Lie_Idle',
+    aura: 'POISON_GREEN',
+  },
+  // 55. 골드투스 (황금 고블린 왕 골드투스) - 5코 전설 Golden Goblin / Paladin / Vanguard (탐욕의 황금 고블린 황제)
+  u5_goldtooth: {
+    modelKey: 'Barbarian',
+    scale: 1.30,
+    primaryColor: 0xeab308,
+    emissiveColor: 0xfef08a,
+    attackAnim: '1H_Melee_Attack_Chop',
+    skillAnim: '2H_Melee_Attack_Jump_Chop',
+    stunAnim: 'Lie_Idle',
+    aura: 'GOBLIN_GOLD',
+  },
+  // 56. 루시엘 (타락한 대천사 루시엘) - 5코 전설 Holy Empire / Undead Scourge / Ranger (흑백 날개 타락천사 명궁)
+  u5_luciel: {
+    modelKey: 'Rogue_Hooded',
+    scale: 1.32,
+    primaryColor: 0x111827,
+    emissiveColor: 0xe0e7ff,
+    attackAnim: '2H_Ranged_Shoot',
+    skillAnim: '1H_Ranged_Shoot',
+    stunAnim: 'Lie_Idle',
+    aura: 'SHADOW_PURPLE',
+  },
+  // 57. 바하무트 (성운의 창세룡 바하무트) - 5코 전설 Dragonkin / Arcane Tower / Archmage (우주 성운 초대형 창세룡)
+  u5_bahamut: {
+    modelKey: 'Dragon',
+    scale: 1.45,
+    primaryColor: 0x1e1b4b,
+    emissiveColor: 0x38bdf8,
+    idleAnim: 'Idle',
+    walkAnim: 'Idle',
+    attackAnim: 'DragonArmature|DragonArmature|Dragon_Attack2',
+    skillAnim: '2H_Melee_Attack_Chop',
+    hitAnim: 'DragonArmature|DragonArmature|Dragon_Hit',
+    deathAnim: 'Death_A',
+    stunAnim: 'DragonArmature|DragonArmature|Dragon_Hit',
+    aura: 'ARCANE_BLUE',
+  },
+  // 58. 크로노스 (시간의 지배자 크로노스) - 5코 전설 Arcane Tower / Archmage / Undead Scourge (시공간 차원 지배신)
+  u5_chronos: {
+    modelKey: 'Mage',
+    scale: 1.30,
+    primaryColor: 0x1e3a8a,
+    emissiveColor: 0x38bdf8,
+    attackAnim: 'Spellcast_Shoot',
+    skillAnim: 'Spellcast_Long',
+    stunAnim: 'Lie_Idle',
+    aura: 'ARCANE_BLUE',
+  },
+  // 59. 릴리스 (심연의 여왕 릴리스) - 5코 전설 Abyssal Demon / Shadow Assassin / Berserker (피의 지옥 심연 여왕)
+  u5_lilith: {
+    modelKey: 'Rogue',
+    scale: 1.24,
+    primaryColor: 0x881337,
+    emissiveColor: 0xef4444,
+    attackAnim: 'Dualwield_Melee_Attack_Slice',
+    skillAnim: 'Dualwield_Melee_Attack_Stab',
+    stunAnim: 'Lie_Idle',
+    aura: 'FIRE_RED',
+  },
+  // 60. 이그드라실 (세계수의 화신 이그드라실) - 5코 전설 Elven Sylvan / Vanguard / Paladin (태고의 거대 세계수 현신)
+  u5_yggdrasil: {
+    modelKey: 'Barbarian',
+    scale: 1.45,
+    primaryColor: 0x271c14,
+    emissiveColor: 0x10b981,
+    attackAnim: '2H_Melee_Attack_Chop',
+    skillAnim: '2H_Melee_Attack_Spin',
+    stunAnim: 'Lie_Idle',
+    aura: 'POISON_GREEN',
+  },
 };
 
 export interface RenderState3D {
