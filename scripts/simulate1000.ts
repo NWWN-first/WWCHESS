@@ -17,6 +17,25 @@ const TARGET_TIER: RankTier = RANK_TIERS_ORDERED.includes(rawTier as RankTier)
 const TICK_MS = 200;
 const ROUND_CAP = 70;
 
+// Mulberry32 PRNG for reproducible runs
+function mulberry32(a: number) {
+  return function () {
+    let t = (a += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const rawSeed = process.env.SEED;
+if (rawSeed !== undefined && rawSeed !== '') {
+  const seedNum = parseInt(rawSeed, 10);
+  if (!Number.isNaN(seedNum)) {
+    Math.random = mulberry32(seedNum);
+    console.log(`[SEED] 고정 난수 시드 활성화: ${seedNum}`);
+  }
+}
+
 interface Agg {
   matches: number;
   wins: number;
@@ -87,7 +106,9 @@ const playSecPerGame: number[] = [];
 interface PersonaStat {
   n: number;
   sum: number;
+  ranks: number[];
   top1: number;
+  top4: number;
   pivots: number;
 }
 const placementWinsByPersona = new Map<string, PersonaStat>();
@@ -370,8 +391,10 @@ function runOneGame(): void {
     const key = p.id === game.player.id ? 'PLAYER(FLEX)' : (p.persona ?? 'NONE');
     const brain = p.isAI ? brainOf(p) : null;
     const pivots = brain ? brain.pivotedCount : 0;
-    const pe = placementWinsByPersona.get(key) ?? { n: 0, sum: 0, top1: 0, pivots: 0 };
-    pe.n++; pe.sum += place; if (place === 1) pe.top1++;
+    const pe = placementWinsByPersona.get(key) ?? { n: 0, sum: 0, ranks: [], top1: 0, top4: 0, pivots: 0 };
+    pe.n++; pe.sum += place; pe.ranks.push(place);
+    if (place === 1) pe.top1++;
+    if (place <= 4) pe.top4++;
     pe.pivots += pivots;
     placementWinsByPersona.set(key, pe);
 
@@ -521,10 +544,31 @@ for (const r of itemRows) {
   console.log(`  ${r.name.padEnd(14)} 장착 ${String(r.equips).padStart(4)}회  순방률(TOP4) ${(r.top4Rate * 100).toFixed(1)}%  우승률 ${(r.top1Rate * 100).toFixed(1)}%  평균순위 ${r.avgPlace.toFixed(2)}위  (최다 장착: ${r.topUnit})`);
 }
 
+function formatMeanCI(ranks: number[]): string {
+  const n = ranks.length;
+  if (n === 0) return '0.00위';
+  const mean = ranks.reduce((a, b) => a + b, 0) / n;
+  if (n === 1) return `${mean.toFixed(2)}위`;
+  const variance = ranks.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (n - 1);
+  const se = Math.sqrt(variance / n);
+  const ciLow = Math.max(1, mean - 1.96 * se);
+  const ciHigh = Math.min(8, mean + 1.96 * se);
+  return `${mean.toFixed(2)}위 (SE ±${se.toFixed(2)}, 95% CI [${ciLow.toFixed(2)}, ${ciHigh.toFixed(2)}])`;
+}
+
+function formatRateCI(successes: number, n: number): string {
+  if (n === 0) return '0.0%';
+  const p = successes / n;
+  const se = Math.sqrt((p * (1 - p)) / n);
+  const ciLow = Math.max(0, p - 1.96 * se) * 100;
+  const ciHigh = Math.min(1, p + 1.96 * se) * 100;
+  return `${(p * 100).toFixed(1)}% (SE ±${(se * 100).toFixed(1)}%, 95% CI [${ciLow.toFixed(1)}%, ${ciHigh.toFixed(1)}%])`;
+}
+
 console.log(`\n[1-C] 페르소나별 성적 및 피봇 횟수 (티어: ${TARGET_TIER}, 1위=최고)`);
 for (const [k, v] of placementWinsByPersona) {
   // place는 이미 실제 순위(1=우승)
-  console.log(`  ${k.padEnd(20)} 평균 순위 ${(v.sum / v.n).toFixed(2)}위 | 1위율 ${pct(v.top1, v.n)} | 피봇 총 ${v.pivots}회 (평균 ${(v.pivots / v.n).toFixed(2)}회/판) | (${v.n}판 표본)`);
+  console.log(`  ${k.padEnd(20)} 평균 순위 ${formatMeanCI(v.ranks)} | 1위율 ${formatRateCI(v.top1, v.n)} | 순방률(TOP4) ${formatRateCI(v.top4, v.n)} | 피봇 총 ${v.pivots}회 (평균 ${(v.pivots / v.n).toFixed(2)}회/판) | (${v.n}판 표본)`);
 }
 
 console.log('\n[2] 데드락/예외');
