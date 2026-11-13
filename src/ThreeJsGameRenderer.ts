@@ -524,6 +524,125 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
   },
+
+  // -------------------------------------------------------------
+  // [5차 신규 추가 10종 (총 50/60종 - 83.3% 달성)]
+  // -------------------------------------------------------------
+  // 41. 카즈 (환영의 검객 카즈) - 3코 Elven Sylvan / Shadow Assassin / Berserker (엘프 환영 신속 검객)
+  u3_kazu: {
+    modelKey: 'Rogue',
+    scale: 1.16,
+    primaryColor: 0x065f46,
+    emissiveColor: 0x34d399,
+    attackAnim: 'Dualwield_Melee_Attack_Slice',
+    skillAnim: '2H_Melee_Attack_Spin',
+    stunAnim: 'Lie_Idle',
+    aura: 'POISON_GREEN',
+  },
+  // 42. 말라코르 (영혼 수확자 말라코르) - 3코 Undead Scourge / Archmage (망령 영혼 수확 사령관)
+  u3_malakor: {
+    modelKey: 'Skeleton_Mage',
+    scale: 1.20,
+    primaryColor: 0x1e293b,
+    emissiveColor: 0x06b6d4,
+    attackAnim: 'Spellcast_Shoot',
+    skillAnim: 'Spellcast_Raise',
+    deathAnim: 'Death_C_Skeletons',
+    stunAnim: 'Skeleton_Inactive_Standing_Pose',
+    aura: 'FROST_CYAN',
+  },
+  // 43. 세라피나 (빛의 사제 세라피나) - 3코 Holy Empire / Arcane Tower / Paladin (순백의 대천사 사제)
+  u3_seraphina: {
+    modelKey: 'Mage',
+    scale: 1.10,
+    primaryColor: 0xfffbeb,
+    emissiveColor: 0xfacc15,
+    attackAnim: 'Spellcast_Shoot',
+    skillAnim: 'Spellcast_Long',
+    stunAnim: 'Lie_Idle',
+    aura: 'HOLY_GOLD',
+  },
+  // 44. 그리즐 (고블린 중장갑차 그리즐) - 3코 Golden Goblin / Vanguard (황금 강철 중장갑 전사)
+  u3_grizzle: {
+    modelKey: 'Knight',
+    scale: 1.30,
+    primaryColor: 0xd97706,
+    emissiveColor: 0xfacc15,
+    attackAnim: '1H_Melee_Attack_Chop',
+    skillAnim: '2H_Melee_Attack_Spin',
+    stunAnim: 'Lie_Idle',
+    aura: 'GOBLIN_GOLD',
+  },
+  // 45. 오리온 (별자리 명궁 오리온) - 3코 Arcane Tower / Ranger / Archmage (비전 성운 천문 명궁)
+  u3_orion: {
+    modelKey: 'Rogue_Hooded',
+    scale: 1.16,
+    primaryColor: 0x1e1b4b,
+    emissiveColor: 0x38bdf8,
+    attackAnim: '2H_Ranged_Shoot',
+    skillAnim: '1H_Ranged_Shoot',
+    stunAnim: 'Lie_Idle',
+    aura: 'ARCANE_BLUE',
+  },
+  // 46. 닉스 (심연의 밤마녀 닉스) - 3코 Abyssal Demon / Shadow Assassin / Archmage (심연 서큐버스 자객)
+  u3_nyx: {
+    modelKey: 'Rogue',
+    scale: 1.12,
+    primaryColor: 0x581c87,
+    emissiveColor: 0xc084fc,
+    attackAnim: 'Dualwield_Melee_Attack_Slice',
+    skillAnim: 'Dualwield_Melee_Attack_Stab',
+    stunAnim: 'Lie_Idle',
+    aura: 'SHADOW_PURPLE',
+  },
+  // 47. 아스타로트 (심연의 대공 아스타로트) - 4코 Abyssal Demon / Berserker (거대 심연 악마 버서커 군주)
+  u4_astaroth: {
+    modelKey: 'Barbarian',
+    scale: 1.35,
+    primaryColor: 0x7f1d1d,
+    emissiveColor: 0xef4444,
+    attackAnim: '1H_Melee_Attack_Chop',
+    skillAnim: '2H_Melee_Attack_Jump_Chop',
+    stunAnim: 'Lie_Idle',
+    aura: 'FIRE_RED',
+  },
+  // 48. 벨코라 (공허의 여제 벨코라) - 4코 Abyssal Demon / Arcane Tower / Archmage (차원의 균열 공허 여제)
+  u4_velkora: {
+    modelKey: 'Mage',
+    scale: 1.22,
+    primaryColor: 0x312e81,
+    emissiveColor: 0xa855f7,
+    attackAnim: 'Spellcast_Shoot',
+    skillAnim: 'Spellcast_Long',
+    stunAnim: 'Lie_Idle',
+    aura: 'SHADOW_PURPLE',
+  },
+  // 49. 브륜힐드 (천상의 발키리 브륜힐드) - 4코 Holy Empire / Paladin / Ranger (황금빛 전장의 수호 발키리)
+  u4_valkyrie: {
+    modelKey: 'Knight',
+    scale: 1.26,
+    primaryColor: 0xf8fafc,
+    emissiveColor: 0xfacc15,
+    attackAnim: '1H_Melee_Attack_Slice_Horizontal',
+    skillAnim: '2H_Melee_Attack_Chop',
+    stunAnim: 'Lie_Idle',
+    aura: 'HOLY_GOLD',
+  },
+  // 50. 파프니르 (황금 갑주룡 파프니르) - 4코 Dragonkin / Golden Goblin / Vanguard (탐욕의 거대 황금 갑주룡)
+  u4_fafnir: {
+    modelKey: 'Dragon',
+    scale: 1.25,
+    primaryColor: 0xeab308,
+    emissiveColor: 0xfde047,
+    idleAnim: 'Idle',
+    walkAnim: 'Idle',
+    attackAnim: 'DragonArmature|DragonArmature|Dragon_Attack2',
+    skillAnim: '2H_Melee_Attack_Chop',
+    hitAnim: 'DragonArmature|DragonArmature|Dragon_Hit',
+    deathAnim: 'Death_A',
+    stunAnim: 'DragonArmature|DragonArmature|Dragon_Hit',
+    aura: 'GOBLIN_GOLD',
+  },
 };
 
 export interface RenderState3D {
