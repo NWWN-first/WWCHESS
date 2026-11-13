@@ -7,8 +7,13 @@ import { GameLoopManager } from '../src/GameLoopManager';
 import { UNIT_TEMPLATES, TRAIT_DEFINITIONS, AUGMENT_DEFINITIONS, ITEM_DEFINITIONS } from '../src/GameData';
 import { Participant } from '../src/Participant';
 import { SynergyEngine } from '../src/SynergyEngine';
+import { RankTier, RANK_TIERS_ORDERED } from '../src/RankManager';
 
 const GAMES = parseInt(process.env.GAMES ?? '1000', 10);
+const rawTier = (process.env.TIER ?? 'SILVER').toUpperCase();
+const TARGET_TIER: RankTier = RANK_TIERS_ORDERED.includes(rawTier as RankTier)
+  ? (rawTier as RankTier)
+  : 'SILVER';
 const TICK_MS = 200;
 const ROUND_CAP = 70;
 
@@ -79,7 +84,13 @@ const drawCount = { pvp: 0, pvpTotal: 0, creepLoss: 0, creepTotal: 0 };
 const creepByRound = new Map<string, { total: number; loss: number }>();
 const roundsPerGame: number[] = [];
 const playSecPerGame: number[] = [];
-const placementWinsByPersona = new Map<string, { n: number; sum: number; top1: number }>();
+interface PersonaStat {
+  n: number;
+  sum: number;
+  top1: number;
+  pivots: number;
+}
+const placementWinsByPersona = new Map<string, PersonaStat>();
 let roundCapHit = 0;
 let deadlocks = 0;
 let combatTickSum = 0;
@@ -95,6 +106,7 @@ function logError(tag: string, e: unknown) {
 
 function runOneGame(): void {
   const game = new GameLoopManager();
+  game.rankManager.setTierForTesting(TARGET_TIER);
   const ai = game.aiController as any;
   game.player.persona = 'FLEX_MASTER';
 
@@ -356,12 +368,14 @@ function runOneGame(): void {
       }
     }
     const key = p.id === game.player.id ? 'PLAYER(FLEX)' : (p.persona ?? 'NONE');
-    const pe = placementWinsByPersona.get(key) ?? { n: 0, sum: 0, top1: 0 };
+    const brain = p.isAI ? brainOf(p) : null;
+    const pivots = brain ? brain.pivotedCount : 0;
+    const pe = placementWinsByPersona.get(key) ?? { n: 0, sum: 0, top1: 0, pivots: 0 };
     pe.n++; pe.sum += place; if (place === 1) pe.top1++;
+    pe.pivots += pivots;
     placementWinsByPersona.set(key, pe);
 
     if (p.isAI) {
-      const brain = brainOf(p);
       if (brain) flaws.pivotsTotal += brain.pivotedCount;
       flaws.botGames++;
     }
@@ -386,7 +400,7 @@ const elapsed = (Date.now() - t0) / 1000;
 const pct = (a: number, b: number) => (b > 0 ? ((a / b) * 100).toFixed(1) + '%' : 'n/a');
 const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
-console.log(`\n==== WWCHESS 헤드레스 자가대국 ${GAMES}판 (실행 ${elapsed.toFixed(1)}초, 크래시 ${crashed}) ====`);
+console.log(`\n==== WWCHESS 헤드레스 자가대국 ${GAMES}판 [티어: ${TARGET_TIER}] (실행 ${elapsed.toFixed(1)}초, 크래시 ${crashed}) ====`);
 
 const unitRows = [...unitStats.entries()]
   .map(([id, a]) => ({
@@ -507,10 +521,10 @@ for (const r of itemRows) {
   console.log(`  ${r.name.padEnd(14)} 장착 ${String(r.equips).padStart(4)}회  순방률(TOP4) ${(r.top4Rate * 100).toFixed(1)}%  우승률 ${(r.top1Rate * 100).toFixed(1)}%  평균순위 ${r.avgPlace.toFixed(2)}위  (최다 장착: ${r.topUnit})`);
 }
 
-console.log('\n[1-C] 페르소나별 평균 순위 (1위=최고)');
+console.log(`\n[1-C] 페르소나별 성적 및 피봇 횟수 (티어: ${TARGET_TIER}, 1위=최고)`);
 for (const [k, v] of placementWinsByPersona) {
   // place는 이미 실제 순위(1=우승)
-  console.log(`  ${k.padEnd(20)} 평균 순위 ${(v.sum / v.n).toFixed(2)}위  1위율 ${pct(v.top1, v.n)}  (${v.n}판 표본)`);
+  console.log(`  ${k.padEnd(20)} 평균 순위 ${(v.sum / v.n).toFixed(2)}위 | 1위율 ${pct(v.top1, v.n)} | 피봇 총 ${v.pivots}회 (평균 ${(v.pivots / v.n).toFixed(2)}회/판) | (${v.n}판 표본)`);
 }
 
 console.log('\n[2] 데드락/예외');
