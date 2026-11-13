@@ -109,6 +109,11 @@ class FantasyAutoBattlerApp {
     this.pixelRenderer = new PixelGameRenderer(this.fxCanvas);
     this.pixiVfx = new PixiVfxEngine(this.pixiCanvas);
     this.threeRenderer = new ThreeJsGameRenderer(this.threeCanvas);
+    this.threeRenderer.onModelsLoaded = () => {
+      if (this.is3DViewMode) {
+        this.renderShopAndControls();
+      }
+    };
     this.pixiVfx.init();
 
     // 3D 모드가 기본이므로 2D 캔버스는 완전 숨김 (화면 겹침 및 반투명 잔상 방지)
@@ -215,6 +220,8 @@ class FantasyAutoBattlerApp {
           this.fxCanvas.classList.remove('hidden');
           this.fxCanvas.style.display = 'block';
         }
+        // 2D/3D 전환 시 상점 카드 초상화 즉시 동기화
+        this.renderShopAndControls();
       });
 
     document
@@ -1773,12 +1780,21 @@ class FantasyAutoBattlerApp {
         '.shop-pixel-portrait'
       ) as HTMLCanvasElement | null;
       if (portraitCanvas) {
-        this.pixelRenderer.renderShopCardPortrait(
-          portraitCanvas,
-          unitId,
-          template.cost,
-          canUpgrade
-        );
+        if (this.is3DViewMode) {
+          this.threeRenderer.renderShopCardPortrait3D(
+            portraitCanvas,
+            unitId,
+            template.cost,
+            canUpgrade
+          );
+        } else {
+          this.pixelRenderer.renderShopCardPortrait(
+            portraitCanvas,
+            unitId,
+            template.cost,
+            canUpgrade
+          );
+        }
       }
 
       card.addEventListener('pointerup', (e) => {
@@ -2004,8 +2020,15 @@ class FantasyAutoBattlerApp {
         ? unit.items.map((i) => ITEM_DEFINITIONS[i]?.name).join(', ')
         : '없음';
 
+    const portrait3d = this.is3DViewMode
+      ? this.threeRenderer.getChampion3DPortraitDataUrl(unit.unitId, unit.cost)
+      : null;
+    const thumbHtml = portrait3d
+      ? `<img src="${portrait3d}" style="width:40px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #38bdf8;float:left;margin-right:8px;background:#090d16;" />`
+      : '';
+
     this.showTapTooltip(
-      `<strong>${unit.icon} ${unit.name} (${'★'.repeat(unit.starLevel)} · ${
+      `${thumbHtml}<strong>${unit.icon} ${unit.name} (${'★'.repeat(unit.starLevel)} · ${
         unit.cost
       }코)</strong> [${traitsStr}]<br/>HP ${unit.maxHp} · 공격 ${
         unit.atk
@@ -2020,8 +2043,16 @@ class FantasyAutoBattlerApp {
       UNIT_TEMPLATES[cu.unitId] ?? getCreepMonsterTemplate(cu.unitId);
     const skillName = template?.skill.name ?? '야생 본능';
     const skillDesc = template?.skill.description ?? '야생 몬스터의 특수 공격을 수행합니다.';
+
+    const portrait3d = this.is3DViewMode && UNIT_TEMPLATES[cu.unitId]
+      ? this.threeRenderer.getChampion3DPortraitDataUrl(cu.unitId, cu.cost)
+      : null;
+    const thumbHtml = portrait3d
+      ? `<img src="${portrait3d}" style="width:40px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #38bdf8;float:left;margin-right:8px;background:#090d16;" />`
+      : '';
+
     this.showTapTooltip(
-      `<strong>${cu.icon} ${cu.name} (${cu.starLevel}성)</strong> | HP ${cu.currentHp}/${cu.maxHp} · 공격 ${cu.atk} · 딜량 ${cu.totalDamageDealt}<br/><span style="color:#fde047">[${skillName}]:</span> ${skillDesc}`
+      `${thumbHtml}<strong>${cu.icon} ${cu.name} (${cu.starLevel}성)</strong> | HP ${cu.currentHp}/${cu.maxHp} · 공격 ${cu.atk} · 딜량 ${cu.totalDamageDealt}<br/><span style="color:#fde047">[${skillName}]:</span> ${skillDesc}`
     );
   }
 

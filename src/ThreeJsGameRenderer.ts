@@ -19,6 +19,7 @@ import {
 } from './GameData';
 import { HexCoord } from './HexGridMath';
 import { Participant } from './Participant';
+import { UNIT_PIXEL_SPECS, WEAPON_BADGE_ICONS } from './PixelGameRenderer';
 import { CombatEvent, CombatUnit } from './SkillRegistry';
 
 export type ChampionArchetype =
@@ -858,6 +859,14 @@ export class ThreeJsGameRenderer {
   private glbAnimations: Map<string, THREE.AnimationClip[]> = new Map();
   private glbLoader: GLTFLoader = new GLTFLoader();
 
+  // 3D 챔피언 초상화 오프스크린 렌더링 시스템 & 캐시
+  private portraitRenderer: THREE.WebGLRenderer | null = null;
+  private portraitScene: THREE.Scene | null = null;
+  private portraitCamera: THREE.PerspectiveCamera | null = null;
+  private portraitCanvas: HTMLCanvasElement | null = null;
+  private champion3DPortraitCache: Map<string, HTMLCanvasElement> = new Map();
+  public onModelsLoaded?: () => void;
+
   // 횃불 조명들 (Flickering Torches)
   private torchLights: { light: THREE.PointLight; baseIntensity: number; phase: number }[] = [];
 
@@ -990,6 +999,8 @@ export class ThreeJsGameRenderer {
             this.glbAnimations.set(src.key, gltf.animations);
           }
           this.upgradeActiveUnitsToGlb(src.key);
+          this.champion3DPortraitCache.clear();
+          this.onModelsLoaded?.();
         },
         undefined,
         (err) => {
@@ -2575,5 +2586,245 @@ export class ThreeJsGameRenderer {
         }
       }
     }
+  }
+
+  // -------------------------------------------------------------
+  // 3D 챔피언 초상화 오프스크린 렌더링 시스템
+  // -------------------------------------------------------------
+
+  /**
+   * 챔피언의 실제 3D 모델(GLB)을 스튜디오 조명 하에서 3/4 앵글로 촬영하여 2D 캔버스로 캐싱
+   */
+  public getOrCreateChampion3DPortrait(unitId: string, cost: CostTier): HTMLCanvasElement | null {
+    if (this.champion3DPortraitCache.has(unitId)) {
+      return this.champion3DPortraitCache.get(unitId)!;
+    }
+
+    const cfg = this.getChampion3DConfig(unitId);
+    const glbTemplate = this.glbLoadedTemplates.get(cfg.modelKey);
+    if (!glbTemplate) {
+      return null;
+    }
+
+    if (!this.portraitRenderer) {
+      this.portraitCanvas = document.createElement('canvas');
+      this.portraitCanvas.width = 192;
+      this.portraitCanvas.height = 148;
+      this.portraitRenderer = new THREE.WebGLRenderer({
+        canvas: this.portraitCanvas,
+        alpha: true,
+        antialias: true,
+        preserveDrawingBuffer: true,
+      });
+      this.portraitRenderer.setPixelRatio(1);
+      this.portraitRenderer.setSize(192, 148, false);
+      this.portraitRenderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.portraitRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this.portraitRenderer.toneMappingExposure = 1.35;
+
+      this.portraitScene = new THREE.Scene();
+
+      // 영웅 초상화 스튜디오 조명
+      const ambLight = new THREE.AmbientLight(0xffffff, 1.5);
+      this.portraitScene.add(ambLight);
+
+      const keyLight = new THREE.DirectionalLight(0xfffbeb, 2.4);
+      keyLight.position.set(2.5, 4, 3.5);
+      this.portraitScene.add(keyLight);
+
+      const rimLight = new THREE.DirectionalLight(0x67e8f9, 1.8);
+      rimLight.position.set(-2.5, 2.5, -2);
+      this.portraitScene.add(rimLight);
+
+      const fillLight = new THREE.DirectionalLight(0xfef08a, 1.0);
+      fillLight.position.set(0, -1.5, 2);
+      this.portraitScene.add(fillLight);
+
+      this.portraitCamera = new THREE.PerspectiveCamera(38, 192 / 148, 0.1, 50);
+    }
+
+    // 챔피언 모델 클론 및 재질 세팅
+    const cloned = SkeletonUtils.clone(glbTemplate) as THREE.Group;
+    cloned.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const m = child as THREE.Mesh;
+        if (m.material) {
+          const mat = (m.material as THREE.Material).clone() as THREE.MeshStandardMaterial;
+          if (mat.color && cfg.primaryColor) {
+            mat.color.lerp(new THREE.Color(cfg.primaryColor), 0.35);
+          }
+          if (cfg.emissiveColor) {
+            mat.emissive = new THREE.Color(cfg.emissiveColor);
+            mat.emissiveIntensity = 0.45;
+          }
+          mat.roughness = 0.45;
+          mat.metalness = 0.35;
+          m.material = mat;
+        }
+      }
+    });
+
+    // 모델별 구도 & 카메라 최적화
+    if (cfg.modelKey === 'Dragon') {
+      cloned.position.set(0, 0.15, 0);
+      this.portraitCamera!.position.set(0, 1.25, 3.8);
+      this.portraitCamera!.lookAt(0, 0.9, 0);
+      cloned.rotation.y = -0.45;
+    } else if (cfg.modelKey === 'Wolf') {
+      cloned.position.set(0, 0.15, 0);
+      this.portraitCamera!.position.set(0, 0.95, 2.7);
+      this.portraitCamera!.lookAt(0, 0.72, 0);
+      cloned.rotation.y = -0.4;
+    } else if (cfg.modelKey === 'Imp') {
+      cloned.position.set(0, 0.2, 0);
+      this.portraitCamera!.position.set(0, 1.15, 2.5);
+      this.portraitCamera!.lookAt(0, 0.85, 0);
+      cloned.rotation.y = -0.3;
+    } else {
+      // 인간형 (Knight, Mage, Rogue, Barbarian, Skeleton 등)
+      cloned.position.set(0, 0.15, 0);
+      this.portraitCamera!.position.set(0, 1.35, 2.75);
+      this.portraitCamera!.lookAt(0, 1.05, 0);
+      cloned.rotation.y = -0.32;
+    }
+
+    // 아이들 애니메이션 적용
+    const animList = this.glbAnimations.get(cfg.modelKey);
+    if (animList && animList.length > 0) {
+      const idleClip = animList.find(
+        (a) =>
+          a.name === (cfg.idleAnim || 'Idle') ||
+          a.name.includes('Idle') ||
+          a.name.includes('idle')
+      );
+      if (idleClip) {
+        const mixer = new THREE.AnimationMixer(cloned);
+        const act = mixer.clipAction(idleClip);
+        act.play();
+        mixer.update(0.35);
+      }
+    }
+
+    this.portraitScene!.add(cloned);
+    this.portraitRenderer.render(this.portraitScene!, this.portraitCamera!);
+    this.portraitScene!.remove(cloned);
+
+    // 2D 캔버스로 영구 캐싱
+    const cachedCanvas = document.createElement('canvas');
+    cachedCanvas.width = 192;
+    cachedCanvas.height = 148;
+    const cCtx = cachedCanvas.getContext('2d')!;
+    cCtx.drawImage(this.portraitCanvas!, 0, 0);
+
+    this.champion3DPortraitCache.set(unitId, cachedCanvas);
+    return cachedCanvas;
+  }
+
+  /**
+   * 3D 모드 상점 카드 초상화 렌더링
+   */
+  public renderShopCardPortrait3D(
+    portraitCanvas: HTMLCanvasElement,
+    unitId: string,
+    cost: CostTier,
+    isCanUpgrade: boolean
+  ): void {
+    const dpr = 2;
+    const logicalW = 96;
+    const logicalH = 74;
+    portraitCanvas.width = logicalW * dpr;
+    portraitCanvas.height = logicalH * dpr;
+
+    const pCtx = portraitCanvas.getContext('2d')!;
+    pCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pCtx.imageSmoothingEnabled = true;
+
+    const spec = UNIT_PIXEL_SPECS[unitId] ?? UNIT_PIXEL_SPECS.u1_garen;
+
+    // 1) 3D 전용 프리미엄 다크 메탈릭 그라데이션 배경
+    const costThemes: Record<number, { bgTop: string; bgBottom: string; ringColor: string }> = {
+      1: { bgTop: '#1e293b', bgBottom: '#090d16', ringColor: '#94a3b8' },
+      2: { bgTop: '#14532d', bgBottom: '#052e16', ringColor: '#22c55e' },
+      3: { bgTop: '#0369a1', bgBottom: '#082f49', ringColor: '#38bdf8' },
+      4: { bgTop: '#581c87', bgBottom: '#2e1065', ringColor: '#c084fc' },
+      5: { bgTop: '#78350f', bgBottom: '#451a03', ringColor: '#facc15' },
+    };
+    const theme = costThemes[cost] || costThemes[1];
+
+    const bgGrad = pCtx.createRadialGradient(
+      logicalW * 0.5,
+      logicalH * 0.55,
+      8,
+      logicalW * 0.5,
+      logicalH * 0.52,
+      logicalW * 0.72
+    );
+    bgGrad.addColorStop(0, theme.bgTop);
+    bgGrad.addColorStop(0.65, theme.bgBottom);
+    bgGrad.addColorStop(1, '#05070c');
+    pCtx.fillStyle = bgGrad;
+    pCtx.fillRect(0, 0, logicalW, logicalH);
+
+    // 2) 바닥 3D 룬 서클 패드 (Subtle 3D Halo)
+    pCtx.strokeStyle = theme.ringColor;
+    pCtx.lineWidth = 1.2;
+    pCtx.globalAlpha = 0.45;
+    pCtx.beginPath();
+    pCtx.ellipse(logicalW * 0.5, logicalH * 0.88, 28, 7, 0, 0, Math.PI * 2);
+    pCtx.stroke();
+    pCtx.globalAlpha = 1.0;
+
+    // 3) 2성/3성 합성 가능 시 골드 후광 링
+    if (isCanUpgrade) {
+      pCtx.strokeStyle = 'rgba(255, 234, 0, 0.75)';
+      pCtx.lineWidth = 2.2;
+      pCtx.beginPath();
+      pCtx.arc(logicalW * 0.5, logicalH * 0.52, 28, 0, Math.PI * 2);
+      pCtx.stroke();
+    }
+
+    // 4) 3D 챔피언 스냅샷 렌더링
+    const cached3D = this.getOrCreateChampion3DPortrait(unitId, cost);
+    if (cached3D) {
+      pCtx.drawImage(cached3D, 0, 0, logicalW, logicalH);
+    } else {
+      pCtx.fillStyle = '#64748b';
+      pCtx.font = '24px sans-serif';
+      pCtx.textAlign = 'center';
+      pCtx.textBaseline = 'middle';
+      pCtx.fillText('⏳', logicalW * 0.5, logicalH * 0.5);
+    }
+
+    // 5) 좌측 상단 "3D" 크리스탈 입체 뱃지
+    pCtx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+    pCtx.beginPath();
+    pCtx.roundRect(4, 4, 23, 13, 3);
+    pCtx.fill();
+    pCtx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+    pCtx.lineWidth = 1;
+    pCtx.stroke();
+    pCtx.fillStyle = '#38bdf8';
+    pCtx.font = 'bold 8px sans-serif';
+    pCtx.textAlign = 'center';
+    pCtx.textBaseline = 'middle';
+    pCtx.fillText('3D', 15.5, 11);
+
+    // 6) 우측 상단 무기 아이콘
+    const weaponIcon = WEAPON_BADGE_ICONS[spec.weapon] ?? '⚔️';
+    pCtx.font = '12px sans-serif';
+    pCtx.textAlign = 'right';
+    pCtx.textBaseline = 'alphabetic';
+    pCtx.globalAlpha = 0.88;
+    pCtx.fillText(weaponIcon, logicalW - 5, 15);
+    pCtx.globalAlpha = 1.0;
+  }
+
+  /**
+   * 툴팁 및 상세 정보 패널용 3D 초상화 DataURL 반환
+   */
+  public getChampion3DPortraitDataUrl(unitId: string, cost: CostTier): string | null {
+    const cached = this.getOrCreateChampion3DPortrait(unitId, cost);
+    if (!cached) return null;
+    return cached.toDataURL();
   }
 }

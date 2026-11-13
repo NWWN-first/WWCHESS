@@ -803,7 +803,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
   },
 };
 
-const WEAPON_BADGE_ICONS: Record<WeaponKind, string> = {
+export const WEAPON_BADGE_ICONS: Record<WeaponKind, string> = {
   GREATSWORD: '🗡️',
   SWORD_SHIELD: '🛡️',
   DUAL_DAGGERS: '⚔️',
