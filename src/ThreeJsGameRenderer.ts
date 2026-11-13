@@ -2461,8 +2461,31 @@ export class ThreeJsGameRenderer {
           auraRing.rotation.z += dtMs * 0.002;
         }
 
-        const targetRotY = cu.team === 'HOME' ? Math.PI : 0;
-        group.rotation.y += (targetRotY - group.rotation.y) * 0.2;
+        // 라운드 진행 중: 적군을 향해 180도 돌아서 전투 (가장 가까운 적을 직접 바라봄)
+        let targetRotY = cu.team === 'HOME' ? Math.PI : 0;
+        let closestDist = Infinity;
+        let closestEnemy: CombatUnit | null = null;
+        for (const other of state.combatUnits) {
+          if (other.team !== cu.team && other.currentHp > 0) {
+            const d = Math.hypot(other.row - cu.row, other.col - cu.col);
+            if (d < closestDist) {
+              closestDist = d;
+              closestEnemy = other;
+            }
+          }
+        }
+        if (closestEnemy) {
+          const tPos = this.hexToWorldPos(closestEnemy.row, closestEnemy.col);
+          const dx = tPos.x - group.position.x;
+          const dz = tPos.z - group.position.z;
+          if (Math.hypot(dx, dz) > 0.15) {
+            targetRotY = Math.atan2(dx, dz);
+          }
+        }
+        let rotDiff = targetRotY - group.rotation.y;
+        while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+        while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+        group.rotation.y += rotDiff * 0.2;
 
         const star3Ring = group.getObjectByName('STAR3_RING');
         if (star3Ring) {
@@ -2518,7 +2541,11 @@ export class ThreeJsGameRenderer {
             group.position.y += (0.2 - group.position.y) * 0.28;
             this.playUnitAnimation(u.instanceId, 'idle');
           }
-          group.rotation.y = Math.PI;
+          // 정비 페이즈: 플레이어(카메라)를 향해 정면(0도)을 바라보도록 부드럽게 회전 (얼굴 및 외형 확인)
+          let rotDiff = 0 - group.rotation.y;
+          while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+          while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+          group.rotation.y += rotDiff * 0.18;
 
           const auraRing = group.getObjectByName('AURA_RING');
           if (auraRing) auraRing.rotation.z += dtMs * 0.002;
@@ -2559,7 +2586,11 @@ export class ThreeJsGameRenderer {
           group.position.y += (0.25 - group.position.y) * 0.28;
           this.playUnitAnimation(u.instanceId, 'idle');
         }
-        group.rotation.y = Math.PI;
+        // 대기석: 항상 플레이어(카메라)를 향해 정면(0도)을 바라보도록 부드럽게 회전
+        let rotDiff = 0 - group.rotation.y;
+        while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+        while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+        group.rotation.y += rotDiff * 0.18;
 
         const auraRing = group.getObjectByName('AURA_RING');
         if (auraRing) auraRing.rotation.z += dtMs * 0.002;
