@@ -1948,14 +1948,18 @@ class FantasyAutoBattlerApp {
     document.getElementById('app')?.classList.toggle('shop-dock-top-expanded', isExpanded);
 
     if (quickCombatBtn) {
-      // 상점 열림 시에는 상단 독의 출격 버튼 사용 → 우하단 전투 버튼 숨김
-      const hideQuickCombat = inCombat || isExpanded;
-      quickCombatBtn.classList.toggle('hidden', hideQuickCombat);
+      // 상점 좌측 미니 즉시시작 — 상점 열림과 무관하게 준비 단계에서만 표시
+      quickCombatBtn.classList.toggle('hidden', inCombat);
       if (this.game.phase === 'PREPARATION_PHASE') {
-        quickCombatBtn.textContent =
-          this.game.prepStartMode === 'MANUAL'
-            ? '⚔️ 시작'
-            : `⚔️ ${this.game.prepRemainingSec}s`;
+        const isManual = this.game.prepStartMode === 'MANUAL';
+        const isUrgent = !isManual && this.game.prepRemainingSec <= 5;
+        quickCombatBtn.classList.toggle('urgent-pulse', isUrgent);
+        quickCombatBtn.textContent = isManual
+          ? '⚔️'
+          : String(this.game.prepRemainingSec);
+        quickCombatBtn.title = isManual
+          ? '라운드 시작'
+          : `즉시 출격 (${this.game.prepRemainingSec}s)`;
       }
     }
 
@@ -2004,21 +2008,8 @@ class FantasyAutoBattlerApp {
 
     const startCombatBtn = document.getElementById('start-combat-btn');
     if (startCombatBtn) {
-      startCombatBtn.classList.toggle('hidden', inCombat);
-      if (this.game.phase === 'PREPARATION_PHASE') {
-        const isManual = this.game.prepStartMode === 'MANUAL';
-        const isUrgent = !isManual && this.game.prepRemainingSec <= 5;
-        startCombatBtn.classList.toggle('urgent-pulse', isUrgent);
-        startCombatBtn.innerHTML = isManual
-          ? `
-          <span class="sword-emblem" style="font-size:15px;">⚔️</span>
-          <span class="battle-label">라운드 시작</span>
-        `
-          : `
-          <span class="sword-emblem" style="font-size:15px;">⏱️${this.game.prepRemainingSec}s</span>
-          <span class="battle-label">즉시출격</span>
-        `;
-      }
+      // 레거시 숨김 슬롯 — 실제 UI는 quick-start-combat-btn
+      startCombatBtn.classList.add('hidden');
     }
 
     const shopContainer = document.getElementById('shop-cards-container');
