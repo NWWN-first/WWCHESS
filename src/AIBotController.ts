@@ -480,6 +480,59 @@ export class AIBotController {
     }
   }
 
+  // ==========================================================================
+  // Soft Skill Noise — 사람처럼 모든 판단에 실력/온도 기반 흔들림·실수 주입
+  // (상점 utility에만 temperature가 쓰이던 구조를 레벨업/리롤/증강/아이템까지 확장)
+  // ==========================================================================
+
+  /** [-amp, +amp] 범위의 온도 비례 노이즈 */
+  private softNoise(aiParams: AISkillParameters, amplitude: number): number {
+    return (Math.random() - 0.5) * 2 * aiParams.temperature * amplitude;
+  }
+
+  /**
+   * 올바른 행동을 가끔 건너뛰는 실수.
+   * 저티어(낮은 skill / 높은 temperature)일수록 더 자주 발생.
+   */
+  private softShouldSkip(
+    aiParams: AISkillParameters,
+    baseChance: number
+  ): boolean {
+    const skillFactor = 1.35 - aiParams.skillLevel; // IRON≈1.1, CHALLENGER≈0.4
+    const p = Math.min(
+      0.55,
+      Math.max(0, baseChance * skillFactor * (0.45 + aiParams.temperature))
+    );
+    return Math.random() < p;
+  }
+
+  /**
+   * 하드 클리프(skillLevel >= 0.7) 대신 시그모이드 확률 게이트.
+   * 문턱 아래 티어도 가끔 적응하고, 문턱 위도 가끔 놓친다.
+   */
+  private softSkillGate(
+    aiParams: AISkillParameters,
+    threshold: number = 0.7
+  ): boolean {
+    const margin = aiParams.skillLevel - threshold;
+    const p = 1 / (1 + Math.exp(-margin * 14));
+    return Math.random() < Math.min(0.97, Math.max(0.04, p));
+  }
+
+  /** 골드 하한선을 사람처럼 ± 흔들기 */
+  private softJitterGoldFloor(
+    floor: number,
+    aiParams: AISkillParameters
+  ): number {
+    if (floor <= 0) return 0;
+    return Math.max(0, floor + Math.round(this.softNoise(aiParams, 14)));
+  }
+
+  /** 상점 구매 문턱 (기본 48). 저티어는 좋은 기물도 놓치거나 잡템을 산다. */
+  private softBuyThreshold(aiParams: AISkillParameters): number {
+    return 48 + this.softNoise(aiParams, 16);
+  }
+
   /**
    * 정비 페이즈 진입 시 7명 AI 봇의 실시간 동적 APM(평상시 1.0~5.0초 간격 vs 올인 Rolldown 시 0.6~1.0초 초고속 다다다다 리롤) 스케줄러를 초기화한다.
    */
@@ -538,6 +591,13 @@ export class AIBotController {
     } else if (neuralResult.macroAction === 'ROLLDOWN' || isEmergencySurvival) {
       brain.targetGoldFloorThisRound = Math.min(brain.targetGoldFloorThisRound, 10);
     }
+    // Soft noise: 이자 하한선을 사람처럼 흔들기 (위기 올인 제외)
+    if (!isEmergencySurvival && !isGoblinCashoutTurn) {
+      brain.targetGoldFloorThisRound = this.softJitterGoldFloor(
+        brain.targetGoldFloorThisRound,
+        aiParams
+      );
+    }
 
     if (isEmergencySurvival || isGoblinCashoutTurn) {
       brain.maxRerollsAllowedThisRound = 20;
@@ -557,6 +617,14 @@ export class AIBotController {
     } else {
       brain.maxRerollsAllowedThisRound = 7;
     }
+    // Soft noise: 저티어는 리롤을 덜/더 하는 실수
+    if (!isEmergencySurvival) {
+      const rerollJitter = Math.round(this.softNoise(aiParams, 2.5));
+      brain.maxRerollsAllowedThisRound = Math.max(
+        0,
+        brain.maxRerollsAllowedThisRound + rerollJitter
+      );
+    }
 
     // 2. 현재 열린 첫 상점에서 유효 기물 즉시 구매 및 기본 배치 수행
     const scouting = this.analyzeScoutingContext(bot, allParticipants);
@@ -568,7 +636,7 @@ export class AIBotController {
       aiParams,
       scouting
     );
-    this.performPersonaLevelUpStep(bot, brain, currentRound);
+    this.performPersonaLevelUpStep(bot, brain, currentRound, aiParams);
     this.tryUseBotDuplicators(bot, brain, sharedPool);
 
     this.optimizeBoardAndItems(bot, brain, allParticipants, sharedPool, aiParams);
@@ -620,17 +688,18 @@ export class AIBotController {
     brain.nextActionDelayMs = this.computeNextBotActionDelayMs(brain.isRolldownActive);
 
     // 1. 레벨업 체크
-    this.performPersonaLevelUpStep(bot, brain, currentRound);
+    this.performPersonaLevelUpStep(bot, brain, currentRound, aiParams);
 
     const scouting = this.analyzeScoutingContext(bot, allParticipants);
 
     // 2. 상점 리롤 및 기물 쓸어담기 1스텝 실행
     let didAct = false;
     const nextRerollCost = bot.freeRerolls > 0 ? 0 : 2;
-    if (
+    const canReroll =
       brain.rerollsExecutedThisRound < brain.maxRerollsAllowedThisRound &&
-      bot.gold - nextRerollCost >= effectiveGoldFloor
-    ) {
+      bot.gold - nextRerollCost >= effectiveGoldFloor;
+    // Soft noise: 리롤할 수 있어도 가끔 "한 템포 쉬기"
+    if (canReroll && !this.softShouldSkip(aiParams, 0.12)) {
       this.cleanupBenchIfFull(bot, brain, sharedPool);
       if (bot.rerollShop(sharedPool)) {
         brain.rerollsExecutedThisRound += 1;
@@ -665,10 +734,14 @@ export class AIBotController {
   private performPersonaLevelUpStep(
     bot: Participant,
     brain: BotBrainState,
-    currentRound: string
+    currentRound: string,
+    aiParams: AISkillParameters
   ): void {
     const persona = brain.persona;
     const targetGoldFloor = brain.targetGoldFloorThisRound;
+
+    // Soft noise: XP 살 타이밍인데 한 템포 미룸
+    if (this.softShouldSkip(aiParams, 0.14)) return;
 
     if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
       const threeStarCount = this.countTotalThreeStarUnits(bot);
@@ -679,6 +752,7 @@ export class AIBotController {
       }
     } else if (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') {
       while (bot.gold - 4 >= targetGoldFloor && bot.level < 10) {
+        if (this.softShouldSkip(aiParams, 0.08)) break; // 중간에 XP 멈춤
         if (!bot.buyXp()) break;
       }
     } else if (persona === 'GOBLIN_GAMBLER') {
@@ -689,7 +763,12 @@ export class AIBotController {
       }
     } else {
       const stageNum = parseInt(currentRound.split('-')[0] || '2', 10);
-      const standardTargetLevel = Math.min(10, Math.max(4, stageNum + 3));
+      // Soft noise: 정석 레벨 목표 ±1
+      const levelJitter = Math.round(this.softNoise(aiParams, 1.2));
+      const standardTargetLevel = Math.min(
+        10,
+        Math.max(4, stageNum + 3 + levelJitter)
+      );
       if (bot.gold - 4 >= targetGoldFloor && bot.level < standardTargetLevel) {
         bot.buyXp();
       }
@@ -1071,15 +1150,23 @@ export class AIBotController {
     const choices = DopamineEngine.rollAugmentChoices(bot, tier);
     if (choices.length === 0) return null;
 
-    let bestAug = choices[0];
-    let bestScore = -999;
-
+    const aiParams = this.rankManager.getAISkillParameters();
+    const scored: Array<{ aug: AugmentDefinition; score: number }> = [];
     for (const aug of choices) {
-      const score = this.evaluateAugmentValue(aug, bot, brain, allParticipants);
-      if (score > bestScore) {
-        bestScore = score;
-        bestAug = aug;
-      }
+      const base = this.evaluateAugmentValue(aug, bot, brain, allParticipants);
+      // Soft noise: 증강 가치에 온도 노이즈 → 저티어는 2등 증강을 고르기 쉬움
+      scored.push({ aug, score: base + this.softNoise(aiParams, 42) });
+    }
+    scored.sort((a, b) => b.score - a.score);
+
+    let bestAug = scored[0].aug;
+    // Soft noise: 가끔 2등 픽 (사람처럼 "그럴싸한 다른 카드" 선택)
+    if (
+      scored.length >= 2 &&
+      this.softShouldSkip(aiParams, 0.18) &&
+      scored[1].score > scored[0].score - 55
+    ) {
+      bestAug = scored[1].aug;
     }
 
     // 영웅 증강을 선택했다면 두뇌에 영웅 타겟 등록 (3성 올인 지시)
@@ -1117,8 +1204,8 @@ export class AIBotController {
         }
       }
 
-      // 플레이어가 4코스트(풀 10개) 5개 이상 또는 5코스트(풀 9개) 4개 이상 모으고 있는지 감지하여 견제(Holding) 타겟 등록
-      if (!other.isAI && aiParams.skillLevel >= 0.7) {
+      // Soft skill gate: 저티어도 가끔 견제, 고티어도 가끔 놓침
+      if (!other.isAI && this.softSkillGate(aiParams, 0.7)) {
         for (const template of Object.values(UNIT_TEMPLATES)) {
           if (template.cost >= 4) {
             const playerCopies = other.getOwnedUnitCopiesCount(template.id);
@@ -1134,12 +1221,10 @@ export class AIBotController {
       }
     }
 
-    // 고티어(skillLevel >= 0.7) AI의 덱 전환(Pivot) 판단
-    // 황금 고블린 도박꾼이 이미 스택을 쌓고 있는 경우가 아니라면,
-    // 현재 목표 시너지를 다른 2명 이상이 겹쳐서 가고 있을 때 가장 덜 겹치는 시너지로 전환한다.
+    // Soft skill gate + scoutingChance: 하드 클리프 대신 확률적 피봇 시도
     const shouldAttemptPivot =
-      aiParams.skillLevel >= 0.7 &&
-      Math.random() < aiParams.scoutingChance &&
+      this.softSkillGate(aiParams, 0.65) &&
+      Math.random() < Math.max(0.08, aiParams.scoutingChance) &&
       brain.pivotedCount < 2 &&
       !(brain.persona === 'GOBLIN_GAMBLER' && bot.goblinVaultStacks >= 12);
 
@@ -1211,44 +1296,54 @@ export class AIBotController {
     );
 
     // B. 페르소나별 레벨업(buyXp) 의사결정 (Lv.10 확장 지원)
-    const targetGoldFloor = this.getPersonaGoldFloor(
+    let targetGoldFloor = this.getPersonaGoldFloor(
       bot,
       persona,
       isEmergencySurvival,
       isGoblinCashoutTurn,
       aiParams
     );
+    if (!isEmergencySurvival && !isGoblinCashoutTurn) {
+      targetGoldFloor = this.softJitterGoldFloor(targetGoldFloor, aiParams);
+    }
 
-    if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
-      // 저코스트 3성 리롤러: 5~6레벨에서 경험치 구매를 멈추고 리롤에 집중.
-      // 단, 핵심 1~2코 3성이 2개 이상 완성되었거나 체력이 위험하면 레벨업 재개
-      const threeStarCount = this.countTotalThreeStarUnits(bot);
-      if ((bot.level < 5 || threeStarCount >= 2) && bot.level < 10) {
-        while (bot.gold - 4 >= targetGoldFloor && bot.level < 9) {
+    if (!this.softShouldSkip(aiParams, 0.12)) {
+      if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
+        const threeStarCount = this.countTotalThreeStarUnits(bot);
+        if ((bot.level < 5 || threeStarCount >= 2) && bot.level < 10) {
+          while (bot.gold - 4 >= targetGoldFloor && bot.level < 9) {
+            if (this.softShouldSkip(aiParams, 0.08)) break;
+            if (!bot.buyXp()) break;
+          }
+        }
+      } else if (
+        persona === 'FAST_NINE_GREEDY' ||
+        persona === 'FAST_NINE_ECONOMIST'
+      ) {
+        while (bot.gold - 4 >= targetGoldFloor && bot.level < 10) {
+          if (this.softShouldSkip(aiParams, 0.08)) break;
           if (!bot.buyXp()) break;
         }
-      }
-    } else if (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') {
-      // 고밸류 운영러: 50골드(또는 사악한 금융 70골드) 칼이자를 지키며 남는 골드로 9~10레벨 직행
-      while (bot.gold - 4 >= targetGoldFloor && bot.level < 10) {
-        if (!bot.buyXp()) break;
-      }
-    } else if (persona === 'GOBLIN_GAMBLER') {
-      // 황금 고블린 코인충: 평상시에는 50골드를 모으면서 천천히 레벨업,
-      // 체력 35 이하 또는 금고 55스택 이상 도달 시 골드를 전부 털어 레벨업+폭풍 리롤!
-      const desiredLevel = isGoblinCashoutTurn ? 9 : 6;
-      while (bot.gold - 4 >= targetGoldFloor && bot.level < desiredLevel) {
-        if (!bot.buyXp()) break;
-      }
-    } else {
-      // FLEX_MASTER (유연한 정석 밸런스형): 라운드 흐름에 맞춰 정석 레벨업 (후반 Lv.10 도달)
-      const stageNum = parseInt(currentRound.split('-')[0] || '2', 10);
-      const standardTargetLevel = Math.min(10, Math.max(4, stageNum + 3));
-      while (
-        bot.gold - 4 >= targetGoldFloor &&
-        bot.level < standardTargetLevel
-      ) {
-        if (!bot.buyXp()) break;
+      } else if (persona === 'GOBLIN_GAMBLER') {
+        const desiredLevel = isGoblinCashoutTurn ? 9 : 6;
+        while (bot.gold - 4 >= targetGoldFloor && bot.level < desiredLevel) {
+          if (this.softShouldSkip(aiParams, 0.08)) break;
+          if (!bot.buyXp()) break;
+        }
+      } else {
+        const stageNum = parseInt(currentRound.split('-')[0] || '2', 10);
+        const levelJitter = Math.round(this.softNoise(aiParams, 1.2));
+        const standardTargetLevel = Math.min(
+          10,
+          Math.max(4, stageNum + 3 + levelJitter)
+        );
+        while (
+          bot.gold - 4 >= targetGoldFloor &&
+          bot.level < standardTargetLevel
+        ) {
+          if (this.softShouldSkip(aiParams, 0.08)) break;
+          if (!bot.buyXp()) break;
+        }
       }
     }
 
@@ -1267,8 +1362,13 @@ export class AIBotController {
       bot.level < 8 &&
       !isEmergencySurvival
     ) {
-      // 8레벨 전까지는 무료 리롤만 사용하거나 리롤 억제
       maxRerollsThisTurn = bot.freeRerolls > 0 ? bot.freeRerolls : 1;
+    }
+    if (!isEmergencySurvival) {
+      maxRerollsThisTurn = Math.max(
+        0,
+        maxRerollsThisTurn + Math.round(this.softNoise(aiParams, 2.5))
+      );
     }
 
     let rerollsDone = 0;
@@ -1277,8 +1377,9 @@ export class AIBotController {
       if (bot.gold - nextRerollCost < targetGoldFloor) {
         break;
       }
+      // Soft noise: 리롤 도중 멈춤
+      if (this.softShouldSkip(aiParams, 0.1)) break;
 
-      // 대기석이 너무 꽉 찼으면 불필요한 기물 정리 시도
       this.cleanupBenchIfFull(bot, brain, sharedPool);
 
       if (!bot.rerollShop(sharedPool)) {
@@ -1351,16 +1452,16 @@ export class AIBotController {
       const template = UNIT_TEMPLATES[unitId];
       if (!template) continue;
 
-      // 1) 고티어 전용 3성 견제 (Holding/Denying):
+      // 1) Soft skill gate 3성 견제 (Holding/Denying):
       // 4코스트(풀 10개)는 2장만 쥐어도 상대가 3성 불가, 5코스트(풀 9개)는 단 1장만 쥐어도 상대가 복제기 없이 3성 불가!
       if (
-        aiParams.skillLevel >= 0.7 &&
+        this.softSkillGate(aiParams, 0.7) &&
         unitsToDenyFromPlayer.has(unitId) &&
         bot.gold >= template.cost + 8 &&
-        bot.canBuyUnit(unitId, template.cost)
+        bot.canBuyUnit(unitId, template.cost) &&
+        !this.softShouldSkip(aiParams, 0.15)
       ) {
         if (bot.buyUnit(slotIdx, sharedPool)) {
-          // 방금 구매한 견제 기물을 찾아서 대기석에 보호 마킹
           const loc = bot
             .getAllUnitLocations()
             .find((l) => l.area === 'BENCH' && l.unit.unitId === unitId);
@@ -1371,7 +1472,7 @@ export class AIBotController {
         }
       }
 
-      // 2) 일반 기물 구매 가치(Utility Score) 평가 (공유 풀 잔여량, 시너지 브레이크포인트, 스카우팅 경합도, 3성 가능성 반영)
+      // 2) 일반 기물 구매 가치 — softBuyThreshold로 문턱 흔들기
       const utilityScore = this.evaluateShopUnitUtility(
         bot,
         brain,
@@ -1380,11 +1481,14 @@ export class AIBotController {
         aiParams,
         scouting
       );
+      const buyThreshold = this.softBuyThreshold(aiParams);
 
-      if (utilityScore >= 48) {
+      if (utilityScore >= buyThreshold) {
+        // Soft noise: 좋은 기물인데도 가끔 안 삼 (저티어일수록 자주)
+        if (this.softShouldSkip(aiParams, 0.16)) continue;
+
         let cleanupAttempted = false;
         if (!bot.canBuyUnit(unitId, template.cost)) {
-          // 대기석이 가득 찼다면 가치가 낮은 대기석 기물 1개를 팔아서 자리 확보 시도
           this.cleanupBenchIfFull(bot, brain, sharedPool);
           cleanupAttempted = true;
         }
@@ -1392,7 +1496,8 @@ export class AIBotController {
         if (cleanupAttempted && !bought) {
           const round = brain.currentRoundLabel ?? '1-1';
           const stageNum = parseInt(round.split('-')[0] || '1', 10);
-          const stageGroup: '2~3' | '4' | '5+' = stageNum <= 3 ? '2~3' : stageNum === 4 ? '4' : '5+';
+          const stageGroup: '2~3' | '4' | '5+' =
+            stageNum <= 3 ? '2~3' : stageNum === 4 ? '4' : '5+';
           this.missedDesirableBuyEvents.push({
             botId: bot.id,
             persona: brain.persona,
@@ -1771,9 +1876,9 @@ export class AIBotController {
       deployedUnits.push(remainingForBench.shift()!);
     }
 
-    // 3. 플레이어 주력 캐리 열(Column) 스캔 (고티어 AI 저격 배치용)
+    // 3. 플레이어 주력 캐리 열 스캔 (soft skill gate — 저티어도 가끔, 고티어도 가끔 놓침)
     let playerCarryCol = 3;
-    if (humanPlayer && aiParams.skillLevel >= 0.7) {
+    if (humanPlayer && this.softSkillGate(aiParams, 0.7)) {
       let highestCarryScore = -1;
       for (let r = 0; r < Participant.BOARD_ROWS; r++) {
         for (let c = 0; c < Participant.BOARD_COLS; c++) {
@@ -1786,6 +1891,13 @@ export class AIBotController {
             playerCarryCol = c;
           }
         }
+      }
+      // Soft noise: 캐리 열을 ±1 잘못 읽기
+      if (this.softShouldSkip(aiParams, 0.22)) {
+        playerCarryCol = Math.max(
+          0,
+          Math.min(6, playerCarryCol + (Math.random() < 0.5 ? -1 : 1))
+        );
       }
     }
 
@@ -1916,7 +2028,13 @@ export class AIBotController {
     }
 
     // 6. 지능형 동적 아이템 합성 및 장착 가치평가 (Dynamic Item Valuation & Crafting)
-    this.dynamicallyCraftAndEquipItems(bot, brain, deployedUnits, scouting);
+    this.dynamicallyCraftAndEquipItems(
+      bot,
+      brain,
+      deployedUnits,
+      aiParams,
+      scouting
+    );
   }
 
   /**
@@ -1968,9 +2086,13 @@ export class AIBotController {
     bot: Participant,
     brain: BotBrainState,
     allBoardUnits: UnitInstance[],
+    aiParams: AISkillParameters,
     scouting?: ScoutingContext
   ): void {
     if (bot.itemBench.length === 0 || allBoardUnits.length === 0) return;
+
+    // Soft noise: 아이템 슬램 자체를 한 템포 미룸
+    if (this.softShouldSkip(aiParams, 0.12)) return;
 
     // 1. 이미 itemBench에 있는 완성 아이템들을 먼저 최적 유닛에게 장착
     for (let i = bot.itemBench.length - 1; i >= 0; i--) {
@@ -1980,22 +2102,38 @@ export class AIBotController {
 
       let bestUnit: UnitInstance | null = null;
       let bestScore = -999;
+      let secondUnit: UnitInstance | null = null;
+      let secondScore = -999;
 
       for (const unit of allBoardUnits) {
         if (unit.items.length >= 3) continue;
-        const score = this.evaluateCompletedItemForUnit(
-          itemId as CompletedItemId,
-          unit,
-          scouting
-        );
+        const score =
+          this.evaluateCompletedItemForUnit(
+            itemId as CompletedItemId,
+            unit,
+            scouting
+          ) + this.softNoise(aiParams, 18);
         if (score > bestScore) {
+          secondScore = bestScore;
+          secondUnit = bestUnit;
           bestScore = score;
           bestUnit = unit;
+        } else if (score > secondScore) {
+          secondScore = score;
+          secondUnit = unit;
         }
       }
 
-      if (bestUnit && bestScore >= 35) {
-        bot.equipItemToUnit(i, bestUnit.instanceId);
+      const equipThreshold = 35 + this.softNoise(aiParams, 12);
+      // Soft noise: 가끔 2등 유닛에게 슬램
+      const target =
+        secondUnit &&
+        this.softShouldSkip(aiParams, 0.2) &&
+        secondScore > bestScore - 25
+          ? secondUnit
+          : bestUnit;
+      if (target && bestScore >= equipThreshold) {
+        bot.equipItemToUnit(i, target.instanceId);
       }
     }
 
@@ -2003,8 +2141,8 @@ export class AIBotController {
     let canStillCraft = true;
     while (canStillCraft) {
       canStillCraft = false;
+      if (this.softShouldSkip(aiParams, 0.1)) break;
 
-      // 현재 대기석의 기본 재료 인덱스 목록
       const baseIndices: number[] = [];
       for (let idx = 0; idx < bot.itemBench.length; idx++) {
         const id = bot.itemBench[idx];
@@ -2021,7 +2159,6 @@ export class AIBotController {
       let bestMatIdx2 = -1;
       let bestTargetUnit: UnitInstance | null = null;
 
-      // 모든 (i, j) 기본 재료 쌍 검사
       for (let a = 0; a < baseIndices.length; a++) {
         for (let b = a + 1; b < baseIndices.length; b++) {
           const idxA = baseIndices[a];
@@ -2039,17 +2176,18 @@ export class AIBotController {
               scouting
             );
 
-            // 대기석에 조합 아이템이 3개 이상 쌓여있다면 빠른 템포 합성을 위해 보너스 부여!
             if (baseIndices.length >= 4) score += 30;
             else if (baseIndices.length >= 3) score += 15;
 
-            // 신경망 추론: 아이템 긴급도(Item Urgency)가 높으면 템 소진 보너스
-            if (brain.lastNeuralResult && brain.lastNeuralResult.itemUrgency > 0.55) {
+            if (
+              brain.lastNeuralResult &&
+              brain.lastNeuralResult.itemUrgency > 0.55
+            ) {
               score += Math.round(brain.lastNeuralResult.itemUrgency * 30);
             }
 
-            // 영웅 증강 타겟 기물에게 아이템을 몰아주면 추가 보너스
             if (brain.heroTargetUnitId === unit.unitId) score += 25;
+            score += this.softNoise(aiParams, 14);
 
             if (score > bestCraftScore) {
               bestCraftScore = score;
@@ -2061,16 +2199,22 @@ export class AIBotController {
         }
       }
 
-      // 합성 결정 문턱값 (재료가 많을수록 더 유연하고 빠르게 합성!)
-      const threshold = baseIndices.length >= 4 ? 40 : baseIndices.length >= 3 ? 55 : 68;
+      // Soft noise: 합성 문턱 흔들기 (재료 많을수록 빨리, 저티어는 더 흔들림)
+      const baseThreshold =
+        baseIndices.length >= 4 ? 40 : baseIndices.length >= 3 ? 55 : 68;
+      const threshold = baseThreshold + this.softNoise(aiParams, 14);
 
-      if (bestTargetUnit && bestCraftScore >= threshold && bestMatIdx1 !== -1 && bestMatIdx2 !== -1) {
-        // splice 인덱스 꼬임 방지를 위해 큰 인덱스부터 장착
+      if (
+        bestTargetUnit &&
+        bestCraftScore >= threshold &&
+        bestMatIdx1 !== -1 &&
+        bestMatIdx2 !== -1
+      ) {
         const firstIdx = Math.max(bestMatIdx1, bestMatIdx2);
         const secondIdx = Math.min(bestMatIdx1, bestMatIdx2);
         bot.equipItemToUnit(firstIdx, bestTargetUnit.instanceId);
         bot.equipItemToUnit(secondIdx, bestTargetUnit.instanceId);
-        canStillCraft = true; // 추가 재료가 남아있을 수 있으므로 루프 계속
+        canStillCraft = true;
       }
     }
 
@@ -2079,6 +2223,7 @@ export class AIBotController {
       const itemId = bot.itemBench[i];
       const itemDef = ITEM_DEFINITIONS[itemId];
       if (!itemDef || itemDef.isCompleted) continue;
+      if (this.softShouldSkip(aiParams, 0.18)) continue;
 
       let bestUnit: UnitInstance | null = null;
       let highestPower = -1;
@@ -2088,13 +2233,20 @@ export class AIBotController {
         const role = getUnitRole(unit.unitId);
 
         let match = false;
-        if (itemId === 'ARMOR' && (role === 'TANK' || role === 'BRUISER')) match = true;
-        else if ((itemId === 'SWORD' || itemId === 'BOW') && (role === 'AD_CARRY' || role === 'BRUISER')) match = true;
-        else if ((itemId === 'ROD' || itemId === 'TEAR') && role === 'AP_CARRY') match = true;
+        if (itemId === 'ARMOR' && (role === 'TANK' || role === 'BRUISER'))
+          match = true;
+        else if (
+          (itemId === 'SWORD' || itemId === 'BOW') &&
+          (role === 'AD_CARRY' || role === 'BRUISER')
+        )
+          match = true;
+        else if ((itemId === 'ROD' || itemId === 'TEAR') && role === 'AP_CARRY')
+          match = true;
         else if (role === 'BRUISER') match = true;
 
         if (match) {
-          const power = unit.starLevel * 30 + unit.cost * 10;
+          const power =
+            unit.starLevel * 30 + unit.cost * 10 + this.softNoise(aiParams, 10);
           if (power > highestPower) {
             highestPower = power;
             bestUnit = unit;
