@@ -294,6 +294,121 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
   },
+
+  // -------------------------------------------------------------
+  // [3차 신규 추가 10종 (총 30/60종 - 50% 달성)]
+  // -------------------------------------------------------------
+  // 21. 쏜 (가시덩굴 파수꾼 쏜) - 1코 Elven Sylvan / Vanguard (엘프 고목 덩굴 전사)
+  u1_thorn: {
+    modelKey: 'Barbarian',
+    scale: 1.18,
+    primaryColor: 0x166534,
+    emissiveColor: 0x4ade80,
+    attackAnim: '1H_Melee_Attack_Chop',
+    skillAnim: '2H_Melee_Attack_Chop',
+    stunAnim: 'Lie_Idle',
+    aura: 'POISON_GREEN',
+  },
+  // 22. 크로나 (마탑 파수병 크로나) - 1코 Arcane Tower / Vanguard (비전 룬 마법 판금병)
+  u1_chrona: {
+    modelKey: 'Knight',
+    scale: 1.16,
+    primaryColor: 0x1e3a8a,
+    emissiveColor: 0x38bdf8,
+    attackAnim: '1H_Melee_Attack_Slice_Horizontal',
+    skillAnim: 'Spellcast_Raise',
+    stunAnim: 'Lie_Idle',
+    aura: 'ARCANE_BLUE',
+  },
+  // 23. 스내치 (고블린 투창병 스내치) - 1코 Golden Goblin / Ranger (황금 고블린 투창 저격병)
+  u1_snatch: {
+    modelKey: 'Rogue',
+    scale: 0.95,
+    primaryColor: 0x15803d,
+    emissiveColor: 0xeab308,
+    attackAnim: '1H_Ranged_Shoot',
+    skillAnim: '2H_Ranged_Shoot',
+    stunAnim: 'Lie_Idle',
+    aura: 'GOBLIN_GOLD',
+  },
+  // 24. 프레이 (황혼의 도끼병 프레이) - 1코 Holy Empire / Berserker / Vanguard (황혼 발키리 전사)
+  u1_shieldmaiden: {
+    modelKey: 'Barbarian',
+    scale: 1.12,
+    primaryColor: 0xb91c1c,
+    emissiveColor: 0xf59e0b,
+    attackAnim: '1H_Melee_Attack_Slice_Diagonal',
+    skillAnim: '1H_Melee_Attack_Jump_Chop',
+    stunAnim: 'Lie_Idle',
+    aura: 'HOLY_GOLD',
+  },
+  // 25. 모르그 (심연 방패병 모르그) - 1코 Abyssal Demon / Vanguard / Undead Scourge (용암 해골 방패병)
+  u1_ember: {
+    modelKey: 'Skeleton_Warrior',
+    scale: 1.20,
+    primaryColor: 0x7f1d1d,
+    emissiveColor: 0xf97316,
+    attackAnim: '1H_Melee_Attack_Chop',
+    skillAnim: '2H_Melee_Attack_Slice',
+    deathAnim: 'Death_C_Skeletons',
+    stunAnim: 'Skeleton_Inactive_Standing_Pose',
+    aura: 'FIRE_RED',
+  },
+  // 26. 팅크 (고블린 연금술사 팅크) - 2코 Golden Goblin / Arcane Tower / Archmage (고블린 비전 연금술사)
+  u2_tink: {
+    modelKey: 'Mage',
+    scale: 0.96,
+    primaryColor: 0x16a34a,
+    emissiveColor: 0x84cc16,
+    attackAnim: 'Spellcast_Shoot',
+    skillAnim: 'Spellcast_Raise',
+    stunAnim: 'Lie_Idle',
+    aura: 'GOBLIN_GOLD',
+  },
+  // 27. 카일 (심연의 사냥꾼 카일) - 2코 Abyssal Demon / Ranger (심연 흑가죽 흑궁수)
+  u2_kyle: {
+    modelKey: 'Rogue_Hooded',
+    scale: 1.15,
+    primaryColor: 0x18181b,
+    emissiveColor: 0xdc2626,
+    attackAnim: '2H_Ranged_Shoot',
+    skillAnim: '1H_Ranged_Shoot',
+    stunAnim: 'Lie_Idle',
+    aura: 'FIRE_RED',
+  },
+  // 28. 엔트 (숲의 수호신 엔트) - 2코 Elven Sylvan / Vanguard / Paladin (거대 고목 수호신)
+  u2_ent: {
+    modelKey: 'Barbarian',
+    scale: 1.35,
+    primaryColor: 0x3f2e1e,
+    emissiveColor: 0x22c55e,
+    attackAnim: '2H_Melee_Attack_Chop',
+    skillAnim: '2H_Melee_Attack_Spin',
+    stunAnim: 'Lie_Idle',
+    aura: 'POISON_GREEN',
+  },
+  // 29. 제피르 (심연 암살자 제피르) - 2코 Abyssal Demon / Shadow Assassin (심연 돌풍 자객)
+  u2_zephyr: {
+    modelKey: 'Rogue',
+    scale: 1.14,
+    primaryColor: 0x3b0764,
+    emissiveColor: 0xa855f7,
+    attackAnim: 'Dualwield_Melee_Attack_Slice',
+    skillAnim: 'Dualwield_Melee_Attack_Stab',
+    stunAnim: 'Lie_Idle',
+    aura: 'SHADOW_PURPLE',
+  },
+  // 30. 엘로웬 (숲의 무녀 엘로웬) - 2코 Elven Sylvan / Paladin (생명의 숲 성스러운 무녀 힐러)
+  u2_elowen: {
+    modelKey: 'Mage',
+    scale: 1.08,
+    primaryColor: 0xf0fdf4,
+    emissiveColor: 0x10b981,
+    attackAnim: 'Spellcast_Shoot',
+    skillAnim: 'Spellcast_Long',
+    stunAnim: 'Lie_Idle',
+    aura: 'POISON_GREEN',
+  },
 };
 
 export interface RenderState3D {
