@@ -18,8 +18,8 @@
       rel="stylesheet"
     />
     <title>WWCHESS - 헥사곤 도트 판타지 오토배틀러</title>
-    <script type="module" crossorigin src="./assets/index-B4t9VdR9.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DOZA0Iel.css">
+    <script type="module" crossorigin src="./assets/index-BLFeu-r4.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CqjwYkdC.css">
   </head>
   <body>
     <div id="app" class="app-root">
@@ -223,24 +223,11 @@
       <!-- 상점 확률 스트립 (상점 열림 시 카드 바로 아래) -->
       <div id="shop-drawer-toggle-bar" class="shop-drawer-toggle-bar hidden">
         <div id="shop-odds-bar" class="shop-odds-strip"></div>
+        <div id="lock-shop-btn" class="lock-gem-btn" role="button" tabindex="0" title="상점 잠금">🔓</div>
       </div>
 
-      <!-- 상단 상점 카드 독 (TFT식 — 카드만 상단) -->
+      <!-- 상단 상점 카드만 (레벨업/리롤/상점열기 버튼은 하단 고정 — 여기 없음) -->
       <footer id="bottom-shop-bar" class="bottom-shop-dock hidden">
-        <div class="dock-left-controls">
-          <div class="econ-status-strip">
-            <div class="level-gem-box">
-              <span id="player-level-text" class="lvl-title">Lv.1</span>
-              <span id="player-xp-text" class="xp-caption">0/2</span>
-            </div>
-            <div id="lock-shop-btn" class="lock-gem-btn" role="button" tabindex="0" title="상점 잠금">🔓</div>
-          </div>
-          <div id="buy-xp-btn" class="rune-stone-btn sapphire-rune tft-inline-xp" role="button" tabindex="0">
-            <span class="btn-main-label">⬆️레벨업</span>
-            <span class="btn-sub-cost">4G</span>
-          </div>
-        </div>
-
         <div id="shop-cards-wrapper" class="dock-center-cards">
           <div id="shop-cards-container" class="shop-cards-container"></div>
           <div id="sell-dropzone-overlay" class="sell-dropzone-overlay hidden">
@@ -249,7 +236,6 @@
             </div>
           </div>
         </div>
-
         <div class="dock-right-combat">
           <div id="start-combat-btn" class="start-battle-crystal" role="button" tabindex="0">
             <span class="sword-emblem">⚔️</span>
@@ -258,16 +244,32 @@
         </div>
       </footer>
 
-      <!-- 우하단 TFT 컨트롤: (위) 리롤 → (아래) 상점열기+골드 / 전투 -->
+      <!-- 1) 좌하단: 레벨업만 -->
+      <div id="tft-left-controls" class="tft-left-controls">
+        <div class="tft-level-chip">
+          <span id="player-level-text" class="tft-lvl">Lv.1</span>
+          <span id="player-xp-text" class="tft-xp">0/2</span>
+        </div>
+        <div id="buy-xp-btn" class="tft-xp-btn" role="button" tabindex="0">
+          <span class="btn-main-label">⬆️ 레벨업</span>
+          <span class="btn-sub-cost">4G</span>
+        </div>
+      </div>
+
+      <!-- 2~3) 우하단: 상점열기 / 그 위 현재 돈 / 그 위 리롤 (+전투) -->
       <div id="Collapsed-quick-bar" class="collapsed-quick-bar">
+        <!-- column-reverse: 아래부터 상점 → 골드 → 리롤 → 전투 -->
+        <div id="toggle-shop-btn" class="quick-action-gem gold-gem" role="button" tabindex="0" title="상점 열기/접기">
+          <span class="tft-shop-ico">🛒</span>
+          <span>상점</span>
+        </div>
+        <div class="tft-gold-chip" aria-live="polite">
+          <span id="player-gold-text">🪙10</span>
+          <span id="player-interest-text" class="tft-interest-mini">+1</span>
+        </div>
         <div id="reroll-btn" class="quick-action-gem reroll-gem" role="button" tabindex="0">
           <span class="btn-main-label">🎲리롤</span>
           <span class="btn-sub-cost">2G</span>
-        </div>
-        <div id="toggle-shop-btn" class="quick-action-gem gold-gem" role="button" tabindex="0" title="상점 열기/접기">
-          <span class="tft-shop-ico">🛒</span>
-          <span id="player-gold-text">🪙10</span>
-          <span id="player-interest-text" class="tft-interest-mini">+1</span>
         </div>
         <div id="quick-start-combat-btn" class="quick-action-gem battle-gem" role="button" tabindex="0">
           ⚔️ 시작
