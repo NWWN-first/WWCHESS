@@ -797,6 +797,12 @@ interface UnitJuice3D {
   moveElapsedMs: number;
   moveDurationMs: number;
   isMoving: boolean;
+  /** 엔진 미세 진동을 흡수한 표시용 목표 */
+  smoothTargetX: number;
+  smoothTargetZ: number;
+  smoothReady: boolean;
+  /** walk→idle 즉시 전환 방지 (짧은 파닥거림 억제) */
+  walkHoldMs: number;
 }
 
 interface Active3DProjectile {
@@ -1229,19 +1235,23 @@ export class ThreeJsGameRenderer {
     if (!targetAction) return;
 
     const isOneShot = actionName === 'attack' || actionName === 'spell' || actionName === 'hit' || actionName === 'death';
+    const blend = actionName === 'walk' || actionName === 'idle' ? 0.22 : 0.12;
 
     if (ctrl.currentAction && ctrl.currentAction !== targetAction) {
-      ctrl.currentAction.fadeOut(0.12);
+      ctrl.currentAction.fadeOut(blend);
     }
 
     targetAction.reset();
     if (isOneShot) {
       targetAction.setLoop(THREE.LoopOnce, 1);
       targetAction.clampWhenFinished = true;
+      targetAction.timeScale = 1;
     } else {
       targetAction.setLoop(THREE.LoopRepeat, Infinity);
+      // 걷기는 살짝 느리게 → 짧은 파닥 보폭 완화
+      targetAction.timeScale = actionName === 'walk' ? 0.78 : 1;
     }
-    targetAction.fadeIn(0.12).play();
+    targetAction.fadeIn(blend).play();
 
     ctrl.currentAction = targetAction;
     ctrl.currentActionName = actionName;
@@ -2452,6 +2462,10 @@ export class ThreeJsGameRenderer {
         moveElapsedMs: 0,
         moveDurationMs: 700,
         isMoving: false,
+        smoothTargetX: 0,
+        smoothTargetZ: 0,
+        smoothReady: false,
+        walkHoldMs: 0,
       };
       this.unitJuiceMap.set(instanceId, juice);
     }
@@ -2658,47 +2672,71 @@ export class ThreeJsGameRenderer {
           const lz = juice.leapStartPos.z + (juice.leapTargetPos.z - juice.leapStartPos.z) * lp;
           const ly = juice.leapStartPos.y + Math.sin(lp * Math.PI) * 2.8;
           group.position.set(lx, ly, lz);
+          juice.walkHoldMs = 320;
           this.playUnitAnimation(cu.instanceId, 'walk');
         } else {
           const prevX = group.position.x;
           const prevZ = group.position.z;
-          const wantX = planeTarget.x + lungeOffsetX;
-          const wantZ = planeTarget.z + lungeOffsetZ;
-          const err = Math.hypot(wantX - group.position.x, wantZ - group.position.z);
-          // 엔진 미세 충돌 보정이 메시를 흔들지 않도록 데드존 + 부드러운 추종
-          if (err < 0.035) {
-            group.position.x = wantX;
-            group.position.z = wantZ;
+          const rawX = planeTarget.x + lungeOffsetX;
+          const rawZ = planeTarget.z + lungeOffsetZ;
+
+          // 1) 엔진 목표 자체를 부드럽게 흡수 (충돌 틱 진동 억제)
+          if (!juice.smoothReady) {
+            juice.smoothTargetX = rawX;
+            juice.smoothTargetZ = rawZ;
+            juice.smoothReady = true;
           } else {
-            const follow = 1 - Math.exp(-dtMs / 90);
+            const targetFollow = 1 - Math.exp(-dtMs / 160);
+            juice.smoothTargetX += (rawX - juice.smoothTargetX) * targetFollow;
+            juice.smoothTargetZ += (rawZ - juice.smoothTargetZ) * targetFollow;
+          }
+
+          const wantX = juice.smoothTargetX;
+          const wantZ = juice.smoothTargetZ;
+          const err = Math.hypot(wantX - group.position.x, wantZ - group.position.z);
+
+          // 2) 큰 데드존: 미세 오차는 메시를 아예 안 움직임
+          if (err < 0.07) {
+            // 거의 도착 — 스냅하지 않고 아주 천천히만 보정
+            if (err > 0.02) {
+              const settle = 1 - Math.exp(-dtMs / 220);
+              group.position.x += (wantX - group.position.x) * settle;
+              group.position.z += (wantZ - group.position.z) * settle;
+            }
+          } else {
+            // 본이동: 더 긴 추종 상수로 미끄러지듯 이동
+            const follow = 1 - Math.exp(-dtMs / 170);
             group.position.x += (wantX - group.position.x) * follow;
             group.position.z += (wantZ - group.position.z) * follow;
           }
-          // 이동 중 Y 바운스 제거 (떨림 체감의 큰 원인)
           group.position.y = 0.2;
-          juice.isMoving = false;
 
           const isStunned = (cu.stunTimerMs ?? 0) > 0;
           const distMoved = Math.hypot(group.position.x - prevX, group.position.z - prevZ);
-          const distToTarget = Math.hypot(
-            planeTarget.x - group.position.x,
-            planeTarget.z - group.position.z
-          );
+          const moveSpeed = distMoved / Math.max(0.001, dtMs * 0.001);
 
+          // 3) walk/idle 히스테리시스 — 짧은 파닥 전환 금지
           if (isStunned) {
+            juice.walkHoldMs = 0;
             this.playUnitAnimation(cu.instanceId, 'stun');
-          } else if (distToTarget > 0.18 && distMoved > 0.012) {
+          } else if (err > 0.28 || moveSpeed > 0.55) {
+            juice.walkHoldMs = 340;
+            juice.isMoving = true;
             this.playUnitAnimation(cu.instanceId, 'walk');
-            if (distMoved > 0.015) {
+            if (distMoved > 0.02) {
               juice.facingY = Math.atan2(
                 group.position.x - prevX,
                 group.position.z - prevZ
               );
             }
           } else {
-            const ctrl = this.unitAnimControllers.get(cu.instanceId);
-            if (ctrl && (ctrl.currentActionName === 'walk' || ctrl.currentActionName === 'stun')) {
-              this.playUnitAnimation(cu.instanceId, 'idle');
+            juice.walkHoldMs = Math.max(0, juice.walkHoldMs - dtMs);
+            juice.isMoving = juice.walkHoldMs > 0;
+            if (juice.walkHoldMs <= 0) {
+              const ctrl = this.unitAnimControllers.get(cu.instanceId);
+              if (ctrl && (ctrl.currentActionName === 'walk' || ctrl.currentActionName === 'stun')) {
+                this.playUnitAnimation(cu.instanceId, 'idle');
+              }
             }
           }
         }
@@ -2740,10 +2778,14 @@ export class ThreeJsGameRenderer {
             targetRotY = Math.atan2(dx, dz);
           }
         }
+        // 이동 중엔 진행 방향, 정지 시에만 적 방향 — 회전도 느리게
+        if (juice.isMoving || juice.walkHoldMs > 0) {
+          targetRotY = juice.facingY;
+        }
         let rotDiff = targetRotY - group.rotation.y;
         while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
         while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
-        group.rotation.y += rotDiff * 0.2;
+        group.rotation.y += rotDiff * 0.08;
         group.rotation.x = 0;
 
         const star3Ring = group.getObjectByName('STAR3_RING');

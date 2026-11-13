@@ -1045,9 +1045,9 @@ export class CombatEngine implements SkillCombatContext {
           const odx = unit.posX - other.posX;
           const odz = unit.posZ - other.posZ;
           const od = Math.hypot(odx, odz);
-          const minDist = UNIT_RADIUS * 2.15;
+          const minDist = UNIT_RADIUS * 2.05;
           if (od > 0.001 && od < minDist) {
-            const push = ((minDist - od) / minDist) * 0.55;
+            const push = ((minDist - od) / minDist) * 0.35;
             sepX += (odx / od) * push;
             sepZ += (odz / od) * push;
           }
@@ -1056,11 +1056,11 @@ export class CombatEngine implements SkillCombatContext {
         const stepIntervalMs = unit.berserkTriggered
           ? Math.max(380, Math.round(unit.baseMoveIntervalMs * 0.78))
           : unit.baseMoveIntervalMs;
-        // 1헥스/stepInterval 속도 ≈ 초당 plane 유닛
-        const speed = 1.0 / Math.max(0.28, stepIntervalMs / 1000);
+        // 1헥스/stepInterval 속도 ≈ 초당 plane 유닛 (조금 더 여유 있게)
+        const speed = 0.85 / Math.max(0.32, stepIntervalMs / 1000);
         // 목표 방향이 분리력에 완전히 먹히지 않도록 조향 가중치 유지
-        const steerX = dx * 1.0 + sepX * 0.7;
-        const steerZ = dz * 1.0 + sepZ * 0.7;
+        const steerX = dx * 1.0 + sepX * 0.45;
+        const steerZ = dz * 1.0 + sepZ * 0.45;
         const steerLen = Math.max(0.001, Math.hypot(steerX, steerZ));
         const nx = unit.posX + (steerX / steerLen) * speed * dtSec;
         const nz = unit.posZ + (steerZ / steerLen) * speed * dtSec;
@@ -1071,7 +1071,7 @@ export class CombatEngine implements SkillCombatContext {
 
         const movedAmt = HexGridMath.planeDistance(fromX, fromZ, unit.posX, unit.posZ);
         // 미세 진동은 MOVE 이벤트로 내보내지 않음 (3D walk 깜빡임 방지)
-        if (movedAmt > 0.012) {
+        if (movedAmt > 0.04) {
           this.emitEvent({
             type: 'MOVE',
             tick: this.currentTick,
@@ -1127,8 +1127,8 @@ export class CombatEngine implements SkillCombatContext {
   private resolveUnitOverlaps(radius: number): void {
     const alive = this.units.filter((u) => u.currentHp > 0 || u.isReviving);
     const minDist = radius * 2;
-    const slack = 0.04; // 이 정도 겹침은 무시 (히스테리시스)
-    for (let iter = 0; iter < 2; iter++) {
+    const slack = 0.08; // 이 정도 겹침은 무시 (히스테리시스)
+    for (let iter = 0; iter < 1; iter++) {
       for (let i = 0; i < alive.length; i++) {
         for (let j = i + 1; j < alive.length; j++) {
           const a = alive[i];
@@ -1150,7 +1150,7 @@ export class CombatEngine implements SkillCombatContext {
 
           // 겹친 양의 일부만 밀어 진동을 줄임
           const overlap = minDist - dist;
-          const push = overlap * 0.22;
+          const push = overlap * 0.12;
           const nx = dx / dist;
           const nz = dz / dist;
           a.posX += nx * push;
