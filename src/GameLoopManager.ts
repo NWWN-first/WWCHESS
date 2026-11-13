@@ -761,6 +761,11 @@ export class GameLoopManager {
           this.sharedPool,
           roundLabel
         );
+        // Stage4: 전투 직전 벤치 압박 마무리 (EconomyPlanner)
+        const brain = this.aiController.getBotBrain(p.id);
+        if (brain) {
+          this.aiController.finalizePrepEconomy(p, brain, this.sharedPool);
+        }
       }
     }
 
@@ -768,7 +773,7 @@ export class GameLoopManager {
     if (typeof process !== 'undefined' && process.env?.EXPERIMENT_BENCH_CLEAR === '1') {
       for (const p of this.participants) {
         if (!p.isEliminated) {
-          const brain = (this.aiController as any).botBrains?.get(p.id);
+          const brain = this.aiController.getBotBrain(p.id);
           if (brain) {
             this.aiController.executeExperimentalBenchClear(p, brain, this.sharedPool);
           }

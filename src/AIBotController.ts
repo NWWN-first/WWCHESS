@@ -23,9 +23,13 @@ import { SynergyEngine } from './SynergyEngine';
 import { NeuralBotEngine, NeuralInferenceResult } from './NeuralBotEngine';
 import {
   analyzeComps,
+  applyShopOpportunityCost,
   buildContestLedger,
+  buildEconomyPlan,
   buildPivotPlan,
   defaultRuleBasedPlanner,
+  EconomyPlan,
+  EconomyTempo,
   isDynamicStrategyExperimentEnabled,
   ObservableStateSummary,
   selectDenyTargets,
@@ -84,6 +88,7 @@ export interface BotBrainState {
     blockedReason?: string;
   };
   activeCompId?: string;
+  activeCompLevelHint?: 'reroll5' | 'fast8' | 'fast9';
   buyPriorityUnitIds: Set<string>;
   keepUnitIds: Set<string>;
   /** Stage2 PivotPlanner 템포 힌트 */
@@ -93,6 +98,21 @@ export interface BotBrainState {
   /** Stage3: 이번 판 견제 구매/홀드 텔레메트리 */
   denyBuyCount: number;
   denyHoldUnitIds: Set<string>;
+  /** Stage4: 통합 경제 계획 */
+  lastEconomyPlan?: {
+    tempo: EconomyTempo;
+    goldFloor: number;
+    maxRerolls: number;
+    targetLevel: number;
+    reason: string;
+    forceBenchPressure: boolean;
+  };
+  economyTargetLevel: number;
+  economyBuyThresholdBias: number;
+  economyOpportunityCostWeight: number;
+  economyMaxSellsThisRound: number;
+  economySellsThisRound: number;
+  economyForceBenchPressure: boolean;
   isRolldownActive: boolean;
   nextActionDelayMs: number;
   rerollsExecutedThisRound: number;
@@ -366,6 +386,12 @@ export class AIBotController {
       pivotPreferRolldown: false,
       denyBuyCount: 0,
       denyHoldUnitIds: new Set<string>(),
+      economyTargetLevel: 7,
+      economyBuyThresholdBias: 0,
+      economyOpportunityCostWeight: 0.2,
+      economyMaxSellsThisRound: 1,
+      economySellsThisRound: 0,
+      economyForceBenchPressure: false,
       isRolldownActive: false,
       nextActionDelayMs: 900,
       rerollsExecutedThisRound: 0,
@@ -388,6 +414,11 @@ export class AIBotController {
       brain = this.initializeBotBrain(bot, persona, trait);
     }
     return brain;
+  }
+
+  /** 외부(시뮬/GameLoop)에서 brain 조회 */
+  public getBotBrain(botId: string): BotBrainState | undefined {
+    return this.botBrains.get(botId);
   }
 
   /**
@@ -693,6 +724,7 @@ export class AIBotController {
 
       if (plan.applyBuyBias) {
         brain.activeCompId = plan.activeComp.id;
+        brain.activeCompLevelHint = plan.activeComp.levelHint;
         brain.buyPriorityUnitIds = new Set(plan.buyPriorityUnitIds);
         brain.keepUnitIds = new Set(plan.keepUnitIds);
       }
@@ -736,92 +768,33 @@ export class AIBotController {
     const isGoblinCashoutTurn =
       persona === 'GOBLIN_GAMBLER' &&
       (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
-    const isHighStageAllIn =
-      (stageNum >= 4 && bot.gold >= 40) || bot.gold >= 50;
 
-    const macro = neuralResult.macroAction;
-    brain.isRolldownActive =
-      isEmergencySurvival ||
-      isGoblinCashoutTurn ||
-      isHighStageAllIn ||
-      brain.pivotPreferRolldown ||
-      macro === 'ROLLDOWN' ||
-      macro === 'STABILIZE_REROLL';
-    brain.rerollsExecutedThisRound = 0;
-
-    brain.targetGoldFloorThisRound = this.getPersonaGoldFloor(
+    // Stage4: EconomyPlanner — 골드하한·리롤·레벨·벤치압박 통합
+    const economyPlan = buildEconomyPlan({
       bot,
       persona,
+      stage: stageNum,
+      macroAction: neuralResult.macroAction,
+      levelHint: brain.activeCompLevelHint ?? null,
+      pivotDecision: (brain.lastCompDecision?.decision as
+        | 'stay'
+        | 'soft-flex'
+        | 'hard-pivot'
+        | undefined) ?? null,
+      pivotGoldFloorHint: brain.pivotGoldFloorHint,
+      pivotMaxRerollsHint: brain.pivotMaxRerollsHint,
+      pivotPreferRolldown: brain.pivotPreferRolldown,
       isEmergencySurvival,
       isGoblinCashoutTurn,
-      aiParams
-    );
-
-    if (macro === 'SAVE_INTEREST' || macro === 'HIGHROLL_GREED') {
-      brain.targetGoldFloorThisRound = Math.max(
-        brain.targetGoldFloorThisRound,
-        macro === 'HIGHROLL_GREED' ? 50 : 40
-      );
-    } else if (macro === 'TEMPO_LEVEL') {
-      // 레벨템포: 이자보다 XP 우선 → 하한 완화
-      brain.targetGoldFloorThisRound = Math.min(brain.targetGoldFloorThisRound, 30);
-    } else if (
-      macro === 'ROLLDOWN' ||
-      macro === 'STABILIZE_REROLL' ||
-      isEmergencySurvival
-    ) {
-      brain.targetGoldFloorThisRound = Math.min(brain.targetGoldFloorThisRound, 10);
-    } else if (macro === 'SLAM_ITEMS') {
-      brain.targetGoldFloorThisRound = Math.min(brain.targetGoldFloorThisRound, 20);
-    }
-    // Stage2: 컴프 levelHint 템포 힌트 반영
-    if (brain.pivotGoldFloorHint !== null && !isEmergencySurvival) {
-      brain.targetGoldFloorThisRound = Math.min(
-        brain.targetGoldFloorThisRound,
-        brain.pivotGoldFloorHint
-      );
-    }
-    // Soft noise: 이자 하한선을 사람처럼 흔들기 (위기 올인 제외)
-    if (!isEmergencySurvival && !isGoblinCashoutTurn) {
-      brain.targetGoldFloorThisRound = this.softJitterGoldFloor(
-        brain.targetGoldFloorThisRound,
-        aiParams
-      );
-    }
-
-    if (isEmergencySurvival || isGoblinCashoutTurn) {
-      brain.maxRerollsAllowedThisRound = 20;
-    } else if (brain.pivotMaxRerollsHint !== null) {
-      brain.maxRerollsAllowedThisRound = brain.isRolldownActive
-        ? Math.max(14, brain.pivotMaxRerollsHint)
-        : brain.pivotMaxRerollsHint;
-    } else if (brain.isRolldownActive) {
-      brain.maxRerollsAllowedThisRound = 14;
-    } else if (
-      (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') &&
-      bot.level >= 5 &&
-      bot.level <= 6
-    ) {
-      brain.maxRerollsAllowedThisRound = 12;
-    } else if (
-      (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') &&
-      bot.level < 8
-    ) {
-      brain.maxRerollsAllowedThisRound = bot.freeRerolls > 0 ? bot.freeRerolls : 1;
-    } else {
-      brain.maxRerollsAllowedThisRound = 7;
-    }
-    // Soft noise: 저티어는 리롤을 덜/더 하는 실수
-    if (!isEmergencySurvival) {
-      const rerollJitter = Math.round(this.softNoise(aiParams, 2.5));
-      brain.maxRerollsAllowedThisRound = Math.max(
-        0,
-        brain.maxRerollsAllowedThisRound + rerollJitter
-      );
-    }
+      skillLevel: aiParams.skillLevel,
+    });
+    this.applyEconomyPlanToBrain(brain, economyPlan, aiParams, isEmergencySurvival, isGoblinCashoutTurn);
 
     // 2. 현재 열린 첫 상점에서 유효 기물 즉시 구매 및 기본 배치 수행
     const scouting = this.analyzeScoutingContext(bot, allParticipants);
+    if (brain.economyForceBenchPressure) {
+      this.runEconomyBenchCleanup(bot, brain, sharedPool);
+    }
     this.buyDesirableUnitsFromCurrentShop(
       bot,
       brain,
@@ -837,6 +810,43 @@ export class AIBotController {
 
     // 3. 첫 번째 동적 APM 행동 타이머 설정 (올인 Rolldown: 0.6~1.0초, 평상시: 1.0~5.0초)
     brain.nextActionDelayMs = this.computeNextBotActionDelayMs(brain.isRolldownActive);
+  }
+
+  private applyEconomyPlanToBrain(
+    brain: BotBrainState,
+    plan: EconomyPlan,
+    aiParams: AISkillParameters,
+    isEmergencySurvival: boolean,
+    isGoblinCashoutTurn: boolean
+  ): void {
+    brain.rerollsExecutedThisRound = 0;
+    brain.economySellsThisRound = 0;
+    brain.economyTargetLevel = plan.targetLevel;
+    brain.economyBuyThresholdBias = plan.buyThresholdBias;
+    brain.economyOpportunityCostWeight = plan.opportunityCostWeight;
+    brain.economyMaxSellsThisRound = plan.maxSellsThisRound;
+    brain.economyForceBenchPressure = plan.forceBenchPressure;
+    brain.isRolldownActive = plan.preferRolldown || plan.tempo === 'rolldown';
+
+    let goldFloor = plan.goldFloor;
+    let maxRerolls = plan.maxRerolls;
+    if (!isEmergencySurvival && !isGoblinCashoutTurn) {
+      goldFloor = this.softJitterGoldFloor(goldFloor, aiParams);
+      maxRerolls = Math.max(
+        0,
+        maxRerolls + Math.round(this.softNoise(aiParams, 2.5))
+      );
+    }
+    brain.targetGoldFloorThisRound = goldFloor;
+    brain.maxRerollsAllowedThisRound = maxRerolls;
+    brain.lastEconomyPlan = {
+      tempo: plan.tempo,
+      goldFloor,
+      maxRerolls,
+      targetLevel: plan.targetLevel,
+      reason: plan.reason,
+      forceBenchPressure: plan.forceBenchPressure,
+    };
   }
 
   /**
@@ -861,17 +871,15 @@ export class AIBotController {
     }
 
     const aiParams = this.rankManager.getAISkillParameters();
-    const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
     const isEmergencySurvival = bot.hp <= 30;
     const isGoblinCashoutTurn =
       brain.persona === 'GOBLIN_GAMBLER' &&
       (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
 
-    brain.isRolldownActive =
-      isEmergencySurvival ||
-      isGoblinCashoutTurn ||
-      (bot.gold >= 50 && bot.level >= 8) ||
-      (stageNum >= 4 && bot.hp <= 40);
+    // Stage4: 라운드 계획의 preferRolldown 유지, 위기만 동적 승격
+    if (isEmergencySurvival || isGoblinCashoutTurn) {
+      brain.isRolldownActive = true;
+    }
 
     // 올인 상태일 때는 하한선을 비상용 0G 또는 10G로 동적 하향하여 '다다다다' 리롤이 실제로 동작하도록 보장!
     const effectiveGoldFloor = brain.isRolldownActive
@@ -885,6 +893,11 @@ export class AIBotController {
     this.performPersonaLevelUpStep(bot, brain, currentRound, aiParams);
 
     const scouting = this.analyzeScoutingContext(bot, allParticipants);
+
+    // Stage4: 리롤 안 해도 벤치 만석이면 선제 정리 (진단 경로1)
+    if (brain.economyForceBenchPressure) {
+      this.runEconomyBenchCleanup(bot, brain, sharedPool);
+    }
 
     // 2. 상점 리롤 및 기물 쓸어담기 1스텝 실행
     let didAct = false;
@@ -907,6 +920,9 @@ export class AIBotController {
           scouting
         );
       }
+    } else if (!canReroll && brain.economyForceBenchPressure) {
+      // 골드하한 홀드 중에도 만석이면 잡템 매각만 수행
+      this.runEconomyBenchCleanup(bot, brain, sharedPool);
     }
 
     // 3. 복제기 사용 및 실시간 보드 재배치/아이템 장착 갱신
@@ -931,42 +947,36 @@ export class AIBotController {
     currentRound: string,
     aiParams: AISkillParameters
   ): void {
-    const persona = brain.persona;
     const targetGoldFloor = brain.targetGoldFloorThisRound;
 
     // Soft noise: XP 살 타이밍인데 한 템포 미룸
     if (this.softShouldSkip(aiParams, 0.14)) return;
 
+    // Stage4: EconomyPlanner targetLevel (+ soft jitter)
+    const levelJitter = Math.round(this.softNoise(aiParams, 1.0));
+    const desiredLevel = Math.min(
+      10,
+      Math.max(1, (brain.economyTargetLevel || 7) + levelJitter)
+    );
+
+    // 리롤 페르소나는 다성 완성 전엔 목표 상한 유지
+    const persona = brain.persona;
+    let levelCap = desiredLevel;
     if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
       const threeStarCount = this.countTotalThreeStarUnits(bot);
-      if ((bot.level < 5 || threeStarCount >= 2) && bot.level < 10) {
-        if (bot.gold - 4 >= targetGoldFloor && bot.level < 9) {
-          bot.buyXp();
-        }
+      if (threeStarCount < 2 && bot.level >= Math.max(5, desiredLevel)) {
+        return;
       }
-    } else if (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') {
-      while (bot.gold - 4 >= targetGoldFloor && bot.level < 10) {
-        if (this.softShouldSkip(aiParams, 0.08)) break; // 중간에 XP 멈춤
-        if (!bot.buyXp()) break;
-      }
-    } else if (persona === 'GOBLIN_GAMBLER') {
-      const isGoblinCashoutTurn = bot.hp <= 35 || bot.goblinVaultStacks >= 55;
-      const desiredLevel = isGoblinCashoutTurn ? 9 : 6;
-      if (bot.gold - 4 >= targetGoldFloor && bot.level < desiredLevel) {
-        bot.buyXp();
-      }
-    } else {
-      const stageNum = parseInt(currentRound.split('-')[0] || '2', 10);
-      // Soft noise: 정석 레벨 목표 ±1
-      const levelJitter = Math.round(this.softNoise(aiParams, 1.2));
-      const standardTargetLevel = Math.min(
-        10,
-        Math.max(4, stageNum + 3 + levelJitter)
-      );
-      if (bot.gold - 4 >= targetGoldFloor && bot.level < standardTargetLevel) {
-        bot.buyXp();
-      }
+      levelCap = Math.min(levelCap, 9);
     }
+
+    while (bot.gold - 4 >= targetGoldFloor && bot.level < levelCap) {
+      if (this.softShouldSkip(aiParams, 0.08)) break;
+      if (!bot.buyXp()) break;
+      // spike 템포가 아니면 한 틱에 1회 XP만 (이자 보호)
+      if (brain.lastEconomyPlan?.tempo !== 'spike') break;
+    }
+    void currentRound;
   }
 
   /**
@@ -1623,6 +1633,38 @@ export class AIBotController {
     const isGoblinCashoutTurn =
       persona === 'GOBLIN_GAMBLER' &&
       (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
+    const stageNum = parseInt(currentRound.split('-')[0] || '2', 10);
+
+    // Stage4: 즉시전투 경로에서도 통합 계획 재적용
+    const economyPlan = buildEconomyPlan({
+      bot,
+      persona,
+      stage: stageNum,
+      macroAction: brain.lastNeuralResult?.macroAction ?? null,
+      levelHint: brain.activeCompLevelHint ?? null,
+      pivotDecision: (brain.lastCompDecision?.decision as
+        | 'stay'
+        | 'soft-flex'
+        | 'hard-pivot'
+        | undefined) ?? null,
+      pivotGoldFloorHint: brain.pivotGoldFloorHint,
+      pivotMaxRerollsHint: brain.pivotMaxRerollsHint,
+      pivotPreferRolldown: brain.pivotPreferRolldown,
+      isEmergencySurvival,
+      isGoblinCashoutTurn,
+      skillLevel: aiParams.skillLevel,
+    });
+    this.applyEconomyPlanToBrain(
+      brain,
+      economyPlan,
+      aiParams,
+      isEmergencySurvival,
+      isGoblinCashoutTurn
+    );
+
+    if (brain.economyForceBenchPressure) {
+      this.runEconomyBenchCleanup(bot, brain, sharedPool);
+    }
 
     // A. 현재 상점(5칸)에서 즉시 구매할 기물 및 고티어 견제 기물 스캔
     this.buyDesirableUnitsFromCurrentShop(
@@ -1634,82 +1676,25 @@ export class AIBotController {
       scouting
     );
 
-    // B. 페르소나별 레벨업(buyXp) 의사결정 (Lv.10 확장 지원)
-    let targetGoldFloor = this.getPersonaGoldFloor(
-      bot,
-      persona,
-      isEmergencySurvival,
-      isGoblinCashoutTurn,
-      aiParams
-    );
-    if (!isEmergencySurvival && !isGoblinCashoutTurn) {
-      targetGoldFloor = this.softJitterGoldFloor(targetGoldFloor, aiParams);
-    }
-
-    if (!this.softShouldSkip(aiParams, 0.12)) {
-      if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
-        const threeStarCount = this.countTotalThreeStarUnits(bot);
-        if ((bot.level < 5 || threeStarCount >= 2) && bot.level < 10) {
-          while (bot.gold - 4 >= targetGoldFloor && bot.level < 9) {
-            if (this.softShouldSkip(aiParams, 0.08)) break;
-            if (!bot.buyXp()) break;
-          }
-        }
-      } else if (
-        persona === 'FAST_NINE_GREEDY' ||
-        persona === 'FAST_NINE_ECONOMIST'
+    // B. 레벨업 (EconomyPlanner targetLevel)
+    this.performPersonaLevelUpStep(bot, brain, currentRound, aiParams);
+    // 즉시전투는 틱이 없으므로 spike면 목표까지 추가 XP
+    if (
+      brain.lastEconomyPlan?.tempo === 'spike' &&
+      !this.softShouldSkip(aiParams, 0.12)
+    ) {
+      const floor = brain.targetGoldFloorThisRound;
+      while (
+        bot.gold - 4 >= floor &&
+        bot.level < brain.economyTargetLevel
       ) {
-        while (bot.gold - 4 >= targetGoldFloor && bot.level < 10) {
-          if (this.softShouldSkip(aiParams, 0.08)) break;
-          if (!bot.buyXp()) break;
-        }
-      } else if (persona === 'GOBLIN_GAMBLER') {
-        const desiredLevel = isGoblinCashoutTurn ? 9 : 6;
-        while (bot.gold - 4 >= targetGoldFloor && bot.level < desiredLevel) {
-          if (this.softShouldSkip(aiParams, 0.08)) break;
-          if (!bot.buyXp()) break;
-        }
-      } else {
-        const stageNum = parseInt(currentRound.split('-')[0] || '2', 10);
-        const levelJitter = Math.round(this.softNoise(aiParams, 1.2));
-        const standardTargetLevel = Math.min(
-          10,
-          Math.max(4, stageNum + 3 + levelJitter)
-        );
-        while (
-          bot.gold - 4 >= targetGoldFloor &&
-          bot.level < standardTargetLevel
-        ) {
-          if (this.softShouldSkip(aiParams, 0.08)) break;
-          if (!bot.buyXp()) break;
-        }
+        if (!bot.buyXp()) break;
       }
     }
 
-    // C. 페르소나별 상점 리롤(rerollShop) 및 기물 수집 루프
-    let maxRerollsThisTurn = 8;
-    if (isEmergencySurvival || isGoblinCashoutTurn) {
-      maxRerollsThisTurn = 18;
-    } else if (
-      (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') &&
-      bot.level >= 5 &&
-      bot.level <= 6
-    ) {
-      maxRerollsThisTurn = 12;
-    } else if (
-      (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') &&
-      bot.level < 8 &&
-      !isEmergencySurvival
-    ) {
-      maxRerollsThisTurn = bot.freeRerolls > 0 ? bot.freeRerolls : 1;
-    }
-    if (!isEmergencySurvival) {
-      maxRerollsThisTurn = Math.max(
-        0,
-        maxRerollsThisTurn + Math.round(this.softNoise(aiParams, 2.5))
-      );
-    }
-
+    // C. 상점 리롤 및 기물 수집 루프 (계획의 maxRerolls)
+    const targetGoldFloor = brain.targetGoldFloorThisRound;
+    const maxRerollsThisTurn = brain.maxRerollsAllowedThisRound;
     let rerollsDone = 0;
     while (rerollsDone < maxRerollsThisTurn) {
       const nextRerollCost = bot.freeRerolls > 0 ? 0 : 2;
@@ -1725,15 +1710,20 @@ export class AIBotController {
         break;
       }
       rerollsDone += 1;
+      brain.rerollsExecutedThisRound = rerollsDone;
 
       this.buyDesirableUnitsFromCurrentShop(
         bot,
         brain,
         unitsToDenyFromPlayer,
         sharedPool,
-        aiParams
+        aiParams,
+        scouting
       );
     }
+
+    // Stage4: 전투 직전 벤치 압박 마무리
+    this.finalizePrepEconomy(bot, brain, sharedPool);
   }
 
   /**
@@ -1822,7 +1812,7 @@ export class AIBotController {
         }
       }
 
-      // 2) 일반 기물 구매 가치 — softBuyThreshold로 문턱 흔들기
+      // 2) 일반 기물 구매 가치 — softBuyThreshold + EconomyPlanner 문턱 바이어스
       const utilityScore = this.evaluateShopUnitUtility(
         bot,
         brain,
@@ -1831,7 +1821,8 @@ export class AIBotController {
         aiParams,
         scouting
       );
-      const buyThreshold = this.softBuyThreshold(aiParams);
+      const buyThreshold =
+        this.softBuyThreshold(aiParams) + (brain.economyBuyThresholdBias || 0);
 
       if (utilityScore >= buyThreshold) {
         // Soft noise: 좋은 기물인데도 가끔 안 삼 (저티어일수록 자주)
@@ -1839,7 +1830,7 @@ export class AIBotController {
 
         let cleanupAttempted = false;
         if (!bot.canBuyUnit(unitId, template.cost)) {
-          this.cleanupBenchIfFull(bot, brain, sharedPool);
+          this.runEconomyBenchCleanup(bot, brain, sharedPool);
           cleanupAttempted = true;
         }
         const bought = bot.buyUnit(slotIdx, sharedPool);
@@ -2005,6 +1996,19 @@ export class AIBotController {
       score += 12;
     }
 
+    // Stage4: 벤치 기회비용 — 컴프 기여 − 슬롯 잠금 비용
+    const emptyBench = bot.bench.filter((s) => s === null).length;
+    score = applyShopOpportunityCost({
+      baseScore: score,
+      ownedCopies,
+      isBuyPriority: brain.buyPriorityUnitIds.has(template.id),
+      isKeepUnit: brain.keepUnitIds.has(template.id),
+      matchesTargetTrait: matchesTarget,
+      cost: template.cost,
+      emptyBenchSlots: emptyBench,
+      opportunityCostWeight: brain.economyOpportunityCostWeight ?? 0.2,
+    });
+
     // 7. 인간적 오차(Temperature Noise) 적용
     const noise = (Math.random() - 0.5) * aiParams.temperature * 38;
     return score + noise;
@@ -2019,26 +2023,85 @@ export class AIBotController {
     brain: BotBrainState,
     sharedPool: SharedPoolManager
   ): void {
-    const emptyCount = bot.bench.filter((s) => s === null).length;
-    if (emptyCount > 1) return;
+    this.runEconomyBenchCleanup(bot, brain, sharedPool, 1);
+  }
 
+  /**
+   * Stage4: EconomyPlanner 벤치 압박 — 라운드 매각 예산 내에서 저가치 벤치 정리.
+   * 1성 우선, 만석+압박 시 keep 밖 저가치 2성도 1회까지 허용(3성 레이스 제외).
+   */
+  private runEconomyBenchCleanup(
+    bot: Participant,
+    brain: BotBrainState,
+    sharedPool: SharedPoolManager,
+    maxSellsOverride?: number
+  ): void {
+    const emptyCount = bot.bench.filter((s) => s === null).length;
+    if (emptyCount > 1 && !brain.economyForceBenchPressure) return;
+    if (emptyCount > 2) return;
+
+    const budget = Math.max(
+      0,
+      (maxSellsOverride ?? brain.economyMaxSellsThisRound) -
+        brain.economySellsThisRound
+    );
+    if (budget <= 0) return;
+
+    let sold = 0;
+    while (sold < budget) {
+      const emptyNow = bot.bench.filter((s) => s === null).length;
+      // 빈칸 2개 이상이면 충분 (압박 모드가 아니면 중단)
+      if (emptyNow >= 2) break;
+      if (emptyNow >= 1 && !brain.economyForceBenchPressure && sold > 0) break;
+
+      const candidate = this.pickWorstBenchUnit(bot, brain, emptyNow === 0);
+      if (!candidate) break;
+      if (!bot.sellUnit(candidate.instanceId, sharedPool)) break;
+      brain.economySellsThisRound += 1;
+      sold += 1;
+    }
+  }
+
+  private pickWorstBenchUnit(
+    bot: Participant,
+    brain: BotBrainState,
+    allowWeakTwoStar: boolean
+  ): UnitInstance | null {
     let worstBenchUnit: UnitInstance | null = null;
     let worstValue = 9999;
 
     for (const unit of bot.bench) {
       if (!unit) continue;
       if (brain.deniedUnitInstanceIds.has(unit.instanceId)) continue;
-      if (unit.starLevel >= 2) continue;
+      if (unit.starLevel >= 3) continue;
 
-      let keepScore = unit.cost * 6 + bot.getOwnedUnitCopiesCount(unit.unitId) * 12;
+      const copies = bot.getOwnedUnitCopiesCount(unit.unitId);
+      const isKeep = brain.keepUnitIds.has(unit.unitId);
+      const isPriority = brain.buyPriorityUnitIds.has(unit.unitId);
+
+      if (unit.starLevel >= 2) {
+        // 2성: 만석+압박이고 컴프 밖이며 3성 레이스(copies>=6)가 아닐 때만
+        if (!allowWeakTwoStar) continue;
+        if (isKeep || isPriority) continue;
+        if (copies >= 6) continue;
+        if (unit.traits.includes(brain.targetTrait)) continue;
+      }
+
+      let keepScore = unit.cost * 6 + copies * 12;
+      if (unit.starLevel >= 2) keepScore += 50;
       if (unit.traits.includes(brain.targetTrait)) keepScore += 30;
-      if (unit.traits.includes('GOLDEN_GOBLIN') && brain.persona === 'GOBLIN_GAMBLER') {
+      if (
+        unit.traits.includes('GOLDEN_GOBLIN') &&
+        brain.persona === 'GOBLIN_GAMBLER'
+      ) {
         keepScore += 45;
       }
-      // Stage2: 활성 컴프 keep 목록 우선 보존 / 밖이면 매각 후보
-      if (brain.keepUnitIds.has(unit.unitId)) keepScore += 40;
+      if (isKeep) keepScore += 40;
       else if (brain.keepUnitIds.size > 0) keepScore -= 25;
-      if (brain.buyPriorityUnitIds.has(unit.unitId)) keepScore += 20;
+      if (isPriority) keepScore += 20;
+
+      // 페어(2장)/합성 직전은 보존
+      if (copies === 2 || copies === 5 || copies === 8) keepScore += 55;
 
       if (keepScore < worstValue) {
         worstValue = keepScore;
@@ -2046,9 +2109,27 @@ export class AIBotController {
       }
     }
 
-    // 대기석이 완전히 찼을 때(빈칸 0개)는 worstValue 기준치와 무관하게 2성 미완성 기물 중 가장 점수 낮은 1기를 과감히 매각하여 상점 락 해제!
-    if (worstBenchUnit && (emptyCount === 0 || worstValue < 65)) {
-      bot.sellUnit(worstBenchUnit.instanceId, sharedPool);
+    if (!worstBenchUnit) return null;
+    // 빈칸 1개일 때는 정말 낮은 가치만, 만석이면 강제
+    const emptyCount = bot.bench.filter((s) => s === null).length;
+    if (emptyCount === 0 || worstValue < 70 || brain.economyForceBenchPressure) {
+      return worstBenchUnit;
+    }
+    return null;
+  }
+
+  /**
+   * 전투 진입 직전: EconomyPlanner 벤치 압박 마무리 (실험 플래그 없이 상시).
+   */
+  public finalizePrepEconomy(
+    bot: Participant,
+    brain: BotBrainState,
+    sharedPool: SharedPoolManager
+  ): void {
+    const empty = bot.bench.filter((s) => s === null).length;
+    if (empty === 0 || (empty <= 1 && bot.gold >= 15)) {
+      brain.economyForceBenchPressure = true;
+      this.runEconomyBenchCleanup(bot, brain, sharedPool);
     }
   }
 

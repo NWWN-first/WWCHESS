@@ -174,6 +174,22 @@ const denyStats = {
   botsSampled: 0,
 };
 
+/** Stage4 EconomyPlanner KPI */
+const economyStats = {
+  samples: 0,
+  byTempo: {
+    interest: 0,
+    stabilize: 0,
+    rolldown: 0,
+    spike: 0,
+  } as Record<string, number>,
+  goldFloorSum: 0,
+  maxRerollsSum: 0,
+  targetLevelSum: 0,
+  forceBenchPressure: 0,
+  sellsSum: 0,
+};
+
 /** Stage1 CompAnalyzer 관측 (실행 전 추천 분포) */
 const compStats = {
   samples: 0,
@@ -320,7 +336,8 @@ function runOneGame(): void {
     origFinalize();
   };
 
-  const brainOf = (p: Participant) => ai.botBrains.get(p.id);
+  const brainOf = (p: Participant) =>
+    ai.getBotBrain(p.id) ?? (ai as any).botBrains?.get(p.id);
 
   let guard = 0;
   while (game.phase !== 'GAME_OVER_PHASE' && guard++ < 2000) {
@@ -474,6 +491,29 @@ function runOneGame(): void {
           cd.reason,
           (compStats.byReason.get(cd.reason) ?? 0) + 1
         );
+      }
+    }
+
+    // Stage4: startCombatPhase와 동일하게 전투 직전 벤치 압박 후 경제 KPI·결함 측정
+    for (const p of alive()) {
+      if (!p.isAI) continue;
+      const brain = brainOf(p);
+      if (!brain) continue;
+      try {
+        ai.finalizePrepEconomy(p, brain, game.sharedPool);
+      } catch (e) {
+        logError('finalizePrepEconomy', e);
+      }
+      const ep = brain.lastEconomyPlan;
+      if (ep) {
+        economyStats.samples++;
+        economyStats.byTempo[ep.tempo] =
+          (economyStats.byTempo[ep.tempo] ?? 0) + 1;
+        economyStats.goldFloorSum += ep.goldFloor;
+        economyStats.maxRerollsSum += ep.maxRerolls;
+        economyStats.targetLevelSum += ep.targetLevel;
+        if (ep.forceBenchPressure) economyStats.forceBenchPressure++;
+        economyStats.sellsSum += brain.economySellsThisRound ?? 0;
       }
     }
 
@@ -1058,6 +1098,22 @@ console.log(
 console.log(
   `  종료 시 벤치 견제홀드 인스턴스 합: ${denyStats.denyHoldUnitsAtEnd} (평균 ${(denyStats.botsSampled ? denyStats.denyHoldUnitsAtEnd / denyStats.botsSampled : 0).toFixed(2)}/봇)`
 );
+
+console.log('\n[4-D] EconomyPlanner KPI (Stage4)');
+if (economyStats.samples === 0) {
+  console.log('  표본 없음');
+} else {
+  const n = economyStats.samples;
+  console.log(
+    `  샘플 ${n} | interest ${economyStats.byTempo.interest ?? 0} (${pct(economyStats.byTempo.interest ?? 0, n)}) | stabilize ${economyStats.byTempo.stabilize ?? 0} (${pct(economyStats.byTempo.stabilize ?? 0, n)}) | rolldown ${economyStats.byTempo.rolldown ?? 0} (${pct(economyStats.byTempo.rolldown ?? 0, n)}) | spike ${economyStats.byTempo.spike ?? 0} (${pct(economyStats.byTempo.spike ?? 0, n)})`
+  );
+  console.log(
+    `  평균 골드하한 ${(economyStats.goldFloorSum / n).toFixed(1)} | 평균 리롤상한 ${(economyStats.maxRerollsSum / n).toFixed(1)} | 평균 레벨목표 ${(economyStats.targetLevelSum / n).toFixed(1)}`
+  );
+  console.log(
+    `  벤치압박 활성: ${pct(economyStats.forceBenchPressure, n)} | 라운드당 평균 벤치매각 ${(economyStats.sellsSum / n).toFixed(2)}기`
+  );
+}
 
 console.log('\n[4-C] CompAnalyzer 추천 분포 (Stage1/2 — Planner 반영 후)');
 console.log(
