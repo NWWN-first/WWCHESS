@@ -1126,15 +1126,21 @@ export class GameLoopManager {
     }
 
     // 4) 체력 0 이하 탈락자 처리 및 공유 풀 100% 환원
-    for (const p of this.participants) {
-      if (!p.isEliminated && p.hp <= 0) {
-        p.eliminate(this.sharedPool);
-        if (!this.eliminationOrderIds.includes(p.id)) {
-          this.eliminationOrderIds.push(p.id);
-        }
-        const elimMsg = `🔥 [${p.name}] 탈락! 보유하던 모든 기물이 공유 풀로 반환되었습니다!`;
-        this.pushBannerNotification(elimMsg);
+    // Stage0: 동시 탈락 시 participants 배열 순서(플레이어 항상 앞) 편향 제거
+    // → 잔여 HP(더 많이 죽은 쪽 우선) → id 로 안정 정렬 후 탈락 순서 기록
+    const newlyEliminated = this.participants
+      .filter((p) => !p.isEliminated && p.hp <= 0)
+      .sort((a, b) => {
+        if (a.hp !== b.hp) return a.hp - b.hp; // 더 낮은(음수 큰) HP = 먼저 탈락 = 더 나쁜 순위
+        return a.id.localeCompare(b.id);
+      });
+    for (const p of newlyEliminated) {
+      p.eliminate(this.sharedPool);
+      if (!this.eliminationOrderIds.includes(p.id)) {
+        this.eliminationOrderIds.push(p.id);
       }
+      const elimMsg = `🔥 [${p.name}] 탈락! 보유하던 모든 기물이 공유 풀로 반환되었습니다!`;
+      this.pushBannerNotification(elimMsg);
     }
 
     // 5) 게임 종료 조건 확인 (플레이어 탈락 또는 생존자 1명 이하)

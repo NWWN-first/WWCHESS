@@ -38,14 +38,37 @@ export interface MissedDesirableBuyEvent {
   cost: number;
 }
 
+export interface PivotTelemetryEvent {
+  round: string;
+  from: TraitId;
+  to: TraitId;
+  contested: number;
+  poolRatio: number;
+}
+
+export interface PivotTelemetry {
+  /** soft-gate/스카우트 확률을 통과해 피벗을 '검토'한 횟수 */
+  attempts: number;
+  /** 경합/풀비율 게이트에서 탈락 */
+  contestGateFail: number;
+  /** 대체 시너지를 찾지 못함 */
+  noAlternative: number;
+  /** targetTrait 실제 변경 횟수 (= pivotedCount 증가분) */
+  executed: number;
+  events: PivotTelemetryEvent[];
+}
+
 export interface BotBrainState {
   botId: string;
   persona: AIPersona;
+  /** 게임 시작 시 고정된 초기 목표 시너지 (피벗 성과 비교용) */
+  initialTrait: TraitId;
   targetTrait: TraitId;
   secondaryTrait: TraitId;
   heroTargetUnitId?: string;
   deniedUnitInstanceIds: Set<string>;
   pivotedCount: number;
+  pivotTelemetry: PivotTelemetry;
   isRolldownActive: boolean;
   nextActionDelayMs: number;
   rerollsExecutedThisRound: number;
@@ -300,10 +323,18 @@ export class AIBotController {
     const state: BotBrainState = {
       botId: bot.id,
       persona,
+      initialTrait,
       targetTrait: initialTrait,
       secondaryTrait,
       deniedUnitInstanceIds: new Set<string>(),
       pivotedCount: 0,
+      pivotTelemetry: {
+        attempts: 0,
+        contestGateFail: 0,
+        noAlternative: 0,
+        executed: 0,
+        events: [],
+      },
       isRolldownActive: false,
       nextActionDelayMs: 900,
       rerollsExecutedThisRound: 0,
@@ -1439,6 +1470,7 @@ export class AIBotController {
       !(brain.persona === 'GOBLIN_GAMBLER' && bot.goblinVaultStacks >= 12);
 
     if (shouldAttemptPivot) {
+      brain.pivotTelemetry.attempts += 1;
       const currentContested = traitContestedMap.get(brain.targetTrait) ?? 0;
 
       // 목표 시너지 기물들의 공유 풀 잔여 비율 계산
@@ -1467,9 +1499,22 @@ export class AIBotController {
         }
 
         if (bestAlternative !== brain.targetTrait) {
+          const fromTrait = brain.targetTrait;
           brain.targetTrait = bestAlternative;
           brain.pivotedCount += 1;
+          brain.pivotTelemetry.executed += 1;
+          brain.pivotTelemetry.events.push({
+            round: brain.currentRoundLabel ?? '?',
+            from: fromTrait,
+            to: bestAlternative,
+            contested: currentContested,
+            poolRatio,
+          });
+        } else {
+          brain.pivotTelemetry.noAlternative += 1;
         }
+      } else {
+        brain.pivotTelemetry.contestGateFail += 1;
       }
     }
 
