@@ -1886,7 +1886,7 @@ class FantasyAutoBattlerApp {
       );
       const nameLabel = isPlayer
         ? (needsReturn ? '🏠내전장' : '나')
-        : p.name.slice(0, 3);
+        : p.name.slice(0, 5);
 
       card.innerHTML = `
         <div class="leader-top-row">

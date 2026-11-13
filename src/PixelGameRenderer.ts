@@ -1037,7 +1037,7 @@ export class PixelGameRenderer {
     const topHudPx = 34 + shopDockPx;
     const bottomReservedPx = 14;
     const leftDockPx = w < 680 ? 40 : 56;
-    const rightDockPx = w < 680 ? 44 : 64;
+    const rightDockPx = w < 680 ? 56 : 102;
 
     const arenaLeft = leftDockPx;
     const arenaTop = topHudPx;

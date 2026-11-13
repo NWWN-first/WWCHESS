@@ -633,7 +633,7 @@ img {
   position: absolute;
   top: 132px;
   left: 5px;
-  bottom: 18px;
+  bottom: 100px;
   width: 96px;
   z-index: 8;
   display: flex;
@@ -645,6 +645,7 @@ img {
 
 #app:not(.shop-dock-top-expanded) .left-floating-dock {
   top: 42px;
+  bottom: 100px;
 }
 
 .goblin-vault-gem {
@@ -801,46 +802,51 @@ img {
 }
 
 /* ==========================================================================
-   4. 우측 8인 로비 미니 탭 (70px 컴팩트 체력바, 줄바꿈 완전 차단)
+   4. 우측 8인 순위표 (우하단 버튼과 겹치지 않게, 카드 최소 높이 보장)
    ========================================================================== */
 .right-player-dock {
   position: absolute;
   top: 42px;
   right: 5px;
-  bottom: 18px;
-  width: 70px;
+  bottom: 148px;
+  width: 96px;
   z-index: 15;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   pointer-events: none;
-  transition: top 0.2s ease;
+  transition: top 0.2s ease, bottom 0.2s ease;
 }
 
 .right-player-dock.shop-collapsed {
-  bottom: 130px;
+  bottom: 148px;
 }
 
 .compact-player-tabs {
   pointer-events: auto;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 2px;
+  justify-content: flex-start;
+  gap: 4px;
   height: 100%;
   max-height: 100%;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+.compact-player-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .leader-card {
   position: relative;
-  flex: 1 1 0;
-  min-height: 0;
-  max-height: 38px;
-  padding: 2px 4px;
-  background: rgba(15, 23, 42, 0.88);
+  flex: 0 0 auto;
+  min-height: 44px;
+  max-height: none;
+  padding: 4px 6px;
+  background: rgba(15, 23, 42, 0.92);
   border: 1.5px solid #334155;
-  border-radius: 5px;
+  border-radius: 6px;
   box-shadow: 0 1px 0 #05070e;
   cursor: pointer;
   display: flex;
@@ -884,19 +890,19 @@ img {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 2px;
-  font-size: 9px;
-  font-weight: 600;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 700;
   color: #f8fafc;
-  line-height: 1.1;
+  line-height: 1.15;
 }
 
 .leader-hp-gauge {
   width: 100%;
-  height: 2.5px;
+  height: 4px;
   background: #090d16;
   border-radius: 2px;
-  margin-top: 1.5px;
+  margin-top: 3px;
   overflow: hidden;
 }
 
@@ -908,10 +914,10 @@ img {
 .leader-sub-row {
   display: flex;
   justify-content: space-between;
-  font-size: 8px;
+  font-size: 10px;
   color: #cbd5e1;
-  margin-top: 1px;
-  line-height: 1;
+  margin-top: 2px;
+  line-height: 1.1;
 }
 
 /* ==========================================================================
@@ -1148,8 +1154,22 @@ img {
   z-index: 11;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   pointer-events: auto;
+}
+
+.shop-drawer-toggle-bar .lock-gem-btn {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1e293b;
+  border: 1.5px solid #64748b;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
 }
 
 .shop-toggle-pill {
@@ -1184,8 +1204,8 @@ img {
   top: 34px;
   bottom: auto;
   left: 6px;
-  /* 우측 순위표(70px)와 즉시출격 버튼이 겹치지 않도록 여백 */
-  right: 82px;
+  /* 우측 순위표(96px)와 겹치지 않도록 여백 */
+  right: 108px;
   height: 90px;
   z-index: 10;
   display: flex;
@@ -1199,19 +1219,94 @@ img {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.85);
 }
 
-/* 우하단 TFT 컨트롤: 아래=상점열기(+골드), 바로 위=리롤, 맨 위=전투(정비 시) */
+/* 1) 좌하단: 레벨업 고정 */
+.tft-left-controls {
+  position: absolute;
+  left: 6px;
+  bottom: 10px;
+  z-index: 16;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 92px;
+  pointer-events: auto;
+}
+
+.tft-level-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 3px 6px;
+  background: rgba(9, 13, 25, 0.92);
+  border: 1.5px solid #38bdf8;
+  border-radius: 8px;
+  font-size: 11px;
+  color: #e0f2fe;
+}
+
+.tft-lvl {
+  font-weight: 800;
+  color: #7dd3fc;
+}
+.tft-xp {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.tft-xp-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 44px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  background: linear-gradient(180deg, #0284c7 0%, #1e3a8a 100%);
+  border: 2px solid #7dd3fc;
+  box-shadow: 0 2px 0 #05070e;
+  color: #fff;
+}
+.tft-xp-btn .btn-main-label {
+  font-size: 12px;
+  color: #fff;
+}
+.tft-xp-btn .btn-sub-cost {
+  font-size: 10px;
+  color: #fef08a;
+}
+
+/* 2~3) 우하단: 아래=상점 / 위=현재골드 / 위=리롤 */
 .collapsed-quick-bar {
   position: absolute;
   right: 5px;
   bottom: 10px;
   top: auto;
-  width: 86px;
+  width: 92px;
   z-index: 16;
   display: flex;
   flex-direction: column-reverse;
   align-items: stretch;
   gap: 5px;
   pointer-events: auto;
+}
+
+.tft-gold-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: rgba(9, 13, 25, 0.95);
+  border: 1.5px solid #facc15;
+  color: #fef08a;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .quick-action-gem {
@@ -1246,8 +1341,9 @@ img {
   border: 2px solid #facc15;
   color: #fef08a;
   flex-direction: row;
-  flex-wrap: wrap;
-  gap: 2px 4px;
+  gap: 4px;
+  min-height: 40px;
+  font-weight: 800;
 }
 
 .quick-action-gem.reroll-gem {
@@ -1276,19 +1372,19 @@ img {
   min-height: 0;
 }
 
-/* 상점 열림 시에도 우하단 리롤/상점토글은 유지 — 순위표만 위로 */
-#app.shop-dock-top-expanded .collapsed-quick-bar {
+#app.shop-dock-top-expanded .collapsed-quick-bar,
+#app.shop-dock-top-expanded .tft-left-controls {
   bottom: 10px;
 }
 
 #app:not(.shop-dock-top-expanded) .right-player-dock {
   top: 42px;
-  bottom: 130px;
+  bottom: 148px;
 }
 
 #app.shop-dock-top-expanded .right-player-dock {
   top: 132px;
-  bottom: 130px;
+  bottom: 148px;
 }
 
 .dock-left-controls {
