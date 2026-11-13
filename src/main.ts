@@ -453,6 +453,19 @@ class FantasyAutoBattlerApp {
       });
     });
 
+    document.querySelectorAll('#settings-prep-mode-options .setting-opt-btn').forEach((btn) => {
+      btn.addEventListener('pointerup', (e) => {
+        const target = e.currentTarget as HTMLElement;
+        const mode = target.dataset.prepMode === 'MANUAL' ? 'MANUAL' : 'TIMER';
+        this.game.prepStartMode = mode;
+        document
+          .querySelectorAll('#settings-prep-mode-options .setting-opt-btn')
+          .forEach((b) => b.classList.remove('active'));
+        target.classList.add('active');
+        this.onGameStateUpdated();
+      });
+    });
+
     document
       .getElementById('play-again-btn')
       ?.addEventListener('pointerup', () => {
@@ -1418,11 +1431,18 @@ class FantasyAutoBattlerApp {
     }
 
     const roundLabel = document.getElementById('round-label');
+    const roundProgress = document.getElementById('round-progress');
     const phaseLabel = document.getElementById('phase-label');
+    const matchTypeLabel = document.getElementById('match-type-label');
+    const roundDots = document.getElementById('round-dots');
     if (roundLabel && phaseLabel) {
-      roundLabel.textContent = this.game.getRoundLabel();
+      const info = this.game.getStageHudInfo();
+      roundLabel.textContent = info.stageTitle;
+      if (roundProgress) {
+        roundProgress.textContent = `${info.roundProgress}회차`;
+      }
       const phaseNames: Record<string, string> = {
-        AUGMENT_PHASE: '증강체',
+        AUGMENT_PHASE: '증강',
         ANVIL_PHASE: '모루',
         PREPARATION_PHASE: '정비',
         COMBAT_PHASE: '전투',
@@ -1430,37 +1450,68 @@ class FantasyAutoBattlerApp {
         GAME_OVER_PHASE: '종료',
       };
       phaseLabel.textContent = phaseNames[this.game.phase] ?? this.game.phase;
+      if (matchTypeLabel) {
+        matchTypeLabel.textContent = info.matchTypeLabel;
+      }
+      if (roundDots) {
+        const parts: string[] = [];
+        for (let i = 1; i <= info.roundsInStage; i++) {
+          const cls =
+            i < info.roundInStage
+              ? 'stage-dot is-done'
+              : i === info.roundInStage
+                ? 'stage-dot is-current'
+                : 'stage-dot';
+          parts.push(`<span class="${cls}"></span>`);
+        }
+        roundDots.innerHTML = parts.join('');
+      }
+      const badge = document.getElementById('round-badge');
+      if (badge) {
+        badge.title = `${info.stageTitle} · ${info.roundProgress}회차 (${info.code}) · ${info.matchTypeLabel}`;
+      }
     }
 
     // TFT 순정 실시간 정비 카운트다운 타이머 & 5초 이하 긴박 붉은 맥동(Pulse)
+    // 수동 시작 모드에서는 카운트다운 대신 "수동" 표기 — 유저가 [라운드 시작]을 눌러야 전투 진입
     const timerPill = document.getElementById('prep-timer-pill');
     const timerText = document.getElementById('prep-timer-text');
     const timerFill = document.getElementById('prep-timer-fill');
     const centerBanner = document.getElementById('hud-center-banner');
     const urgentVignette = document.getElementById('urgent-vignette-overlay');
+    const isManualPrep = this.game.prepStartMode === 'MANUAL';
 
     const isPrep = this.game.phase === 'PREPARATION_PHASE';
     const isUrgentFiveSec =
-      isPrep && this.game.prepRemainingSec <= 5 && this.game.prepRemainingSec > 0;
+      isPrep &&
+      !isManualPrep &&
+      this.game.prepRemainingSec <= 5 &&
+      this.game.prepRemainingSec > 0;
 
     if (timerPill && timerText && timerFill) {
       if (isPrep) {
         timerPill.classList.remove('hidden');
-        timerText.textContent = `⏱️${this.game.prepRemainingSec}s`;
-        const pct =
-          this.game.prepTotalSec > 0
-            ? Math.max(
-                0,
-                Math.min(
-                  100,
-                  Math.round(
-                    (this.game.prepRemainingSec / this.game.prepTotalSec) * 100
+        if (isManualPrep) {
+          timerText.textContent = '👆 수동';
+          timerFill.style.width = '100%';
+          timerPill.classList.remove('urgent-pulse');
+        } else {
+          timerText.textContent = `⏱️${this.game.prepRemainingSec}s`;
+          const pct =
+            this.game.prepTotalSec > 0
+              ? Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    Math.round(
+                      (this.game.prepRemainingSec / this.game.prepTotalSec) * 100
+                    )
                   )
                 )
-              )
-            : 100;
-        timerFill.style.width = `${pct}%`;
-        timerPill.classList.toggle('urgent-pulse', isUrgentFiveSec);
+              : 100;
+          timerFill.style.width = `${pct}%`;
+          timerPill.classList.toggle('urgent-pulse', isUrgentFiveSec);
+        }
       } else {
         timerPill.classList.add('hidden');
         timerPill.classList.remove('urgent-pulse');
@@ -1888,7 +1939,10 @@ class FantasyAutoBattlerApp {
       quickCombatBtn.classList.toggle('hidden', inCombat);
       if (this.game.phase === 'PREPARATION_PHASE') {
         // 우측 70px 열에 맞춤 — 짧은 라벨로 순위표와 겹침/넘침 방지
-        quickCombatBtn.textContent = `⚔️ ${this.game.prepRemainingSec}s`;
+        quickCombatBtn.textContent =
+          this.game.prepStartMode === 'MANUAL'
+            ? '⚔️ 시작'
+            : `⚔️ ${this.game.prepRemainingSec}s`;
       }
     }
 
@@ -1937,9 +1991,15 @@ class FantasyAutoBattlerApp {
     if (startCombatBtn) {
       startCombatBtn.classList.toggle('hidden', inCombat);
       if (this.game.phase === 'PREPARATION_PHASE') {
-        const isUrgent = this.game.prepRemainingSec <= 5;
+        const isManual = this.game.prepStartMode === 'MANUAL';
+        const isUrgent = !isManual && this.game.prepRemainingSec <= 5;
         startCombatBtn.classList.toggle('urgent-pulse', isUrgent);
-        startCombatBtn.innerHTML = `
+        startCombatBtn.innerHTML = isManual
+          ? `
+          <span class="sword-emblem" style="font-size:15px;">⚔️</span>
+          <span class="battle-label">라운드 시작</span>
+        `
+          : `
           <span class="sword-emblem" style="font-size:15px;">⏱️${this.game.prepRemainingSec}s</span>
           <span class="battle-label">즉시출격</span>
         `;

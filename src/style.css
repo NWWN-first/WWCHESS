@@ -410,16 +410,76 @@ img {
 .stage-emblem {
   border-color: #38bdf8;
   background: linear-gradient(180deg, #163052 0%, #0b192e 100%);
+  height: auto;
+  min-height: 34px;
+  padding: 3px 8px;
+  gap: 6px;
+  align-items: center;
+}
+
+.stage-badge-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stage-badge-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  line-height: 1.15;
 }
 
 .stage-num {
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 800;
   color: #ffea00;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+}
+
+.stage-progress {
+  font-size: 11px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.stage-round-dots {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.stage-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  box-sizing: border-box;
+}
+
+.stage-dot.is-done {
+  background: #38bdf8;
+  border-color: #7dd3fc;
+}
+
+.stage-dot.is-current {
+  background: #facc15;
+  border-color: #fef08a;
+  box-shadow: 0 0 4px rgba(250, 204, 21, 0.85);
 }
 
 .phase-ribbon {
-  font-size: 11px;
+  font-size: 10px;
   color: #7dd3fc;
+}
+
+.match-type-ribbon {
+  font-size: 9px;
+  color: #cbd5e1;
 }
 
 /* TFT 실시간 정비 카운트다운 타이머 알약 */
@@ -2161,6 +2221,13 @@ img {
   color: #ffffff;
   font-weight: 700;
   box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+}
+
+.settings-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #94a3b8;
 }
 
 .settings-badge-ok {

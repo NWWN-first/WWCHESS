@@ -98,9 +98,16 @@
             <span id="rank-text" class="gem-text">실버 20LP</span>
           </div>
 
-          <div id="round-badge" class="gem-pill stage-emblem">
-            <span id="round-label" class="stage-num">1-1</span>
-            <span id="phase-label" class="phase-ribbon">정비</span>
+          <div id="round-badge" class="gem-pill stage-emblem" title="스테이지 진행">
+            <div class="stage-badge-col">
+              <span id="round-label" class="stage-num">스테이지 1</span>
+              <div id="round-dots" class="stage-round-dots" aria-hidden="true"></div>
+            </div>
+            <div class="stage-badge-meta">
+              <span id="round-progress" class="stage-progress">1/2</span>
+              <span id="phase-label" class="phase-ribbon">정비</span>
+              <span id="match-type-label" class="match-type-ribbon">크립전</span>
+            </div>
           </div>
 
           <div id="prep-timer-pill" class="gem-pill prep-timer-pill">
@@ -388,6 +395,16 @@
                   <button class="setting-opt-btn" data-map="town">🏰 왕도 광장</button>
                 </div>
               </div>
+              <div class="settings-row">
+                <span class="settings-label">라운드 시작</span>
+                <div class="settings-options" id="settings-prep-mode-options">
+                  <button class="setting-opt-btn active" data-prep-mode="TIMER">⏱️ 타이머 자동</button>
+                  <button class="setting-opt-btn" data-prep-mode="MANUAL">👆 수동 시작</button>
+                </div>
+              </div>
+              <p class="settings-hint">
+                수동 시작: 정비 시간이 끝나도 자동으로 넘어가지 않으며, [라운드 시작]을 눌러야 전투가 시작됩니다.
+              </p>
             </div>
 
             <div class="settings-section">

@@ -889,6 +889,10 @@ export class ThreeJsGameRenderer {
 
   // 횃불 조명들 (Flickering Torches)
   private torchLights: { light: THREE.PointLight; baseIntensity: number; phase: number }[] = [];
+  /** 떠다니는 마나 위습 / 깃발 펄럭임용 */
+  private ambientWisps: { mesh: THREE.Object3D; baseY: number; phase: number; speed: number }[] =
+    [];
+  private bannerMeshes: THREE.Object3D[] = [];
 
   // 활성 투사체 및 팝업 텍스트
   private activeProjectiles: Active3DProjectile[] = [];
@@ -1442,10 +1446,26 @@ export class ThreeJsGameRenderer {
       0.38,
       6
     );
+    const rimGeo = new THREE.CylinderGeometry(
+      this.hexRadius * 1.02,
+      this.hexRadius * 1.02,
+      0.06,
+      6,
+      1,
+      true
+    );
+    const inlayGeo = new THREE.CylinderGeometry(
+      this.hexRadius * 0.42,
+      this.hexRadius * 0.42,
+      0.05,
+      6
+    );
+    const runeGeo = new THREE.TorusGeometry(this.hexRadius * 0.28, 0.035, 6, 6);
 
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 7; c++) {
         const isAway = r < 4;
+        const onMidLine = r === 3 || r === 4;
         // 밝고 고급스러운 중세 성채 석조 바닥재 (플레이어: 산뜻한 은백색/아이보리 대리석 타일, 적: 온화한 샌드스톤 사암 타일)
         const stoneColor = isAway
           ? (r + c) % 2 === 0
@@ -1476,12 +1496,68 @@ export class ThreeJsGameRenderer {
           baseY: 0,
         };
 
+        // 타일 가장자리 청동/황금 림 + 중앙 룬 인레이
+        const rimMat = new THREE.MeshStandardMaterial({
+          color: onMidLine ? 0xfbbf24 : isAway ? 0xb45309 : 0x64748b,
+          metalness: 0.55,
+          roughness: 0.35,
+          side: THREE.DoubleSide,
+        });
+        const rim = new THREE.Mesh(rimGeo, rimMat);
+        rim.rotation.y = Math.PI / 6;
+        rim.position.set(pos.x, 0.2, pos.z);
+        rim.receiveShadow = true;
+        this.boardGroup.add(rim);
+
+        const inlayMat = new THREE.MeshStandardMaterial({
+          color: onMidLine ? 0xfde68a : isAway ? 0xc4a574 : 0xb8c5d6,
+          metalness: 0.25,
+          roughness: 0.5,
+          emissive: onMidLine ? 0xb45309 : 0x000000,
+          emissiveIntensity: onMidLine ? 0.35 : 0,
+          flatShading: true,
+        });
+        const inlay = new THREE.Mesh(inlayGeo, inlayMat);
+        inlay.rotation.y = Math.PI / 6;
+        inlay.position.set(pos.x, 0.2, pos.z);
+        this.boardGroup.add(inlay);
+
+        if ((r + c) % 3 === 0 || onMidLine) {
+          const runeMat = new THREE.MeshStandardMaterial({
+            color: onMidLine ? 0xf59e0b : 0x38bdf8,
+            emissive: onMidLine ? 0xf59e0b : 0x0284c7,
+            emissiveIntensity: 0.55,
+            metalness: 0.4,
+            roughness: 0.3,
+          });
+          const rune = new THREE.Mesh(runeGeo, runeMat);
+          rune.rotation.x = Math.PI / 2;
+          rune.rotation.z = Math.PI / 6;
+          rune.position.set(pos.x, 0.24, pos.z);
+          this.boardGroup.add(rune);
+        }
+
         const key = `${r},${c}`;
         this.hexTileMeshes.set(key, mesh);
         this.tileOriginalY.set(mesh, 0);
         this.boardGroup.add(mesh);
       }
     }
+
+    // 중앙 전선 아케인 빛줄기 (양 진영 경계)
+    const seamGeo = new THREE.BoxGeometry(14.5, 0.08, 0.22);
+    const seamMat = new THREE.MeshStandardMaterial({
+      color: 0xfbbf24,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 0.9,
+      metalness: 0.5,
+      roughness: 0.25,
+    });
+    const seam = new THREE.Mesh(seamGeo, seamMat);
+    const midA = this.hexToWorldPos(3, 3);
+    const midB = this.hexToWorldPos(4, 3);
+    seam.position.set(0, 0.28, (midA.z + midB.z) * 0.5);
+    this.boardGroup.add(seam);
   }
 
   /**
@@ -1646,7 +1722,9 @@ export class ThreeJsGameRenderer {
       const banner = new THREE.Mesh(bannerGeo, bannerMat);
       banner.position.set(0, 1.6, cfg.isAway ? 0.9 : -0.9);
       banner.rotation.y = cfg.isAway ? 0 : Math.PI;
+      banner.userData.baseRotZ = 0;
       pillarGroup.add(banner);
+      this.bannerMeshes.push(banner);
 
       // 따뜻한 주황빛 포인트 라이트 (Flickering Flame Light)
       const fireLight = new THREE.PointLight(0xff8822, 2.8, 20);
@@ -1662,36 +1740,261 @@ export class ThreeJsGameRenderer {
       this.environmentGroup.add(pillarGroup);
     });
 
-    // 5. 배경 외곽 자연 요소 (중세 상록수 몇 그루 배치로 풍성한 야외 전장 분위기 조성)
-    const treePositions = [
-      [-26, 0, -18],
-      [-22, 0, -24],
-      [24, 0, -20],
-      [28, 0, -14],
-      [-28, 0, 10],
-      [28, 0, 12],
-    ];
-    const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 2.5, 6);
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x543d2b, roughness: 0.9 });
-    const foliageGeo = new THREE.ConeGeometry(2.2, 5.0, 6);
-    const foliageMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.8 });
+    this.buildFantasyArenaSetDressing();
+  }
 
-    treePositions.forEach((tp) => {
+  /**
+   * 결투장 주변 판타지 셋드레싱: 나무·바위·수정·성채 실루엣·마나 위습 등
+   */
+  private buildFantasyArenaSetDressing(): void {
+    // 1) 다층 상록수 군락 (크기·색 다양화)
+    const treePositions: { x: number; z: number; s: number; hue: number }[] = [
+      { x: -26, z: -18, s: 1.0, hue: 0x15803d },
+      { x: -22, z: -24, s: 1.25, hue: 0x166534 },
+      { x: -30, z: -12, s: 0.85, hue: 0x14532d },
+      { x: -18, z: -28, s: 1.1, hue: 0x3f6212 },
+      { x: 24, z: -20, s: 1.15, hue: 0x15803d },
+      { x: 28, z: -14, s: 0.95, hue: 0x166534 },
+      { x: 32, z: -22, s: 1.35, hue: 0x14532d },
+      { x: 20, z: -26, s: 0.8, hue: 0x4d7c0f },
+      { x: -28, z: 10, s: 1.05, hue: 0x15803d },
+      { x: -32, z: 4, s: 0.9, hue: 0x3f6212 },
+      { x: 28, z: 12, s: 1.2, hue: 0x166534 },
+      { x: 31, z: 6, s: 0.85, hue: 0x14532d },
+      { x: -24, z: 18, s: 0.75, hue: 0x4d7c0f },
+      { x: 25, z: 18, s: 0.8, hue: 0x15803d },
+    ];
+    const trunkGeo = new THREE.CylinderGeometry(0.35, 0.55, 2.4, 6);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x543d2b, roughness: 0.92 });
+    const foliageGeoA = new THREE.ConeGeometry(2.0, 4.2, 7);
+    const foliageGeoB = new THREE.ConeGeometry(1.55, 3.2, 6);
+
+    treePositions.forEach((tp, i) => {
       const treeGroup = new THREE.Group();
-      treeGroup.position.set(tp[0], -0.8, tp[2]);
+      treeGroup.position.set(tp.x, -0.85, tp.z);
+      treeGroup.scale.setScalar(tp.s);
 
       const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-      trunk.position.y = 1.25;
+      trunk.position.y = 1.2;
       trunk.castShadow = true;
       treeGroup.add(trunk);
 
-      const foliage = new THREE.Mesh(foliageGeo, foliageMat);
-      foliage.position.y = 4.2;
+      const foliageMat = new THREE.MeshStandardMaterial({
+        color: tp.hue,
+        roughness: 0.82,
+        flatShading: true,
+      });
+      const foliage = new THREE.Mesh(foliageGeoA, foliageMat);
+      foliage.position.y = 3.9;
       foliage.castShadow = true;
       treeGroup.add(foliage);
 
+      const foliage2 = new THREE.Mesh(foliageGeoB, foliageMat.clone());
+      foliage2.position.y = 5.4;
+      foliage2.rotation.y = (i % 3) * 0.4;
+      foliage2.castShadow = true;
+      treeGroup.add(foliage2);
+
       this.environmentGroup.add(treeGroup);
     });
+
+    // 2) 이끼 낀 바위·돌무더기
+    const rockGeo = new THREE.DodecahedronGeometry(1.0, 0);
+    const rockMat = new THREE.MeshStandardMaterial({
+      color: 0x6b7280,
+      roughness: 0.95,
+      flatShading: true,
+    });
+    const rockSpots = [
+      [-14, 0, -11],
+      [13.5, 0, -10.5],
+      [-15.5, 0, 9],
+      [15, 0, 10],
+      [-19, 0, -4],
+      [18.5, 0, -3],
+      [-8, 0, -14],
+      [9, 0, -13.5],
+    ];
+    rockSpots.forEach((rp, i) => {
+      const rock = new THREE.Mesh(rockGeo, rockMat.clone());
+      (rock.material as THREE.MeshStandardMaterial).color.offsetHSL(0, 0, (i % 3) * 0.04 - 0.04);
+      rock.position.set(rp[0], -0.35, rp[2]);
+      rock.scale.set(0.7 + (i % 3) * 0.25, 0.45 + (i % 2) * 0.2, 0.85 + (i % 4) * 0.1);
+      rock.rotation.set(0.2 * i, 0.5 * i, 0.1 * i);
+      rock.castShadow = true;
+      rock.receiveShadow = true;
+      this.environmentGroup.add(rock);
+    });
+
+    // 3) 발광 수정 기둥 (아케인 크리스탈)
+    const crystalGeo = new THREE.OctahedronGeometry(0.55, 0);
+    const crystalConfigs = [
+      { x: -10.5, z: -6.2, c: 0x22d3ee },
+      { x: 10.5, z: -6.2, c: 0xa78bfa },
+      { x: -10.8, z: 6.8, c: 0x34d399 },
+      { x: 10.8, z: 6.8, c: 0xf472b6 },
+      { x: 0, z: -12.5, c: 0xfbbf24 },
+      { x: -16, z: 1.5, c: 0x60a5fa },
+      { x: 16, z: 1.5, c: 0xf59e0b },
+    ];
+    crystalConfigs.forEach((cc, i) => {
+      const mat = new THREE.MeshStandardMaterial({
+        color: cc.c,
+        emissive: cc.c,
+        emissiveIntensity: 0.85,
+        metalness: 0.35,
+        roughness: 0.2,
+        transparent: true,
+        opacity: 0.92,
+      });
+      const crystal = new THREE.Mesh(crystalGeo, mat);
+      crystal.position.set(cc.x, 0.55 + (i % 3) * 0.15, cc.z);
+      crystal.scale.set(0.7, 1.4 + (i % 2) * 0.35, 0.7);
+      crystal.rotation.y = i * 0.7;
+      crystal.castShadow = true;
+      this.environmentGroup.add(crystal);
+
+      const glow = new THREE.PointLight(cc.c, 0.55, 8);
+      glow.position.set(cc.x, 1.2, cc.z);
+      this.environmentGroup.add(glow);
+    });
+
+    // 4) 적 진영 뒤 성채 실루엣 (탑·성벽)
+    const keepGroup = new THREE.Group();
+    keepGroup.position.set(0, -0.6, -22);
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x57534e,
+      roughness: 0.88,
+      flatShading: true,
+    });
+    const keepWall = new THREE.Mesh(new THREE.BoxGeometry(18, 4.5, 2.2), wallMat);
+    keepWall.position.y = 2.0;
+    keepWall.castShadow = true;
+    keepGroup.add(keepWall);
+    const towerGeo = new THREE.CylinderGeometry(1.4, 1.7, 7.5, 8);
+    [-7.5, 0, 7.5].forEach((tx, i) => {
+      const tower = new THREE.Mesh(towerGeo, wallMat);
+      tower.position.set(tx, 3.4, -0.4);
+      tower.castShadow = true;
+      keepGroup.add(tower);
+      const roof = new THREE.Mesh(
+        new THREE.ConeGeometry(1.9, 2.2, 8),
+        new THREE.MeshStandardMaterial({
+          color: i === 1 ? 0xb91c1c : 0x7f1d1d,
+          roughness: 0.7,
+          flatShading: true,
+        })
+      );
+      roof.position.set(tx, 8.0, -0.4);
+      keepGroup.add(roof);
+    });
+    this.environmentGroup.add(keepGroup);
+
+    // 5) 테라스 가장자리 장식용 낮은 화로 (추가 횃불)
+    const sideBraziers = [
+      [-8.5, -11.5],
+      [8.5, -11.5],
+      [-17.5, 1.5],
+      [17.5, 1.5],
+    ];
+    sideBraziers.forEach((bp, idx) => {
+      const g = new THREE.Group();
+      g.position.set(bp[0], 0, bp[1]);
+      const pedestal = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.35, 0.45, 1.1, 6),
+        new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.85, flatShading: true })
+      );
+      pedestal.position.y = 0.55;
+      pedestal.castShadow = true;
+      g.add(pedestal);
+      const flame = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(0.28, 0),
+        new THREE.MeshStandardMaterial({
+          color: 0xff7700,
+          emissive: 0xff5500,
+          emissiveIntensity: 2.0,
+        })
+      );
+      flame.position.y = 1.35;
+      g.add(flame);
+      const light = new THREE.PointLight(0xff8822, 1.6, 12);
+      light.position.y = 1.5;
+      g.add(light);
+      this.torchLights.push({ light, baseIntensity: 1.6, phase: idx * 2.1 + 0.5 });
+      this.environmentGroup.add(g);
+    });
+
+    // 6) 떠다니는 마나 위습
+    const wispGeo = new THREE.SphereGeometry(0.12, 8, 8);
+    for (let i = 0; i < 14; i++) {
+      const angle = (i / 14) * Math.PI * 2;
+      const radius = 12 + (i % 4) * 2.2;
+      const mat = new THREE.MeshStandardMaterial({
+        color: i % 2 === 0 ? 0x7dd3fc : 0xfde68a,
+        emissive: i % 2 === 0 ? 0x38bdf8 : 0xfbbf24,
+        emissiveIntensity: 1.4,
+        transparent: true,
+        opacity: 0.85,
+      });
+      const wisp = new THREE.Mesh(wispGeo, mat);
+      const baseY = 1.2 + (i % 5) * 0.35;
+      wisp.position.set(Math.sin(angle) * radius, baseY, Math.cos(angle) * radius + 1.5);
+      this.environmentGroup.add(wisp);
+      this.ambientWisps.push({
+        mesh: wisp,
+        baseY,
+        phase: i * 0.9,
+        speed: 0.0012 + (i % 3) * 0.0004,
+      });
+    }
+
+    // 7) 외곽 덤불/관목
+    const bushGeo = new THREE.SphereGeometry(0.85, 6, 5);
+    const bushMat = new THREE.MeshStandardMaterial({
+      color: 0x3f6212,
+      roughness: 0.9,
+      flatShading: true,
+    });
+    const bushSpots = [
+      [-12, 11.5],
+      [-6, 12.2],
+      [6, 12.2],
+      [12, 11.5],
+      [-20, -8],
+      [20, -8],
+      [-21, 8],
+      [21, 8],
+    ];
+    bushSpots.forEach((b, i) => {
+      const bush = new THREE.Mesh(bushGeo, bushMat);
+      bush.position.set(b[0], -0.15, b[1]);
+      bush.scale.set(1 + (i % 3) * 0.15, 0.65 + (i % 2) * 0.2, 1);
+      bush.castShadow = true;
+      this.environmentGroup.add(bush);
+    });
+
+    // 8) 테라스 가장자리 석조 난간 기둥 (시야 가리지 않는 낮은 높이)
+    const postGeo = new THREE.CylinderGeometry(0.22, 0.28, 1.4, 6);
+    const postMat = new THREE.MeshStandardMaterial({
+      color: 0x78716c,
+      roughness: 0.8,
+      flatShading: true,
+    });
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2;
+      if (angle > Math.PI * 0.32 && angle < Math.PI * 0.68) continue;
+      const post = new THREE.Mesh(postGeo, postMat);
+      post.position.set(Math.sin(angle) * 20.5, 0.35, Math.cos(angle) * 20.5 + 1.5);
+      post.castShadow = true;
+      this.environmentGroup.add(post);
+      const cap = new THREE.Mesh(
+        new THREE.SphereGeometry(0.2, 8, 8),
+        new THREE.MeshStandardMaterial({ color: 0xd6d3d1, metalness: 0.4, roughness: 0.4 })
+      );
+      cap.position.copy(post.position);
+      cap.position.y = 1.15;
+      this.environmentGroup.add(cap);
+    }
   }
 
   /**
@@ -2513,8 +2816,19 @@ export class ThreeJsGameRenderer {
     this.torchLights.forEach((t) => {
       const flicker = Math.sin(this.animClockMs * 0.008 + t.phase) * 0.4 +
                       Math.cos(this.animClockMs * 0.017 + t.phase) * 0.2;
-      t.light.intensity = Math.max(1.2, t.baseIntensity + flicker);
+      t.light.intensity = Math.max(0.8, t.baseIntensity + flicker);
     });
+
+    // 2b. 마나 위습 부유 + 깃발 펄럭임
+    for (const w of this.ambientWisps) {
+      w.mesh.position.y =
+        w.baseY + Math.sin(this.animClockMs * w.speed + w.phase) * 0.35;
+      w.mesh.rotation.y = this.animClockMs * 0.001 + w.phase;
+    }
+    for (let i = 0; i < this.bannerMeshes.length; i++) {
+      const b = this.bannerMeshes[i];
+      b.rotation.z = Math.sin(this.animClockMs * 0.0035 + i * 1.2) * 0.08;
+    }
 
     // 3. 호버링/드래그 타일 물리적 엘리베이션 리프트 (Elevation Lift) & 황금 룬 반응
     for (const [key, mesh] of this.hexTileMeshes) {

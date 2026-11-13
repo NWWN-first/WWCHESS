@@ -86,6 +86,13 @@ export class GameLoopManager {
   public playbackSpeed: 1 | 2 = 1;
 
   /**
+   * 정비→전투 진입 방식
+   * - TIMER: 스테이지별 카운트다운 종료 시 자동 전투 시작 (TFT 순정)
+   * - MANUAL: 시간 자동 종료 없음 — 유저가 [라운드 시작]을 눌러야 전투 진입
+   */
+  public prepStartMode: 'TIMER' | 'MANUAL' = 'TIMER';
+
+  /**
    * 실제 TFT 순정 정비 시간표 카운트다운 상태 (초반 1~2스테이지 30초, 3스테이지 35초, 4스테이지 이후 40초)
    */
   public prepTotalSec: number = 30;
@@ -268,6 +275,40 @@ export class GameLoopManager {
    */
   public getRoundLabel(): string {
     return `${this.stage}-${this.roundInStage}`;
+  }
+
+  /** 현재 스테이지에 속한 라운드 수 (1스테이지=2, 이후=5) */
+  public getRoundsInCurrentStage(): number {
+    return this.stage === 1 ? 2 : 5;
+  }
+
+  /**
+   * HUD용 직관적 스테이지 표기
+   * - stageTitle: "스테이지 2"
+   * - roundProgress: "3/5"
+   * - matchTypeLabel: "대인전" | "크립" | "보스"
+   * - code: "2-3" (기존 코드 호환)
+   */
+  public getStageHudInfo(): {
+    code: string;
+    stageTitle: string;
+    roundProgress: string;
+    matchTypeLabel: string;
+    roundInStage: number;
+    roundsInStage: number;
+  } {
+    const roundsInStage = this.getRoundsInCurrentStage();
+    const type = this.getCurrentRoundType();
+    const matchTypeLabel =
+      type === 'CREEP' ? '크립전' : type === 'BOSS_CREEP' ? '보스전' : '대인전';
+    return {
+      code: this.getRoundLabel(),
+      stageTitle: `스테이지 ${this.stage}`,
+      roundProgress: `${this.roundInStage}/${roundsInStage}`,
+      matchTypeLabel,
+      roundInStage: this.roundInStage,
+      roundsInStage,
+    };
   }
 
   /**
@@ -671,9 +712,12 @@ export class GameLoopManager {
         return;
       }
 
+      const isManual = this.prepStartMode === 'MANUAL';
       const prevSec = this.prepRemainingSec;
-      this.prepRemainingMs = Math.max(0, this.prepRemainingMs - tickMs);
-      this.prepRemainingSec = Math.ceil(this.prepRemainingMs / 1000);
+      if (!isManual) {
+        this.prepRemainingMs = Math.max(0, this.prepRemainingMs - tickMs);
+        this.prepRemainingSec = Math.ceil(this.prepRemainingMs / 1000);
+      }
 
       // AI 봇 7명의 실시간 동적 APM 스텝 실행 (평상시 1~5초, 올인 타이밍 0.6~1.0초 초고속 리롤)
       let anyBotActed = false;
@@ -694,7 +738,8 @@ export class GameLoopManager {
         }
       }
 
-      if (this.prepRemainingMs <= 0) {
+      // 타이머 모드만 0초 자동 전투 진입. 수동 모드는 유저 [라운드 시작] 대기
+      if (!isManual && this.prepRemainingMs <= 0) {
         this.stopPrepTimer();
         this.startCombatPhase();
         return;
