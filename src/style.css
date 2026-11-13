@@ -691,25 +691,39 @@ img {
   cursor: pointer;
 }
 
+/* 시너지 단계 색: 브론즈 → 실버 → 골드 → 플레티넘 (없는 단계는 건너뜀) */
+.synergy-badge.style-NONE {
+  background: rgba(15, 23, 42, 0.75);
+  border-color: #334155;
+  color: #94a3b8;
+  opacity: 0.85;
+}
 .synergy-badge.style-BRONZE {
-  background: linear-gradient(90deg, #78350f, #1e293b);
-  border-color: #d97706;
-  color: #fed7aa;
+  background: linear-gradient(90deg, #9a3412, #431407);
+  border-color: #ea580c;
+  color: #ffedd5;
 }
 .synergy-badge.style-SILVER {
-  background: linear-gradient(90deg, #475569, #1e293b);
-  border-color: #cbd5e1;
-  color: #ffffff;
+  background: linear-gradient(90deg, #64748b, #1e293b);
+  border-color: #e2e8f0;
+  color: #f8fafc;
 }
 .synergy-badge.style-GOLD {
-  background: linear-gradient(90deg, #a16207, #1e293b);
+  background: linear-gradient(90deg, #ca8a04, #713f12);
   border-color: #facc15;
-  color: #fef08a;
+  color: #fef9c3;
 }
-.synergy-badge.style-PRISMATIC {
-  background: linear-gradient(90deg, #7e22ce, #0e7490);
+.synergy-badge.style-PLATINUM {
+  background: linear-gradient(90deg, #0e7490, #164e63 45%, #5b21b6);
   border-color: #67e8f9;
-  color: #cffafe;
+  color: #ecfeff;
+  box-shadow: 0 0 8px rgba(103, 232, 249, 0.45);
+}
+/* 구 프리즘 클래스 호환 */
+.synergy-badge.style-PRISMATIC {
+  background: linear-gradient(90deg, #0e7490, #164e63 45%, #5b21b6);
+  border-color: #67e8f9;
+  color: #ecfeff;
 }
 
 .mini-augment-dock {
@@ -803,13 +817,8 @@ img {
   transition: top 0.2s ease;
 }
 
-/* 상점 접힘: 우측 빠른출격 바 아래로 순위표를 내려 겹침 방지 */
-#app:not(.shop-dock-top-expanded) .right-player-dock {
-  top: 114px;
-}
-
 .right-player-dock.shop-collapsed {
-  bottom: 18px;
+  bottom: 130px;
 }
 
 .compact-player-tabs {
@@ -1039,6 +1048,35 @@ img {
   color: #94a3b8;
 }
 
+.tooltip-tier-list .tier-chip {
+  display: inline-block;
+  min-width: 28px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 9px;
+  text-align: center;
+  margin-right: 2px;
+}
+.tooltip-tier-list .style-BRONZE .tier-chip {
+  background: #9a3412;
+  color: #ffedd5;
+}
+.tooltip-tier-list .style-SILVER .tier-chip {
+  background: #64748b;
+  color: #f8fafc;
+}
+.tooltip-tier-list .style-GOLD .tier-chip {
+  background: #ca8a04;
+  color: #fef9c3;
+}
+.tooltip-tier-list .style-PLATINUM .tier-chip {
+  background: #0e7490;
+  color: #ecfeff;
+}
+.quick-action-gem.shop-open-active {
+  box-shadow: 0 0 0 2px #38bdf8, 0 2px 0 #000;
+}
+
 .tooltip-roster-title {
   margin-top: 4px;
   margin-bottom: 4px;
@@ -1161,41 +1199,61 @@ img {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.85);
 }
 
-/* 상점 접힘: 우측 열에 세로 스택 → 순위표와 같은 X축에서 위아래로만 배치 */
+/* 우하단 TFT 컨트롤: 아래=상점열기(+골드), 바로 위=리롤, 맨 위=전투(정비 시) */
 .collapsed-quick-bar {
   position: absolute;
-  top: 42px;
   right: 5px;
-  bottom: auto;
-  width: 70px;
+  bottom: 10px;
+  top: auto;
+  width: 86px;
   z-index: 16;
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
   align-items: stretch;
-  gap: 4px;
+  gap: 5px;
+  pointer-events: auto;
 }
 
 .quick-action-gem {
   width: 100%;
-  height: 30px;
-  padding: 0 4px;
+  min-height: 34px;
+  padding: 3px 5px;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
-  font-size: 10px;
+  gap: 1px;
+  border-radius: 9px;
+  font-size: 11px;
   cursor: pointer;
   box-shadow: 0 2px 0 #000;
   box-sizing: border-box;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.1;
+}
+
+.quick-action-gem .btn-main-label {
+  font-size: 11px;
+}
+.quick-action-gem .btn-sub-cost {
+  font-size: 9px;
+  color: #fef08a;
 }
 
 .quick-action-gem.gold-gem {
   background: linear-gradient(180deg, #d97706 0%, #78350f 100%);
   border: 2px solid #facc15;
   color: #fef08a;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+}
+
+.quick-action-gem.reroll-gem {
+  background: linear-gradient(180deg, #ca8a04 0%, #854d0e 100%);
+  border: 2px solid #fde047;
+  color: #fffbeb;
 }
 
 .quick-action-gem.battle-gem {
@@ -1204,8 +1262,37 @@ img {
   color: #ffffff;
 }
 
+.tft-shop-ico {
+  font-size: 12px;
+}
+
+.tft-interest-mini {
+  font-size: 9px;
+  color: #86efac;
+}
+
+.tft-inline-xp {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 상점 열림 시에도 우하단 리롤/상점토글은 유지 — 순위표만 위로 */
+#app.shop-dock-top-expanded .collapsed-quick-bar {
+  bottom: 10px;
+}
+
+#app:not(.shop-dock-top-expanded) .right-player-dock {
+  top: 42px;
+  bottom: 130px;
+}
+
+#app.shop-dock-top-expanded .right-player-dock {
+  top: 132px;
+  bottom: 130px;
+}
+
 .dock-left-controls {
-  width: 138px;
+  width: 108px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;

@@ -219,45 +219,27 @@
         🎲 우측 3칸: 판도라 변신
       </div>
 
-      <!-- 상점 접기/열기 플로팅 핸들 탭 (가로모드에서 전장 시야 최대 확보용) -->
-      <div id="shop-drawer-toggle-bar" class="shop-drawer-toggle-bar">
-        <div id="toggle-shop-btn" class="shop-toggle-pill" role="button" tabindex="0">
-          🛒 상점 접기 ▼
-        </div>
+      <!-- 상점 확률 스트립 (상점 열림 시 카드 바로 아래) -->
+      <div id="shop-drawer-toggle-bar" class="shop-drawer-toggle-bar hidden">
         <div id="shop-odds-bar" class="shop-odds-strip"></div>
       </div>
 
-      <!-- 하단 슬림 접이식 상점 드로어 (Bottom Shop Dock) -->
-      <footer id="bottom-shop-bar" class="bottom-shop-dock">
-        <!-- 좌측 레벨/골드 & [레벨업], [리롤] 룬석 버튼 -->
+      <!-- 상단 상점 카드 독 (TFT식 — 카드만 상단) -->
+      <footer id="bottom-shop-bar" class="bottom-shop-dock hidden">
         <div class="dock-left-controls">
           <div class="econ-status-strip">
             <div class="level-gem-box">
               <span id="player-level-text" class="lvl-title">Lv.1</span>
               <span id="player-xp-text" class="xp-caption">0/2</span>
             </div>
-            <div class="gold-gem-box">
-              <span id="player-gold-text" class="gold-title">🪙10G</span>
-              <span id="player-interest-text" class="interest-caption">+1G</span>
-            </div>
-            <div id="lock-shop-btn" class="lock-gem-btn" role="button" tabindex="0" title="상점 잠금 전환">
-              🔓
-            </div>
+            <div id="lock-shop-btn" class="lock-gem-btn" role="button" tabindex="0" title="상점 잠금">🔓</div>
           </div>
-
-          <div class="big-rune-buttons">
-            <div id="buy-xp-btn" class="rune-stone-btn sapphire-rune" role="button" tabindex="0">
-              <span class="btn-main-label">⬆️레벨업</span>
-              <span class="btn-sub-cost">4G</span>
-            </div>
-            <div id="reroll-btn" class="rune-stone-btn amber-rune" role="button" tabindex="0">
-              <span class="btn-main-label">🎲리롤</span>
-              <span class="btn-sub-cost">2G</span>
-            </div>
+          <div id="buy-xp-btn" class="rune-stone-btn sapphire-rune tft-inline-xp" role="button" tabindex="0">
+            <span class="btn-main-label">⬆️레벨업</span>
+            <span class="btn-sub-cost">4G</span>
           </div>
         </div>
 
-        <!-- 중앙 5장 도트 일러스트 챔피언 카드 슬롯 (드래그 중 판매 드롭존으로 전환) -->
         <div id="shop-cards-wrapper" class="dock-center-cards">
           <div id="shop-cards-container" class="shop-cards-container"></div>
           <div id="sell-dropzone-overlay" class="sell-dropzone-overlay hidden">
@@ -267,7 +249,6 @@
           </div>
         </div>
 
-        <!-- 우측 전투 시작 크리스탈 버튼 -->
         <div class="dock-right-combat">
           <div id="start-combat-btn" class="start-battle-crystal" role="button" tabindex="0">
             <span class="sword-emblem">⚔️</span>
@@ -276,13 +257,19 @@
         </div>
       </footer>
 
-      <!-- 상점이 접혔거나 전투 중일 때 우하단에 뜨는 빠른 액션 플로팅 바 -->
-      <div id="Collapsed-quick-bar" class="collapsed-quick-bar hidden">
-        <div id="quick-open-shop-btn" class="quick-action-gem gold-gem" role="button" tabindex="0">
-          🛒 상점 열기 (<span id="quick-gold-text">10G</span>)
+      <!-- 우하단 TFT 컨트롤: (위) 리롤 → (아래) 상점열기+골드 / 전투 -->
+      <div id="Collapsed-quick-bar" class="collapsed-quick-bar">
+        <div id="reroll-btn" class="quick-action-gem reroll-gem" role="button" tabindex="0">
+          <span class="btn-main-label">🎲리롤</span>
+          <span class="btn-sub-cost">2G</span>
+        </div>
+        <div id="toggle-shop-btn" class="quick-action-gem gold-gem" role="button" tabindex="0" title="상점 열기/접기">
+          <span class="tft-shop-ico">🛒</span>
+          <span id="player-gold-text">🪙10</span>
+          <span id="player-interest-text" class="tft-interest-mini">+1</span>
         </div>
         <div id="quick-start-combat-btn" class="quick-action-gem battle-gem" role="button" tabindex="0">
-          ⚔️ 전투시작
+          ⚔️ 시작
         </div>
       </div>
 

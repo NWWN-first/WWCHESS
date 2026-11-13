@@ -535,15 +535,6 @@ class FantasyAutoBattlerApp {
         this.renderShopAndControls();
       });
 
-    document
-      .getElementById('quick-open-shop-btn')
-      ?.addEventListener('pointerup', () => {
-        soundFX.playPickup();
-        this.isShopManuallyCollapsed = false;
-        this.pixelRenderer.recomputeLayoutMetrics(this.isShopCurrentlyExpanded());
-        this.renderShopAndControls();
-      });
-
     document.getElementById('buy-xp-btn')?.addEventListener('pointerup', (e) => {
       const pt = this.clientToCanvasPoint(e.clientX, e.clientY);
       if (this.game.player.buyXp()) {
@@ -1938,26 +1929,29 @@ class FantasyAutoBattlerApp {
     const toggleBar = document.getElementById('shop-drawer-toggle-bar');
     const toggleBtn = document.getElementById('toggle-shop-btn');
     const quickBar = document.getElementById('Collapsed-quick-bar');
-    const quickGold = document.getElementById('quick-gold-text');
     const quickCombatBtn = document.getElementById('quick-start-combat-btn');
 
-    if (shopBar && toggleBar && quickBar) {
+    // 상점 카드는 상단 독 / 우하단은 리롤·상점열기 상시 노출
+    if (shopBar) {
       shopBar.classList.toggle('hidden', !isExpanded);
+    }
+    if (toggleBar) {
       toggleBar.classList.toggle('hidden', !isExpanded);
-      // 전투 중에도 접힌 상점 빠른 열기 허용
-      quickBar.classList.toggle('hidden', isExpanded);
+    }
+    if (quickBar) {
+      quickBar.classList.remove('hidden');
     }
     if (toggleBtn) {
-      toggleBtn.textContent = isExpanded ? '🛒 상점 접기 ▲' : '🛒 상점 열기 ▼';
+      toggleBtn.title = isExpanded ? '상점 접기' : '상점 열기';
+      toggleBtn.classList.toggle('shop-open-active', isExpanded);
     }
     document.getElementById('app')?.classList.toggle('shop-dock-top-expanded', isExpanded);
-    if (quickGold) {
-      quickGold.textContent = `${player.gold}G`;
-    }
+
     if (quickCombatBtn) {
-      quickCombatBtn.classList.toggle('hidden', inCombat);
+      // 상점 열림 시에는 상단 독의 출격 버튼 사용 → 우하단 전투 버튼 숨김
+      const hideQuickCombat = inCombat || isExpanded;
+      quickCombatBtn.classList.toggle('hidden', hideQuickCombat);
       if (this.game.phase === 'PREPARATION_PHASE') {
-        // 우측 70px 열에 맞춤 — 짧은 라벨로 순위표와 겹침/넘침 방지
         quickCombatBtn.textContent =
           this.game.prepStartMode === 'MANUAL'
             ? '⚔️ 시작'
@@ -1976,16 +1970,18 @@ class FantasyAutoBattlerApp {
 
     const goldText = document.getElementById('player-gold-text');
     const intText = document.getElementById('player-interest-text');
-    if (goldText && intText) {
-      goldText.textContent = `🪙${player.gold}G`;
-      intText.textContent = `+${player.calculateInterestGold()}G`;
+    if (goldText) {
+      goldText.textContent = `🪙${player.gold}`;
+    }
+    if (intText) {
+      intText.textContent = `+${player.calculateInterestGold()}`;
     }
 
     const rerollBtn = document.getElementById('reroll-btn');
     if (rerollBtn) {
       rerollBtn.innerHTML =
         player.freeRerolls > 0
-          ? `<span class="btn-main-label">🎟️무료리롤</span><span class="btn-sub-cost">${player.freeRerolls}회</span>`
+          ? `<span class="btn-main-label">🎟️무료</span><span class="btn-sub-cost">${player.freeRerolls}회</span>`
           : `<span class="btn-main-label">🎲리롤</span><span class="btn-sub-cost">2G</span>`;
     }
 
@@ -2532,8 +2528,21 @@ class FantasyAutoBattlerApp {
     const tiersHtml = def.effects
       .map((eff) => {
         const reached = activeCount >= eff.threshold;
-        const cls = reached ? 'tooltip-tier-active' : 'tooltip-tier-inactive';
-        return `<div class="${cls}">${reached ? '✓' : '○'} ${eff.label}</div>`;
+        const style = SynergyEngine.buildSynergyState(def, eff.threshold).styleTier;
+        const cls = reached
+          ? `tooltip-tier-active style-${style}`
+          : `tooltip-tier-inactive style-${style}`;
+        const styleLabel =
+          style === 'PLATINUM'
+            ? '플레'
+            : style === 'GOLD'
+              ? '골드'
+              : style === 'SILVER'
+                ? '실버'
+                : style === 'BRONZE'
+                  ? '브론즈'
+                  : '';
+        return `<div class="${cls}">${reached ? '✓' : '○'} <span class="tier-chip">${styleLabel}</span> ${eff.label}</div>`;
       })
       .join('');
 
