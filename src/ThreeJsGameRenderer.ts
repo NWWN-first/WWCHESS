@@ -898,11 +898,11 @@ export class ThreeJsGameRenderer {
     this.scene.background = new THREE.Color(0x60a5fa);
     this.scene.fog = new THREE.FogExp2(0x93c5fd, 0.012);
 
-    // 1. TFT 스타일 탑다운 쿼터뷰 3D 카메라 설정 (더 위에서 내려다보는 직관적인 하이 앵글 시점)
+    // 1. TFT 스타일 48° 쿼터뷰 3D 카메라 설정 (얼굴과 전신이 또렷하게 보이는 비스듬한 최적 앵글)
     const aspect = (window.innerWidth || 800) / (window.innerHeight || 600);
-    this.camera = new THREE.PerspectiveCamera(40, aspect, 0.5, 140);
-    this.camera.position.set(0, 24.5, 13.8);
-    this.camera.lookAt(0, 0, 1.8);
+    this.camera = new THREE.PerspectiveCamera(43, aspect, 0.5, 140);
+    this.camera.position.set(0, 17.5, 16.2);
+    this.camera.lookAt(0, 0, 1.2);
 
     // 2. WebGL 렌더러
     this.renderer = new THREE.WebGLRenderer({
@@ -922,6 +922,13 @@ export class ThreeJsGameRenderer {
 
     this.hemiLight = new THREE.HemisphereLight(0xe0f2fe, 0x4d7c0f, 1.8);
     this.scene.add(this.hemiLight);
+
+    // 3-1. 정면 페이스 라이트 (플레이어 방향에서 캐릭터 정면/얼굴/가슴 갑옷을 화사하고 선명하게 비추는 전용 조명)
+    const frontFaceLight = new THREE.DirectionalLight(0xfff7ed, 1.6);
+    frontFaceLight.position.set(0, 10, 20);
+    frontFaceLight.target.position.set(0, 0, 2);
+    this.scene.add(frontFaceLight);
+    this.scene.add(frontFaceLight.target);
 
     // 찬란한 황금빛 태양 직사광
     this.dirLight = new THREE.DirectionalLight(0xfffbeb, 3.6);
@@ -2260,9 +2267,9 @@ export class ThreeJsGameRenderer {
       shakeOffsetY = (Math.random() - 0.5) * this.shakeIntensity * decay;
     }
     this.camera.position.x = shakeOffsetX;
-    this.camera.position.y = 24.5 + shakeOffsetY;
-    this.camera.position.z = 13.8;
-    this.camera.lookAt(0, 0, 1.8);
+    this.camera.position.y = 17.5 + shakeOffsetY;
+    this.camera.position.z = 16.2;
+    this.camera.lookAt(0, 0, 1.2);
 
     // 2. 판타지 횃불 깜빡임 (Flickering Torches)
     this.torchLights.forEach((t) => {
@@ -2486,6 +2493,7 @@ export class ThreeJsGameRenderer {
         while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
         while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
         group.rotation.y += rotDiff * 0.2;
+        group.rotation.x = 0;
 
         const star3Ring = group.getObjectByName('STAR3_RING');
         if (star3Ring) {
@@ -2541,11 +2549,12 @@ export class ThreeJsGameRenderer {
             group.position.y += (0.2 - group.position.y) * 0.28;
             this.playUnitAnimation(u.instanceId, 'idle');
           }
-          // 정비 페이즈: 플레이어(카메라)를 향해 정면(0도)을 바라보도록 부드럽게 회전 (얼굴 및 외형 확인)
+          // 정비 페이즈: 플레이어(카메라)를 향해 정면(0도)을 바라보고, 시선을 살짝 들어 카메라와 눈맞춤 (얼굴이 또렷하게 보임)
           let rotDiff = 0 - group.rotation.y;
           while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
           while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
           group.rotation.y += rotDiff * 0.18;
+          group.rotation.x = -0.06;
 
           const auraRing = group.getObjectByName('AURA_RING');
           if (auraRing) auraRing.rotation.z += dtMs * 0.002;
@@ -2586,11 +2595,12 @@ export class ThreeJsGameRenderer {
           group.position.y += (0.25 - group.position.y) * 0.28;
           this.playUnitAnimation(u.instanceId, 'idle');
         }
-        // 대기석: 항상 플레이어(카메라)를 향해 정면(0도)을 바라보도록 부드럽게 회전
+        // 대기석: 항상 플레이어(카메라)를 향해 정면(0도)을 바라보고, 시선을 살짝 들어 눈맞춤
         let rotDiff = 0 - group.rotation.y;
         while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
         while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
         group.rotation.y += rotDiff * 0.18;
+        group.rotation.x = -0.06;
 
         const auraRing = group.getObjectByName('AURA_RING');
         if (auraRing) auraRing.rotation.z += dtMs * 0.002;
