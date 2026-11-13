@@ -9,6 +9,8 @@ import {
   TRAIT_DEFINITIONS,
   TraitId,
   UNIT_TEMPLATES,
+  getOriginThemeColor,
+  originColorToRgba,
 } from './GameData';
 import { AvatarFinisherLaserPayload } from './GameLoopManager';
 import { HexBoardViewportMetrics, HexCoord, HexGridMath } from './HexGridMath';
@@ -824,6 +826,9 @@ export const WEAPON_BADGE_ICONS: Record<WeaponKind, string> = {
 interface UnitVisualJuiceState {
   renderRow: number;
   renderCol: number;
+  /** 연속 평면 좌표 보간 (자유이동) */
+  renderPosX: number;
+  renderPosZ: number;
   moveFromRow: number;
   moveFromCol: number;
   moveToRow: number;
@@ -831,6 +836,10 @@ interface UnitVisualJuiceState {
   moveProgress: number;
   moveDurationMs: number;
   isLeapMove: boolean;
+  leapScreenFromX: number;
+  leapScreenFromY: number;
+  leapScreenToX: number;
+  leapScreenToY: number;
 
   lungeDirX: number;
   lungeDirY: number;
@@ -1025,10 +1034,12 @@ export class PixelGameRenderer {
     const w = this.viewportWidth;
     const h = this.viewportHeight;
 
-    const topHudPx = 38;
-    const bottomReservedPx = isShopExpanded ? Math.min(108, Math.floor(h * 0.28)) : 16;
-    const leftDockPx = w < 680 ? 46 : 68;
-    const rightDockPx = w < 680 ? 50 : 78;
+    // 상점 상단 배치: 펼치면 top 예약, 하단은 벤치만 남겨 필드 확대
+    const shopDockPx = isShopExpanded ? Math.min(96, Math.floor(h * 0.22)) : 0;
+    const topHudPx = 34 + shopDockPx;
+    const bottomReservedPx = 14;
+    const leftDockPx = w < 680 ? 40 : 56;
+    const rightDockPx = w < 680 ? 56 : 102;
 
     const arenaLeft = leftDockPx;
     const arenaTop = topHudPx;
@@ -1251,21 +1262,31 @@ export class PixelGameRenderer {
 
     const spec = UNIT_PIXEL_SPECS[unitId] ?? UNIT_PIXEL_SPECS.u1_garen;
     const borderColor = COST_BORDER_COLORS[cost];
+    const originHex =
+      getOriginThemeColor(UNIT_TEMPLATES[unitId]?.traits || []) ||
+      spec.primaryArmor;
 
-    // 1) 시너지/코스트 테마 배경 라디얼 그라데이션
+    // 1) TFT식 메인 시너지(Origin) 테마 배경
     const bgGrad = pCtx.createRadialGradient(
       logicalW * 0.5,
       logicalH * 0.58,
-      6,
+      4,
       logicalW * 0.5,
       logicalH * 0.55,
-      logicalW * 0.65
+      logicalW * 0.7
     );
-    bgGrad.addColorStop(0, spec.primaryArmor);
-    bgGrad.addColorStop(0.55, '#131b2e');
-    bgGrad.addColorStop(1, '#080b14');
+    bgGrad.addColorStop(0, originColorToRgba(originHex, 0.92));
+    bgGrad.addColorStop(0.45, originColorToRgba(originHex, 0.45));
+    bgGrad.addColorStop(0.78, '#101827');
+    bgGrad.addColorStop(1, '#070a12');
     pCtx.fillStyle = bgGrad;
     pCtx.fillRect(0, 0, logicalW, logicalH);
+
+    // Origin 하단 글로우 패드
+    pCtx.fillStyle = originColorToRgba(originHex, 0.35);
+    pCtx.beginPath();
+    pCtx.ellipse(logicalW * 0.5, logicalH - 6, 30, 8, 0, 0, Math.PI * 2);
+    pCtx.fill();
 
     // 2) 2성/3성 합성 가능 시 부드러운 골드 후광 링
     if (isCanUpgrade) {
@@ -1355,6 +1376,13 @@ export class PixelGameRenderer {
             state.facingX = pTo.x >= pFrom.x ? 1 : -1;
           }
           if (ev.type === 'LEAP') {
+            state.isLeapMove = true;
+            state.moveProgress = 0;
+            state.moveDurationMs = Math.max(320, ev.durationMs ?? 420);
+            state.leapScreenFromX = pFrom.x;
+            state.leapScreenFromY = pFrom.y;
+            state.leapScreenToX = pTo.x;
+            state.leapScreenToY = pTo.y;
             this.spawnPixelSparks(pFrom.x, pFrom.y, '#9d4edd', 14);
             this.spawnPixelSparks(pTo.x, pTo.y, '#e0aaff', 18);
           }
@@ -1570,9 +1598,12 @@ export class PixelGameRenderer {
   ): UnitVisualJuiceState {
     let st = this.unitJuiceMap.get(instanceId);
     if (!st) {
+      const plane = HexGridMath.offsetToPlane(row, col);
       st = {
         renderRow: row,
         renderCol: col,
+        renderPosX: plane.x,
+        renderPosZ: plane.z,
         moveFromRow: row,
         moveFromCol: col,
         moveToRow: row,
@@ -1580,6 +1611,10 @@ export class PixelGameRenderer {
         moveProgress: 1,
         moveDurationMs: 480,
         isLeapMove: false,
+        leapScreenFromX: 0,
+        leapScreenFromY: 0,
+        leapScreenToX: 0,
+        leapScreenToY: 0,
         lungeDirX: 0,
         lungeDirY: 0,
         lungeTimerMs: 0,
@@ -2468,49 +2503,52 @@ export class PixelGameRenderer {
         st.trailHp = Math.max(cu.currentHp, st.trailHp - shrinkPerMs * dtMs);
       }
 
-      if (st.moveToRow !== cu.row || st.moveToCol !== cu.col) {
-        st.moveFromRow = st.renderRow;
-        st.moveFromCol = st.renderCol;
-        st.moveToRow = cu.row;
-        st.moveToCol = cu.col;
-        st.moveProgress = 0;
-        st.moveDurationMs = cu.baseMoveIntervalMs || 480;
-        st.isLeapMove = false;
+      // 자유이동: 엔진 posX/posZ를 부드럽게 추적 (칸 점프 제거)
+      const targetPosX = cu.posX ?? HexGridMath.offsetToPlane(cu.row, cu.col).x;
+      const targetPosZ = cu.posZ ?? HexGridMath.offsetToPlane(cu.row, cu.col).z;
+      if (st.renderPosX === undefined || Number.isNaN(st.renderPosX)) {
+        st.renderPosX = targetPosX;
+        st.renderPosZ = targetPosZ;
       }
 
       let strideArcOffsetY = 0;
-      if (st.moveProgress < 1) {
-        const animDuration = Math.max(240, (st.moveDurationMs || 480) * 0.92);
-        st.moveProgress = Math.min(1, st.moveProgress + dtMs / animDuration);
-        st.renderRow =
-          st.moveFromRow + (st.moveToRow - st.moveFromRow) * st.moveProgress;
-        st.renderCol =
-          st.moveFromCol + (st.moveToCol - st.moveFromCol) * st.moveProgress;
+      let basePos: { x: number; y: number };
 
-        if (st.isLeapMove) {
-          // 암살자 은신 도약 시 공중 포물선 점프 궤적
-          strideArcOffsetY = -Math.sin(st.moveProgress * Math.PI) * 32;
-        } else {
-          // 기물 고유 보행 리듬(중갑 탱커의 묵직한 걸음 vs 암살자/고블린의 경쾌한 스텝)
-          const isHeavyTank = cu.traits.includes('VANGUARD');
-          const hopHeight = isHeavyTank ? 2.5 : 4.5;
-          strideArcOffsetY =
-            -Math.abs(Math.sin(st.moveProgress * Math.PI * 2)) * hopHeight;
+      if (st.isLeapMove && st.moveProgress < 1) {
+        const animDuration = Math.max(280, st.moveDurationMs || 420);
+        st.moveProgress = Math.min(1, st.moveProgress + dtMs / animDuration);
+        const t = st.moveProgress;
+        basePos = {
+          x: st.leapScreenFromX + (st.leapScreenToX - st.leapScreenFromX) * t,
+          y: st.leapScreenFromY + (st.leapScreenToY - st.leapScreenFromY) * t,
+        };
+        strideArcOffsetY = -Math.sin(t * Math.PI) * 32;
+        if (t >= 1) {
+          st.isLeapMove = false;
+          st.renderPosX = targetPosX;
+          st.renderPosZ = targetPosZ;
         }
       } else {
+        const follow = Math.min(1, dtMs / 55);
+        const prevX = st.renderPosX;
+        const prevZ = st.renderPosZ;
+        st.renderPosX += (targetPosX - st.renderPosX) * follow;
+        st.renderPosZ += (targetPosZ - st.renderPosZ) * follow;
         st.renderRow = cu.row;
         st.renderCol = cu.col;
-        st.isLeapMove = false;
+        basePos = HexGridMath.planeToScreen(st.renderPosX, st.renderPosZ, m);
+        const moved = Math.hypot(st.renderPosX - prevX, st.renderPosZ - prevZ);
+        if (moved > 0.004) {
+          const isHeavyTank = cu.traits.includes('VANGUARD');
+          const hopHeight = isHeavyTank ? 1.8 : 3.2;
+          strideArcOffsetY =
+            -Math.abs(Math.sin(this.globalAnimClockMs * 0.012 + cu.row)) *
+            hopHeight;
+          if (Math.abs(st.renderPosX - prevX) > 0.002) {
+            st.facingX = st.renderPosX >= prevX ? 1 : -1;
+          }
+        }
       }
-
-      const basePos = HexGridMath.lerpHexScreenPoint(
-        st.moveFromRow,
-        st.moveFromCol,
-        st.moveToRow,
-        st.moveToCol,
-        st.moveProgress,
-        m
-      );
 
       let lungeOffsetX = 0;
       let lungeOffsetY = 0;
@@ -2642,6 +2680,47 @@ export class PixelGameRenderer {
 
     ctx.save();
 
+    // 0) TFT식 메인 시너지(Origin) 발밑/벤치 배경 패드 — 선봉 등 Class는 제외
+    const originHex = getOriginThemeColor(
+      UNIT_TEMPLATES[u.unitId]?.traits || []
+    );
+    const shadowRx = Math.max(12, spriteDrawW * 0.34);
+    const shadowRy = Math.max(5, shadowRx * 0.38);
+    if (originHex) {
+      const padRx = u.compactBenchMode
+        ? Math.max(14, (u.benchSlotWidth ?? 36) * 0.42)
+        : Math.max(shadowRx * 1.55, m.hexWidth * 0.38);
+      const padRy = u.compactBenchMode ? padRx * 0.42 : padRx * 0.48;
+      const padGrad = ctx.createRadialGradient(
+        feetAnchorX,
+        feetAnchorY,
+        2,
+        feetAnchorX,
+        feetAnchorY,
+        padRx
+      );
+      padGrad.addColorStop(0, originColorToRgba(originHex, 0.55));
+      padGrad.addColorStop(0.55, originColorToRgba(originHex, 0.28));
+      padGrad.addColorStop(1, originColorToRgba(originHex, 0));
+      ctx.beginPath();
+      ctx.ellipse(feetAnchorX, feetAnchorY, padRx, padRy, 0, 0, Math.PI * 2);
+      ctx.fillStyle = padGrad;
+      ctx.fill();
+      ctx.strokeStyle = originColorToRgba(originHex, 0.55);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(
+        feetAnchorX,
+        feetAnchorY,
+        padRx * 0.92,
+        padRy * 0.92,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.stroke();
+    }
+
     // 1) 3성 기물 전용: 발밑 육각형 타일에 회전하는 도트 황금 마법진과 상승하는 빛 입자 상시 출력
     if (u.starLevel === 3 && !u.compactBenchMode) {
       this.drawThreeStarMagicCircle(
@@ -2653,8 +2732,6 @@ export class PixelGameRenderer {
     }
 
     // 2) 발바닥 기준점(feetAnchorX, feetAnchorY)에 타원형 반투명 그림자(Drop Shadow)
-    const shadowRx = Math.max(12, spriteDrawW * 0.34);
-    const shadowRy = Math.max(5, shadowRx * 0.38);
     ctx.beginPath();
     ctx.ellipse(feetAnchorX, feetAnchorY, shadowRx, shadowRy, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.56)';
@@ -3707,7 +3784,10 @@ export class PixelGameRenderer {
       return;
     }
 
-    const homePos = this.getHomeCommanderAnchor();
+    // 홈 지휘관은 걸어다닐 수 있으므로 실제 아바타 좌표를 조준/발사 원점으로 사용
+    const homePos = this.playerAvatarPos
+      ? { ...this.playerAvatarPos }
+      : this.getHomeCommanderAnchor();
     const awayPos = this.getAwayCommanderAnchor();
 
     const fromPos = fx.winnerSide === 'HOME' ? homePos : awayPos;

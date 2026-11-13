@@ -111,6 +111,97 @@ img {
   display: none !important;
 }
 
+/* 화면 고정 유닛 HUD — 3D 메시/회전과 완전 분리 */
+.unit-overhead-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.unit-overhead-layer.hidden {
+  display: none !important;
+}
+
+.unit-overhead-hud {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -115%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 56px;
+  will-change: left, top;
+}
+
+.uoh-items {
+  display: flex;
+  gap: 2px;
+  justify-content: center;
+  min-height: 0;
+}
+
+.uoh-item {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1.5px solid #facc15;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.uoh-item:active {
+  border-color: #38bdf8;
+  transform: scale(1.12);
+}
+
+.uoh-hp-track,
+.uoh-mana-track {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid #020617;
+  border-radius: 2px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.uoh-hp-track {
+  height: 8px;
+}
+
+.uoh-mana-track {
+  height: 4px;
+}
+
+.uoh-hp-fill {
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  background: #22c55e;
+}
+
+.uoh-hp-fill.is-enemy {
+  background: #ef4444;
+}
+
+.uoh-mana-fill {
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  background: #38bdf8;
+}
+
 .game-viewport-canvas {
   position: absolute;
   inset: 0;
@@ -158,7 +249,7 @@ img {
 .loot-orb-layer {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 9;
   pointer-events: none;
 }
 
@@ -257,6 +348,24 @@ img {
   }
 }
 
+@keyframes lootPopIn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -20%) scale(0.35);
+  }
+  55% {
+    opacity: 1;
+    transform: translate(-50%, -58%) scale(1.18);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.loot-orb-btn.loot-pop-in {
+  animation: lootPopIn 0.55s ease-out, orbPulse 0.95s 0.55s infinite ease-in-out alternate;
+}
+
 /* ==========================================================================
    2. 상단 코너 플로팅 게임 HUD (Top HUD: 38px, 통짜 검은 바 제거)
    ========================================================================== */
@@ -301,16 +410,76 @@ img {
 .stage-emblem {
   border-color: #38bdf8;
   background: linear-gradient(180deg, #163052 0%, #0b192e 100%);
+  height: auto;
+  min-height: 34px;
+  padding: 3px 8px;
+  gap: 6px;
+  align-items: center;
+}
+
+.stage-badge-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stage-badge-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  line-height: 1.15;
 }
 
 .stage-num {
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 800;
   color: #ffea00;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+}
+
+.stage-progress {
+  font-size: 11px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.stage-round-dots {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.stage-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  box-sizing: border-box;
+}
+
+.stage-dot.is-done {
+  background: #38bdf8;
+  border-color: #7dd3fc;
+}
+
+.stage-dot.is-current {
+  background: #facc15;
+  border-color: #fef08a;
+  box-shadow: 0 0 4px rgba(250, 204, 21, 0.85);
 }
 
 .phase-ribbon {
-  font-size: 11px;
+  font-size: 10px;
   color: #7dd3fc;
+}
+
+.match-type-ribbon {
+  font-size: 9px;
+  color: #cbd5e1;
 }
 
 /* TFT 실시간 정비 카운트다운 타이머 알약 */
@@ -462,15 +631,21 @@ img {
    ========================================================================== */
 .left-floating-dock {
   position: absolute;
-  top: 42px;
+  top: 132px;
   left: 5px;
-  bottom: 98px;
-  width: 60px;
+  bottom: 100px;
+  width: 96px;
   z-index: 8;
   display: flex;
   flex-direction: column;
   gap: 4px;
   pointer-events: none;
+  transition: top 0.2s ease;
+}
+
+#app:not(.shop-dock-top-expanded) .left-floating-dock {
+  top: 42px;
+  bottom: 100px;
 }
 
 .goblin-vault-gem {
@@ -517,25 +692,39 @@ img {
   cursor: pointer;
 }
 
+/* 시너지 단계 색: 브론즈 → 실버 → 골드 → 플레티넘 (없는 단계는 건너뜀) */
+.synergy-badge.style-NONE {
+  background: rgba(15, 23, 42, 0.75);
+  border-color: #334155;
+  color: #94a3b8;
+  opacity: 0.85;
+}
 .synergy-badge.style-BRONZE {
-  background: linear-gradient(90deg, #78350f, #1e293b);
-  border-color: #d97706;
-  color: #fed7aa;
+  background: linear-gradient(90deg, #9a3412, #431407);
+  border-color: #ea580c;
+  color: #ffedd5;
 }
 .synergy-badge.style-SILVER {
-  background: linear-gradient(90deg, #475569, #1e293b);
-  border-color: #cbd5e1;
-  color: #ffffff;
+  background: linear-gradient(90deg, #64748b, #1e293b);
+  border-color: #e2e8f0;
+  color: #f8fafc;
 }
 .synergy-badge.style-GOLD {
-  background: linear-gradient(90deg, #a16207, #1e293b);
+  background: linear-gradient(90deg, #ca8a04, #713f12);
   border-color: #facc15;
-  color: #fef08a;
+  color: #fef9c3;
 }
-.synergy-badge.style-PRISMATIC {
-  background: linear-gradient(90deg, #7e22ce, #0e7490);
+.synergy-badge.style-PLATINUM {
+  background: linear-gradient(90deg, #0e7490, #164e63 45%, #5b21b6);
   border-color: #67e8f9;
-  color: #cffafe;
+  color: #ecfeff;
+  box-shadow: 0 0 8px rgba(103, 232, 249, 0.45);
+}
+/* 구 프리즘 클래스 호환 */
+.synergy-badge.style-PRISMATIC {
+  background: linear-gradient(90deg, #0e7490, #164e63 45%, #5b21b6);
+  border-color: #67e8f9;
+  color: #ecfeff;
 }
 
 .mini-augment-dock {
@@ -563,50 +752,65 @@ img {
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 5px;
+  touch-action: none;
 }
 
 .duplicator-chip {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 22px;
+  height: 36px;
   background: linear-gradient(135deg, #0284c7, #ca8a04);
-  border: 1.5px solid #fde047;
-  border-radius: 6px;
-  font-size: 11px;
+  border: 2px solid #fde047;
+  border-radius: 8px;
+  font-size: 14px;
   color: #fff;
   cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 
 .item-bench-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 3px;
+  gap: 5px;
 }
 
 .item-slot {
-  height: 24px;
+  height: 44px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: linear-gradient(180deg, #1e293b, #0f172a);
-  border: 1.5px solid #94a3b8;
-  border-radius: 6px;
+  border: 2px solid #94a3b8;
+  border-radius: 8px;
   box-shadow: 0 2px 0 #000;
-  font-size: 13px;
+  font-size: 22px;
+  line-height: 1;
   cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.item-slot:active {
+  cursor: grabbing;
+  border-color: #38bdf8;
+  transform: scale(1.04);
 }
 
 /* ==========================================================================
-   4. 우측 8인 로비 미니 탭 (70px 컴팩트 체력바, 줄바꿈 완전 차단)
+   4. 우측 8인 순위표 (우하단 버튼과 겹치지 않게, 카드 최소 높이 보장)
    ========================================================================== */
 .right-player-dock {
   position: absolute;
-  top: 42px;
+  top: 40px;
   right: 5px;
-  bottom: 98px;
-  width: 76px;
+  /* 우하단: 리롤+골드행만 (~82px) — 8인 전원 노출 공간 확보 */
+  bottom: 86px;
+  width: 100px;
   z-index: 15;
   display: flex;
   flex-direction: column;
@@ -616,14 +820,14 @@ img {
 }
 
 .right-player-dock.shop-collapsed {
-  bottom: 20px;
+  bottom: 86px;
 }
 
 .compact-player-tabs {
   pointer-events: auto;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: stretch;
   gap: 2px;
   height: 100%;
   max-height: 100%;
@@ -634,9 +838,8 @@ img {
   position: relative;
   flex: 1 1 0;
   min-height: 0;
-  max-height: 38px;
-  padding: 2px 4px;
-  background: rgba(15, 23, 42, 0.88);
+  padding: 2px 5px;
+  background: rgba(15, 23, 42, 0.92);
   border: 1.5px solid #334155;
   border-radius: 5px;
   box-shadow: 0 1px 0 #05070e;
@@ -683,19 +886,20 @@ img {
   align-items: center;
   justify-content: space-between;
   gap: 2px;
-  font-size: 9px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
   color: #f8fafc;
-  line-height: 1.1;
+  line-height: 1.05;
 }
 
 .leader-hp-gauge {
   width: 100%;
-  height: 2.5px;
+  height: 3px;
   background: #090d16;
   border-radius: 2px;
-  margin-top: 1.5px;
+  margin-top: 2px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .leader-hp-fill {
@@ -706,10 +910,10 @@ img {
 .leader-sub-row {
   display: flex;
   justify-content: space-between;
-  font-size: 8px;
+  font-size: 9px;
   color: #cbd5e1;
   margin-top: 1px;
-  line-height: 1;
+  line-height: 1.05;
 }
 
 /* ==========================================================================
@@ -769,23 +973,161 @@ img {
 
 .tap-tooltip-bar {
   position: absolute;
-  top: 40px;
+  top: 36px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 25;
-  max-width: 72%;
+  max-width: min(92%, 540px);
+  max-height: 48vh;
+  overflow-y: auto;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  padding: 6px 12px;
-  background: rgba(11, 16, 31, 0.96);
+  padding: 8px 12px;
+  background: rgba(11, 16, 31, 0.97);
   border: 2px solid #facc15;
   border-radius: 10px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.85);
   font-size: 11px;
-  line-height: 1.35;
+  line-height: 1.4;
+  color: #f8fafc;
+  pointer-events: auto;
+}
+
+.tap-tooltip-bar.tooltip-anchored {
+  transform: none;
+}
+
+.tooltip-thumb {
+  width: 40px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #38bdf8;
+  margin-right: 8px;
+  background: #090d16;
+  flex-shrink: 0;
+}
+
+.tooltip-body {
+  overflow: hidden;
+}
+
+.tooltip-traits {
+  color: #7dd3fc;
+}
+
+.tooltip-enemy-tag {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #7f1d1d;
+  color: #fecaca;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.tooltip-skill-dmg {
+  color: #fde68a;
+}
+
+.tooltip-synergy-count {
+  color: #fde047;
+  font-weight: 700;
+}
+
+.tooltip-tier-list {
+  margin: 6px 0 8px;
+}
+
+.tooltip-tier-active {
+  color: #fde047;
+  font-weight: 600;
+}
+
+.tooltip-tier-inactive {
+  color: #94a3b8;
+}
+
+.tooltip-tier-list .tier-chip {
+  display: inline-block;
+  min-width: 28px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 9px;
+  text-align: center;
+  margin-right: 2px;
+}
+.tooltip-tier-list .style-BRONZE .tier-chip {
+  background: #9a3412;
+  color: #ffedd5;
+}
+.tooltip-tier-list .style-SILVER .tier-chip {
+  background: #64748b;
   color: #f8fafc;
 }
+.tooltip-tier-list .style-GOLD .tier-chip {
+  background: #ca8a04;
+  color: #fef9c3;
+}
+.tooltip-tier-list .style-PLATINUM .tier-chip {
+  background: #0e7490;
+  color: #ecfeff;
+}
+.quick-action-gem.shop-open-active {
+  box-shadow: 0 0 0 2px #38bdf8, 0 2px 0 #000;
+}
+
+.tooltip-roster-title {
+  margin-top: 4px;
+  margin-bottom: 4px;
+  color: #e2e8f0;
+  font-weight: 700;
+}
+
+.tooltip-cost-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+  align-items: flex-start;
+}
+
+.tooltip-cost-label {
+  flex: 0 0 28px;
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.tooltip-unit-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tooltip-unit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(30, 41, 59, 0.95);
+  border: 1px solid #334155;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.tooltip-unit-chip em {
+  font-style: normal;
+  opacity: 0.7;
+  margin-left: 2px;
+}
+
+.tooltip-unit-chip.cost-1 { border-color: #64748b; }
+.tooltip-unit-chip.cost-2 { border-color: #22c55e; }
+.tooltip-unit-chip.cost-3 { border-color: #38bdf8; }
+.tooltip-unit-chip.cost-4 { border-color: #a855f7; }
+.tooltip-unit-chip.cost-5 { border-color: #f59e0b; }
 
 .tooltip-close-gem {
   padding: 2px 7px;
@@ -798,18 +1140,32 @@ img {
 }
 
 /* ==========================================================================
-   6. 접이식 슬림 하단 상점 드로어 (가로모드 시야 침범 제로: 높이 90px)
+   6. 접이식 상단 상점 드로어 (TFT 모바일식 — 필드 하단 시야 확보)
    ========================================================================== */
 .shop-drawer-toggle-bar {
   position: absolute;
-  bottom: 90px;
+  top: 124px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 11;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   pointer-events: auto;
+}
+
+.shop-drawer-toggle-bar .lock-gem-btn {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1e293b;
+  border: 1.5px solid #64748b;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
 }
 
 .shop-toggle-pill {
@@ -819,8 +1175,8 @@ img {
   align-items: center;
   background: linear-gradient(180deg, #b45309 0%, #451a03 100%);
   border: 1.5px solid #facc15;
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
   font-size: 10px;
   color: #fef08a;
   cursor: pointer;
@@ -834,66 +1190,215 @@ img {
   height: 18px;
   background: rgba(9, 13, 25, 0.92);
   border: 1px solid rgba(212, 175, 55, 0.45);
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
   font-size: 9px;
 }
 
 .bottom-shop-dock {
   position: absolute;
-  bottom: 0;
+  top: 34px;
+  bottom: auto;
   left: 6px;
-  right: 6px;
+  /* 우측 순위표(96px)와 겹치지 않도록 여백 */
+  right: 108px;
   height: 90px;
   z-index: 10;
   display: flex;
   align-items: stretch;
   gap: 6px;
   padding: 5px 8px;
-  background: linear-gradient(180deg, rgba(16, 23, 42, 0.96) 0%, #090d19 100%);
+  background: linear-gradient(180deg, #090d19 0%, rgba(16, 23, 42, 0.96) 100%);
   border: 2px solid #d4af37;
-  border-bottom: none;
-  border-radius: 12px 12px 0 0;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.85);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.85);
 }
 
-/* 상점이 접혔을 때 우하단에 뜨는 컴팩트 액션 바 */
-.collapsed-quick-bar {
+/* 1) 좌하단: 레벨업 고정 */
+.tft-left-controls {
   position: absolute;
-  bottom: 6px;
-  right: 8px;
-  z-index: 11;
+  left: 6px;
+  bottom: 10px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 92px;
+  pointer-events: auto;
+}
+
+.tft-level-chip {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 3px 6px;
+  background: rgba(9, 13, 25, 0.92);
+  border: 1.5px solid #38bdf8;
+  border-radius: 8px;
+  font-size: 11px;
+  color: #e0f2fe;
 }
 
-.quick-action-gem {
-  height: 34px;
-  padding: 0 14px;
+.tft-lvl {
+  font-weight: 800;
+  color: #7dd3fc;
+}
+.tft-xp {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.tft-xp-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 44px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  background: linear-gradient(180deg, #0284c7 0%, #1e3a8a 100%);
+  border: 2px solid #7dd3fc;
+  box-shadow: 0 2px 0 #05070e;
+  color: #fff;
+}
+.tft-xp-btn .btn-main-label {
+  font-size: 12px;
+  color: #fff;
+}
+.tft-xp-btn .btn-sub-cost {
+  font-size: 10px;
+  color: #fef08a;
+}
+
+/* 우하단: 위=리롤 / 아래=[작은즉시시작|골드(상점)] */
+.collapsed-quick-bar {
+  position: absolute;
+  right: 5px;
+  bottom: 10px;
+  top: auto;
+  width: 110px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  pointer-events: auto;
+}
+
+.tft-shop-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+}
+
+.tft-mini-combat {
+  flex: 0 0 28px;
+  width: 28px;
+  min-height: 36px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  font-size: 12px;
+  border-radius: 8px;
   cursor: pointer;
-  box-shadow: 0 3px 0 #000;
+  font-size: 11px;
+  font-weight: 800;
+  background: linear-gradient(180deg, #dc2626 0%, #7f1d1d 100%);
+  border: 1.5px solid #fca5a5;
+  box-shadow: 0 2px 0 #000;
+  color: #fff;
+  box-sizing: border-box;
+  line-height: 1;
+}
+.tft-mini-combat.urgent-pulse {
+  animation: urgentPulse 0.55s infinite alternate;
+}
+
+.tft-shop-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 3px;
+}
+
+.tft-shop-gold {
+  font-size: 13px;
+  font-weight: 800;
+  color: #fef08a;
+  line-height: 1;
+}
+
+.quick-action-gem {
+  width: 100%;
+  min-height: 34px;
+  padding: 3px 5px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border-radius: 9px;
+  font-size: 11px;
+  cursor: pointer;
+  box-shadow: 0 2px 0 #000;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  line-height: 1.1;
+}
+
+.quick-action-gem .btn-main-label {
+  font-size: 11px;
+}
+.quick-action-gem .btn-sub-cost {
+  font-size: 9px;
+  color: #fef08a;
 }
 
 .quick-action-gem.gold-gem {
   background: linear-gradient(180deg, #d97706 0%, #78350f 100%);
   border: 2px solid #facc15;
   color: #fef08a;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 38px;
+  font-weight: 800;
 }
 
-.quick-action-gem.battle-gem {
-  background: linear-gradient(180deg, #dc2626 0%, #7f1d1d 100%);
-  border: 2px solid #fca5a5;
-  color: #ffffff;
+.quick-action-gem.reroll-gem {
+  background: linear-gradient(180deg, #ca8a04 0%, #854d0e 100%);
+  border: 2px solid #fde047;
+  color: #fffbeb;
+}
+
+.tft-interest-mini {
+  font-size: 10px;
+  font-weight: 700;
+  color: #86efac;
+  line-height: 1;
+}
+
+#app.shop-dock-top-expanded .collapsed-quick-bar,
+#app.shop-dock-top-expanded .tft-left-controls {
+  bottom: 10px;
+}
+
+/* 상점 독이 right:108px 이라 순위표 top은 고정 — 열림 시 top 밀림으로 찌그러지지 않게 */
+#app.shop-dock-top-expanded .right-player-dock,
+#app:not(.shop-dock-top-expanded) .right-player-dock {
+  top: 40px;
+  bottom: 86px;
 }
 
 .dock-left-controls {
-  width: 138px;
+  width: 108px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -1185,13 +1690,41 @@ img {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  background: #0b1020;
+}
+
+/* TFT식: 메인 시너지(Origin) 초상화 배경 틴트 — Class(선봉 등)는 적용 안 함 */
+.shop-portrait-stage.origin-stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 80% 70% at 50% 62%,
+      color-mix(in srgb, var(--origin-color, #64748b) 55%, transparent) 0%,
+      color-mix(in srgb, var(--origin-color, #64748b) 18%, transparent) 48%,
+      rgba(8, 12, 22, 0.15) 100%
+    );
 }
 
 .shop-pixel-portrait {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   object-fit: contain;
   display: block;
+}
+
+.shop-trait-pill.origin-pill {
+  font-weight: 700;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.65);
+}
+
+.shop-trait-pill.class-pill {
+  opacity: 0.85;
 }
 
 .shop-trait-Overlay-strip {
@@ -1549,34 +2082,35 @@ img {
   line-height: 1.5;
 }
 
-/* 드래그 고스트 */
+/* 드래그 고스트 — body 직속 fixed, 항상 뷰포트 커서(clientX/Y)에 붙음 */
 .drag-ghost {
   position: fixed;
   top: 0;
   left: 0;
-  transform: translate(-50%, -110%);
-  z-index: 60;
+  transform: translate(-50%, -120%);
+  z-index: 9999;
   pointer-events: none;
-  padding: 5px 10px;
+  padding: 8px 14px;
   background: rgba(15, 23, 42, 0.95);
-  border: 1.5px solid #38bdf8;
-  border-radius: 8px;
-  font-size: 11px;
+  border: 2px solid #38bdf8;
+  border-radius: 10px;
+  font-size: 14px;
   color: #fef08a;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  min-width: 110px;
-  max-width: 190px;
+  gap: 4px;
+  min-width: 140px;
+  max-width: 220px;
   text-align: center;
+  will-change: transform;
 }
 
 .ghost-item-title {
   font-weight: bold;
   color: #ffffff;
-  font-size: 11px;
+  font-size: 15px;
 }
 
 .craft-preview-banner {
@@ -1908,6 +2442,13 @@ img {
   color: #ffffff;
   font-weight: 700;
   box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+}
+
+.settings-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #94a3b8;
 }
 
 .settings-badge-ok {

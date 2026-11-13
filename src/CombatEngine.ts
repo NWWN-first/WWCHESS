@@ -162,40 +162,41 @@ export class CombatEngine implements SkillCombatContext {
    * - 중장갑 선봉대/거대 나무 정령/마군주: 580~650ms (묵직하고 위압감 있는 중갑 행군)
    */
   private computeCharacteristicMoveIntervalMs(source: UnitInstance): number {
+    // 근접 유닛이 전장을 순식간에 가로지르지 않도록 전체적으로 ~35% 느리게 조정
     const unitCustomMap: Record<string, number> = {
-      u1_gob: 360, // 고블린 소매치기: 가장 가볍고 재빠름
-      u3_kazu: 380, // 환영 자객 카즈: 닌자 질주
-      u1_zix: 390, // 그림자 단검 카직: 날렵한 암살자
-      u2_vayne: 430, // 은화살 사냥꾼 베인: 경장 추격자
-      u2_fenrir: 440, // 광전사 펜리르: 야수 질주 (광기 발동 시 310ms로 폭주)
-      u3_drake: 450, // 화염 기병 드레이크: 비룡 기병
-      u5_michael: 460, // 대천사 미카엘: 날개 강림 비행
-      u5_ignis: 470, // 고대 화염용 이그니스: 거룡 비행
-      u1_pip: 480, // 숲의 요정 핍: 경쾌한 발걸음
-      u4_sylph: 490, // 바람의 신궁 실피: 바람 걸음
-      u1_elise: 500, // 성전사 수습생 엘리스
-      u2_boom: 500, // 폭탄광 붐
-      u2_lyra: 510, // 달빛 무녀 라이라
-      u3_malakor: 510, // 영혼 수확자 말라코르
-      u1_vex: 520, // 비전 학도 벡스
-      u5_goldtooth: 530, // 황금 고블린 왕 골드투스
-      u4_velkora: 540, // 대현자 벨코라
-      u1_garen: 580, // 신성 수호병 가렌: 중갑 보병
-      u1_bone: 600, // 해골 방패병 본즈: 중장갑 방패병
-      u3_leona: 610, // 태양의 성기사 레오나: 중갑 대방패
-      u4_astaroth: 630, // 심연의 군주 아스타로스: 거대 마군주
-      u2_thorn: 650, // 가시 덩굴 수호자 쏜: 거대 고목 정령 (가장 묵직함)
+      u1_gob: 500,
+      u3_kazu: 520,
+      u1_zix: 530,
+      u2_vayne: 580,
+      u2_fenrir: 600,
+      u3_drake: 610,
+      u5_michael: 620,
+      u5_ignis: 640,
+      u1_pip: 650,
+      u4_sylph: 660,
+      u1_elise: 680,
+      u2_boom: 680,
+      u2_lyra: 690,
+      u3_malakor: 690,
+      u1_vex: 700,
+      u5_goldtooth: 720,
+      u4_velkora: 730,
+      u1_garen: 780,
+      u1_bone: 810,
+      u3_leona: 820,
+      u4_astaroth: 850,
+      u2_thorn: 880,
     };
 
     if (unitCustomMap[source.unitId] !== undefined) {
       return unitCustomMap[source.unitId];
     }
 
-    if (source.traits.includes('SHADOW_ASSASSIN')) return 380;
-    if (source.traits.includes('BERSERKER')) return 450;
-    if (source.traits.includes('VANGUARD')) return 600;
-    if (source.traits.includes('RANGER')) return 490;
-    return 520;
+    if (source.traits.includes('SHADOW_ASSASSIN')) return 520;
+    if (source.traits.includes('BERSERKER')) return 610;
+    if (source.traits.includes('VANGUARD')) return 810;
+    if (source.traits.includes('RANGER')) return 660;
+    return 700;
   }
 
   /**
@@ -214,6 +215,7 @@ export class CombatEngine implements SkillCombatContext {
     const initialMoveStaggerMs =
       100 + ((row * 37 + col * 53) % 140) + (source.traits.includes('VANGUARD') ? 60 : 0);
 
+    const plane = HexGridMath.offsetToPlane(row, col);
     const cu: CombatUnit = {
       instanceId: `${team}_${source.instanceId}`,
       unitId: source.unitId,
@@ -226,6 +228,8 @@ export class CombatEngine implements SkillCombatContext {
       items: [...source.items],
       row,
       col,
+      posX: plane.x,
+      posZ: plane.z,
       maxHp: source.maxHp,
       currentHp: source.maxHp,
       shield: 0,
@@ -276,12 +280,12 @@ export class CombatEngine implements SkillCombatContext {
     }
 
     // 증강체 전투 버프 반영
-    // 1) 사이버네틱 임플란트: 아이템 1개 이상 장착 시 체력 +250, 공격력 +25
+    // 1) 사이버네틱 이식술: 아이템 장착 시 체력 +100, 공격력 +15%
     if (owner.augments.includes('AUG_CYBERNETIC_IMPLANT') && cu.items.length > 0) {
-      cu.maxHp += 250;
-      cu.currentHp += 250;
-      cu.atk += 25;
-      cu.baseAtk += 25;
+      cu.maxHp += 100;
+      cu.currentHp += 100;
+      cu.atk = Math.round(cu.atk * 1.15);
+      cu.baseAtk = Math.round(cu.baseAtk * 1.15);
     }
     // 2) 전투 마법사: 전방 2열(원본 보드 기준 0~1행)에 배치된 아군 기물이 주문력 +35%, 방어력 +35
     const originalBoardRow = team === 'HOME' ? row - 4 : 3 - row;
@@ -290,9 +294,9 @@ export class CombatEngine implements SkillCombatContext {
       cu.def += 35;
       cu.baseDef += 35;
     }
-    // 3) 천상의 축복: 아군 전체 모든 피해 흡혈 +20%
+    // 3) 천상의 축복 I: 흡혈 +12%
     if (owner.augments.includes('AUG_CELESTIAL_BLESSING')) {
-      cu.omnivamp = Number((cu.omnivamp + 0.2).toFixed(2));
+      cu.omnivamp = Number((cu.omnivamp + 0.12).toFixed(2));
     }
     // 4) 무술 훈련 (Martial Training): 아군 전체 공격력 +25, 공속 +0.15
     if (owner.augments.includes('AUG_MARTIAL_TRAINING')) {
@@ -306,59 +310,113 @@ export class CombatEngine implements SkillCombatContext {
       cu.baseAtk = Math.round(cu.baseAtk * 1.3);
       cu.spellPower = Number((cu.spellPower + 0.3).toFixed(2));
     }
-    // 6) 단결된 힘 (Stand United): 활성화된 시너지당 아군 전체 공격력 +5, 주문력 +5%
+    // 6) 고단수 II / 단결된 힘: 활성 특성당 공·주문력 +2.5%, 방어 +2
     if (owner.augments.includes('AUG_STAND_UNITED')) {
       const activeTraitsCount = synergyMap.size;
-      cu.atk += activeTraitsCount * 5;
-      cu.baseAtk += activeTraitsCount * 5;
-      cu.spellPower = Number((cu.spellPower + activeTraitsCount * 0.05).toFixed(2));
+      cu.atk = Math.round(cu.atk * (1 + activeTraitsCount * 0.025));
+      cu.baseAtk = Math.round(cu.baseAtk * (1 + activeTraitsCount * 0.025));
+      cu.spellPower = Number(
+        (cu.spellPower + activeTraitsCount * 0.025).toFixed(2)
+      );
+      cu.def += activeTraitsCount * 2;
+      cu.baseDef += activeTraitsCount * 2;
     }
 
-    // TFT 시즌 18 신규 실버/골드 증강 전투 버프
+    // TFT 시즌 18 적응 증강 전투 버프
+    const frontlineCount = owner.board
+      .slice(0, 2)
+      .flat()
+      .filter((u) => u !== null).length;
+    const activeTraitsS18 = synergyMap.size;
+
     if (owner.augments.includes('AUG_STAND_UNITED_1')) {
-      const activeTraits = synergyMap.size;
-      cu.atk = Math.round(cu.atk * (1 + activeTraits * 0.02));
-      cu.baseAtk = Math.round(cu.baseAtk * (1 + activeTraits * 0.02));
-      cu.spellPower = Number((cu.spellPower + activeTraits * 0.02).toFixed(2));
-      cu.def += activeTraits * 2;
-      cu.baseDef += activeTraits * 2;
+      cu.atk = Math.round(cu.atk * (1 + activeTraitsS18 * 0.015));
+      cu.baseAtk = Math.round(cu.baseAtk * (1 + activeTraitsS18 * 0.015));
+      cu.spellPower = Number((cu.spellPower + activeTraitsS18 * 0.015).toFixed(2));
+      cu.def += Math.round(activeTraitsS18 * 1.5);
+      cu.baseDef += Math.round(activeTraitsS18 * 1.5);
+    }
+    if (owner.augments.includes('AUG_STAND_UNITED_3')) {
+      cu.atk = Math.round(cu.atk * (1 + activeTraitsS18 * 0.04));
+      cu.baseAtk = Math.round(cu.baseAtk * (1 + activeTraitsS18 * 0.04));
+      cu.spellPower = Number((cu.spellPower + activeTraitsS18 * 0.04).toFixed(2));
+      cu.def += Math.round(activeTraitsS18 * 3.5);
+      cu.baseDef += Math.round(activeTraitsS18 * 3.5);
+    }
+    if (owner.augments.includes('AUG_UNITED_WILL')) {
+      cu.atk = Math.round(cu.atk * (1 + activeTraitsS18 * 0.015));
+      cu.baseAtk = Math.round(cu.baseAtk * (1 + activeTraitsS18 * 0.015));
+      cu.spellPower = Number((cu.spellPower + activeTraitsS18 * 0.015).toFixed(2));
     }
     if (owner.augments.includes('AUG_BOXING_LESSON')) {
-      cu.maxHp += 180;
-      cu.currentHp += 180;
+      const bonus = frontlineCount * 30;
+      cu.maxHp += bonus;
+      cu.currentHp += bonus;
     }
     if (owner.augments.includes('AUG_MAKE_WAY')) {
-      cu.atk += 15;
-      cu.baseAtk += 15;
+      cu.atk += 10;
+      cu.baseAtk += 10;
+    }
+    if (owner.augments.includes('AUG_EXTRABUCKLE')) {
+      cu.maxHp += 80;
+      cu.currentHp += 80;
+    }
+    if (owner.augments.includes('AUG_SPARE_BOW')) {
+      cu.atkSpeed = Number((cu.atkSpeed * 1.08).toFixed(3));
+    }
+    if (owner.augments.includes('AUG_FLOWING_TEARS')) {
+      cu.currentMana = Math.min(cu.maxMana, cu.currentMana + 10);
     }
     if (owner.augments.includes('AUG_GROUP_HUG')) {
-      cu.def += 22;
-      cu.baseDef += 22;
+      cu.def += 10;
+      cu.baseDef += 10;
     }
-    if (owner.augments.includes('AUG_TWIN_GUARDIAN') && originalBoardRow <= 1) {
-      cu.maxHp += 220;
-      cu.currentHp += 220;
-      cu.def += 25;
-      cu.baseDef += 25;
+    if (owner.augments.includes('AUG_GROUP_HUG_2')) {
+      cu.def += 18;
+      cu.baseDef += 18;
+    }
+    if (owner.augments.includes('AUG_TWIN_GUARDIAN') && originalBoardRow <= 1 && frontlineCount >= 2) {
+      cu.maxHp += 100;
+      cu.currentHp += 100;
+      cu.def += 35;
+      cu.baseDef += 35;
     }
     if (owner.augments.includes('AUG_MAKESHIFT_ARMOR') && cu.items.length === 0) {
-      cu.def += 40;
-      cu.baseDef += 40;
+      cu.def += 30;
+      cu.baseDef += 30;
+    }
+    if (owner.augments.includes('AUG_MAKESHIFT_ARMOR_2') && cu.items.length === 0) {
+      cu.def += 50;
+      cu.baseDef += 50;
     }
     if (owner.augments.includes('AUG_GLASS_CANNON') && originalBoardRow >= 2) {
-      cu.atk = Math.round(cu.atk * 1.28);
-      cu.baseAtk = Math.round(cu.baseAtk * 1.28);
-      cu.spellPower = Number((cu.spellPower + 0.28).toFixed(2));
-      cu.maxHp = Math.max(100, cu.maxHp - 80);
+      cu.maxHp = Math.max(100, Math.round(cu.maxHp * 0.8));
       cu.currentHp = Math.min(cu.currentHp, cu.maxHp);
+      cu.atk = Math.round(cu.atk * 1.16);
+      cu.baseAtk = Math.round(cu.baseAtk * 1.16);
+      cu.spellPower = Number((cu.spellPower + 0.16).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_GLASS_CANNON_2') && originalBoardRow >= 2) {
+      cu.maxHp = Math.max(100, Math.round(cu.maxHp * 0.8));
+      cu.currentHp = Math.min(cu.currentHp, cu.maxHp);
+      cu.atk = Math.round(cu.atk * 1.25);
+      cu.baseAtk = Math.round(cu.baseAtk * 1.25);
+      cu.spellPower = Number((cu.spellPower + 0.25).toFixed(2));
     }
     if (owner.augments.includes('AUG_JEWELED_LOTUS')) {
       cu.enableSkillCrit = true;
-      cu.critChance = Math.min(1.0, cu.critChance + 0.25);
+      cu.critChance = Math.min(1.0, cu.critChance + 0.15);
     }
-    if (owner.augments.includes('AUG_TITANIC_FORCE') && cu.maxHp >= 1500) {
-      cu.atk = Math.round(cu.atk * 1.35);
-      cu.baseAtk = Math.round(cu.baseAtk * 1.35);
+    if (owner.augments.includes('AUG_JEWELED_LOTUS_2')) {
+      cu.enableSkillCrit = true;
+      cu.critChance = Math.min(1.0, cu.critChance + 0.25);
+      cu.critDamage += 0.1;
+    }
+    if (owner.augments.includes('AUG_TITANIC_FORCE')) {
+      cu.maxHp += 225;
+      cu.currentHp += 225;
+      cu.maxHp = Math.round(cu.maxHp * 1.1);
+      cu.currentHp = Math.round(cu.currentHp * 1.1);
     }
     if (
       owner.augments.includes('AUG_WARP_DRIVE') &&
@@ -376,20 +434,121 @@ export class CombatEngine implements SkillCombatContext {
         cu.spellPower = Number((cu.spellPower + threeStarCount * 0.12).toFixed(2));
       }
     }
+    if (owner.augments.includes('AUG_PASSIVE_HP')) {
+      cu.maxHp += 60;
+      cu.currentHp += 60;
+    }
+    if (owner.augments.includes('AUG_PASSIVE_HP_PLUS')) {
+      cu.maxHp += 75;
+      cu.currentHp += 75;
+    }
+    if (owner.augments.includes('AUG_PASSIVE_HP_PLUSPLUS')) {
+      cu.maxHp += 90;
+      cu.currentHp += 90;
+    }
+    if (owner.augments.includes('AUG_FOCUS_FIRE')) {
+      cu.atk = Math.round(cu.atk * 1.15);
+      cu.baseAtk = Math.round(cu.baseAtk * 1.15);
+    }
+    if (owner.augments.includes('AUG_CENTER_STAGE') && originalBoardRow === 0) {
+      cu.atk = Math.round(cu.atk * 1.15);
+      cu.spellPower = Number((cu.spellPower + 0.15).toFixed(2));
+      cu.maxHp = Math.round(cu.maxHp * 1.25);
+      cu.currentHp = Math.round(cu.currentHp * 1.25);
+    }
+    if (owner.augments.includes('AUG_HEALING_ORB_1')) {
+      cu.omnivamp = Number((cu.omnivamp + 0.08).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_HEALING_ORB_2')) {
+      cu.omnivamp = Number((cu.omnivamp + 0.15).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_ELECTRIC_1')) {
+      cu.spellPower = Number((cu.spellPower + 0.12).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_ELECTRIC_2')) {
+      cu.spellPower = Number((cu.spellPower + 0.22).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_CELESTIAL_BLESSING_2')) {
+      cu.omnivamp = Number((cu.omnivamp + 0.18).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_CELESTIAL_BLESSING_3')) {
+      cu.omnivamp = Number((cu.omnivamp + 0.25).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_OVERFLOWING_BELT')) {
+      cu.maxHp += 85;
+      cu.currentHp += 85;
+    }
+    if (owner.augments.includes('AUG_OVERFLOWING_BLADE')) {
+      cu.atkSpeed = Number((cu.atkSpeed * 1.04).toFixed(3));
+    }
+    if (owner.augments.includes('AUG_PHALANX') && originalBoardRow >= 2) {
+      const mult = 1 + frontlineCount * 0.11;
+      cu.atk = Math.round(cu.atk * mult);
+      cu.baseAtk = Math.round(cu.baseAtk * mult);
+      cu.spellPower = Number((cu.spellPower + frontlineCount * 0.11).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_LAST_STAND')) {
+      cu.def += 8;
+      cu.baseDef += 8;
+      if (cu.currentHp / Math.max(1, cu.maxHp) < 0.5) {
+        cu.def += 32;
+        cu.baseDef += 32;
+      }
+    }
+    if (
+      owner.augments.includes('AUG_GARGANTUAN') &&
+      cu.cost <= 4 &&
+      owner.board.flat().some((u) => u && u.cost === 5)
+    ) {
+      cu.maxHp = Math.round(cu.maxHp * 1.08);
+      cu.currentHp = Math.round(cu.currentHp * 1.08);
+    }
 
-    // 황금 고블린(GOLDEN_GOBLIN) 5/7 전투력 보너스
+    // 황금 고블린: 경제 시너지라 전투가 약해 3/5/7 단계에 스탯 보정 (시뮬 승률 34% 상향용)
     const goblin = synergyMap.get('GOLDEN_GOBLIN');
     if (goblin && cu.traits.includes('GOLDEN_GOBLIN')) {
       if (goblin.count >= 7) {
-        cu.maxHp += 600;
-        cu.currentHp += 600;
-        cu.atk += 50;
-        cu.baseAtk += 50;
-        cu.atkSpeed = Number((cu.atkSpeed + 0.35).toFixed(2));
+        cu.maxHp += 720;
+        cu.currentHp += 720;
+        cu.atk += 60;
+        cu.baseAtk += 60;
+        cu.atkSpeed = Number((cu.atkSpeed + 0.4).toFixed(2));
+        cu.omnivamp = Number((cu.omnivamp + 0.08).toFixed(2));
       } else if (goblin.count >= 5) {
-        cu.atk += 25;
-        cu.baseAtk += 25;
-        cu.atkSpeed = Number((cu.atkSpeed + 0.25).toFixed(2));
+        cu.maxHp += 220;
+        cu.currentHp += 220;
+        cu.atk += 35;
+        cu.baseAtk += 35;
+        cu.atkSpeed = Number((cu.atkSpeed + 0.28).toFixed(2));
+      } else if (goblin.count >= 3) {
+        cu.maxHp += 100;
+        cu.currentHp += 100;
+        cu.atk += 15;
+        cu.baseAtk += 15;
+        cu.atkSpeed = Number((cu.atkSpeed + 0.1).toFixed(2));
+      }
+    }
+
+    // 용족: 개전 화상 외 상시 스탯 (시뮬 승률 43% 상향용)
+    const dragonkinSyn = synergyMap.get('DRAGONKIN');
+    if (dragonkinSyn && cu.traits.includes('DRAGONKIN')) {
+      if (dragonkinSyn.count >= 6) {
+        cu.maxHp += 280;
+        cu.currentHp += 280;
+        cu.atk = Math.round(cu.atk * 1.18);
+        cu.baseAtk = Math.round(cu.baseAtk * 1.18);
+        cu.spellPower = Number((cu.spellPower + 0.2).toFixed(2));
+      } else if (dragonkinSyn.count >= 4) {
+        cu.maxHp += 160;
+        cu.currentHp += 160;
+        cu.atk = Math.round(cu.atk * 1.1);
+        cu.baseAtk = Math.round(cu.baseAtk * 1.1);
+        cu.spellPower = Number((cu.spellPower + 0.12).toFixed(2));
+      } else if (dragonkinSyn.count >= 2) {
+        cu.maxHp += 80;
+        cu.currentHp += 80;
+        cu.atk = Math.round(cu.atk * 1.05);
+        cu.baseAtk = Math.round(cu.baseAtk * 1.05);
       }
     }
 
@@ -411,10 +570,11 @@ export class CombatEngine implements SkillCombatContext {
       cu.baseAtk += 40;
     }
     if (cu.unitId === 'u2_jeanne' && owner.augments.includes('AUG_HERO_JEANNE')) {
-      cu.maxHp += 500;
-      cu.currentHp += 500;
-      cu.def += 40;
-      cu.baseDef += 40;
+      cu.maxHp += 700;
+      cu.currentHp += 700;
+      cu.def += 55;
+      cu.baseDef += 55;
+      cu.omnivamp = Number((cu.omnivamp + 0.1).toFixed(2));
     }
     if (cu.unitId === 'u3_orion' && owner.augments.includes('AUG_HERO_ORION')) {
       cu.range = 4;
@@ -423,11 +583,12 @@ export class CombatEngine implements SkillCombatContext {
       cu.baseAtk += 35;
     }
     if (cu.unitId === 'u3_drake' && owner.augments.includes('AUG_HERO_DRAKE')) {
-      cu.maxHp += 400;
-      cu.currentHp += 400;
-      cu.atk += 35;
-      cu.baseAtk += 35;
-      cu.omnivamp = Number((cu.omnivamp + 0.15).toFixed(2));
+      cu.maxHp += 550;
+      cu.currentHp += 550;
+      cu.atk += 50;
+      cu.baseAtk += 50;
+      cu.atkSpeed = Number((cu.atkSpeed + 0.15).toFixed(2));
+      cu.omnivamp = Number((cu.omnivamp + 0.22).toFixed(2));
     }
     if (cu.unitId === 'u3_malakor' && owner.augments.includes('AUG_HERO_MALAKOR')) {
       cu.spellPower = Number((cu.spellPower + 0.5).toFixed(2));
@@ -553,6 +714,9 @@ export class CombatEngine implements SkillCombatContext {
           const fromCol = u.col;
           u.row = leapTile.row;
           u.col = leapTile.col;
+          const leapPlane = HexGridMath.offsetToPlane(u.row, u.col);
+          u.posX = leapPlane.x;
+          u.posZ = leapPlane.z;
           this.emitEvent({
             type: 'LEAP',
             tick: this.currentTick,
@@ -792,17 +956,10 @@ export class CombatEngine implements SkillCombatContext {
     // 1. 주기적 시너지/아이템 타이머 업데이트 (엘프 숲 2초, 태양불꽃 망토 2초, 대천사의 지팡이 4초, 선봉대 8초)
     this.processPeriodicTimers(deltaMs);
 
-    // 2. 현재 틱의 점유 타일(occupiedTiles) 및 예약 타일(reservedTiles) 초기화
-    const occupiedTiles = new Set<string>();
-    const reservedTiles = new Set<string>();
-
-    for (const u of this.units) {
-      if (u.currentHp > 0 || u.isReviving) {
-        occupiedTiles.add(`${u.row},${u.col}`);
-      }
-    }
-
-    // 3. 모든 유닛 루프 (부활 대기, 기절, 이동, 스킬 시전, 기본 공격)
+    // 2. 모든 유닛 루프 (부활 대기, 기절, 자유이동, 스킬 시전, 기본 공격)
+    const dtSec = deltaMs / 1000;
+    // 반지름을 헥스 간격(≈1)보다 충분히 작게 두어 인접칸끼리 매틱 충돌 진동이 안 나게 함
+    const UNIT_RADIUS = 0.34;
     for (const unit of this.units) {
       if (this.isFinished) break;
 
@@ -833,7 +990,6 @@ export class CombatEngine implements SkillCombatContext {
 
       if (unit.currentHp <= 0) continue;
 
-      // 마나 락, 공격 쿨타임 및 이동 쿨타임 감소
       if (unit.manaLockTimerMs > 0) {
         unit.manaLockTimerMs = Math.max(0, unit.manaLockTimerMs - deltaMs);
       }
@@ -844,46 +1000,78 @@ export class CombatEngine implements SkillCombatContext {
         unit.moveCooldownMs = Math.max(0, unit.moveCooldownMs - deltaMs);
       }
 
-      // 기절(Stun) 상태 확인
       if (unit.stunTimerMs > 0) {
         unit.stunTimerMs = Math.max(0, unit.stunTimerMs - deltaMs);
         continue;
       }
 
-      // 가장 가까운 살아있는 적 타겟 탐색
       const target = this.findNearestEnemy(unit);
       if (!target) {
         break;
       }
 
-      const dist = this.chebyshevDistance(
-        unit.row,
-        unit.col,
-        target.row,
-        target.col
+      const planeDist = HexGridMath.planeDistance(
+        unit.posX,
+        unit.posZ,
+        target.posX,
+        target.posZ
       );
+      // 헥스 사거리를 평면 거리로 환산 (칸 점프 없이 사거리에서 정지)
+      const engageRadius = unit.range * 1.05 + 0.12;
 
-      // 사거리 밖에 있으면 유닛 고유 보행 주기(moveCooldownMs)가 돌아왔을 때만 1칸 이동
-      if (dist > unit.range) {
+      if (planeDist > engageRadius) {
         if (unit.moveCooldownMs > 0) {
           continue;
         }
-        const nextTile = this.findNextStepWithReservation(
-          unit,
-          target,
-          occupiedTiles,
-          reservedTiles
-        );
-        if (nextTile) {
-          const fromRow = unit.row;
-          const fromCol = unit.col;
-          unit.row = nextTile.row;
-          unit.col = nextTile.col;
-          const stepIntervalMs = unit.berserkTriggered
-            ? Math.max(260, Math.round(unit.baseMoveIntervalMs * 0.72))
-            : unit.baseMoveIntervalMs;
-          unit.moveCooldownMs = stepIntervalMs;
 
+        const fromRow = unit.row;
+        const fromCol = unit.col;
+        const fromX = unit.posX;
+        const fromZ = unit.posZ;
+
+        // 목표 방향 조향
+        let dx = target.posX - unit.posX;
+        let dz = target.posZ - unit.posZ;
+        const len = Math.max(0.001, Math.hypot(dx, dz));
+        dx /= len;
+        dz /= len;
+
+        // 유닛 간 부드러운 분리(조향에만 약하게 반영 — 하드 반발은 틱 끝에 약하게)
+        let sepX = 0;
+        let sepZ = 0;
+        for (const other of this.units) {
+          if (other.instanceId === unit.instanceId) continue;
+          if (other.currentHp <= 0 && !other.isReviving) continue;
+          const odx = unit.posX - other.posX;
+          const odz = unit.posZ - other.posZ;
+          const od = Math.hypot(odx, odz);
+          const minDist = UNIT_RADIUS * 2.05;
+          if (od > 0.001 && od < minDist) {
+            const push = ((minDist - od) / minDist) * 0.35;
+            sepX += (odx / od) * push;
+            sepZ += (odz / od) * push;
+          }
+        }
+
+        const stepIntervalMs = unit.berserkTriggered
+          ? Math.max(380, Math.round(unit.baseMoveIntervalMs * 0.78))
+          : unit.baseMoveIntervalMs;
+        // 1헥스/stepInterval 속도 ≈ 초당 plane 유닛 (조금 더 여유 있게)
+        const speed = 0.85 / Math.max(0.32, stepIntervalMs / 1000);
+        // 목표 방향이 분리력에 완전히 먹히지 않도록 조향 가중치 유지
+        const steerX = dx * 1.0 + sepX * 0.45;
+        const steerZ = dz * 1.0 + sepZ * 0.45;
+        const steerLen = Math.max(0.001, Math.hypot(steerX, steerZ));
+        const nx = unit.posX + (steerX / steerLen) * speed * dtSec;
+        const nz = unit.posZ + (steerZ / steerLen) * speed * dtSec;
+        const clamped = HexGridMath.clampPlaneToBoard(nx, nz);
+        unit.posX = clamped.x;
+        unit.posZ = clamped.z;
+        this.syncUnitOccupancy(unit);
+
+        const movedAmt = HexGridMath.planeDistance(fromX, fromZ, unit.posX, unit.posZ);
+        // 미세 진동은 MOVE 이벤트로 내보내지 않음 (3D walk 깜빡임 방지)
+        if (movedAmt > 0.04) {
           this.emitEvent({
             type: 'MOVE',
             tick: this.currentTick,
@@ -894,22 +1082,20 @@ export class CombatEngine implements SkillCombatContext {
             fromCol,
             toRow: unit.row,
             toCol: unit.col,
-            durationMs: stepIntervalMs,
+            durationMs: deltaMs,
+            amount: Math.round(movedAmt * 1000),
           });
         }
         continue;
       }
 
-
-      // 사거리 내에 타겟이 있을 때:
-      // A) 마나가 가득 찼다면 즉시 스킬 시전!
+      // 사거리 내: 스킬 / 기본 공격
       if (unit.currentMana >= unit.maxMana && unit.maxMana > 0) {
         this.castUnitSkill(unit, target);
         this.checkCombatEndCondition();
         continue;
       }
 
-      // B) 공격 쿨타임이 돌아왔다면 기본 공격 실행!
       if (unit.attackCooldownMs <= 0) {
         this.performBasicAttack(unit, target);
         unit.attackCooldownMs = Math.max(
@@ -920,8 +1106,68 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
+    // 틱 종료 후 잔여 겹침 한 번 더 해소
+    this.resolveUnitOverlaps(UNIT_RADIUS);
+
     this.checkCombatEndCondition();
     return [...this.currentTickEvents];
+  }
+
+  /** 평면 좌표 → 가장 가까운 헥스 occupancy (스킬 AOE용) */
+  private syncUnitOccupancy(unit: CombatUnit): void {
+    const nearest = HexGridMath.planeToNearestOffset(unit.posX, unit.posZ);
+    unit.row = nearest.row;
+    unit.col = nearest.col;
+  }
+
+  /**
+   * 유닛 원형 충돌 해소 — 완전 분리 대신 약한 댐핑 푸시.
+   * (이전: 매 틱 풀 반발 + Math.random → 3D에서 덜덜 떨림)
+   */
+  private resolveUnitOverlaps(radius: number): void {
+    const alive = this.units.filter((u) => u.currentHp > 0 || u.isReviving);
+    const minDist = radius * 2;
+    const slack = 0.08; // 이 정도 겹침은 무시 (히스테리시스)
+    for (let iter = 0; iter < 1; iter++) {
+      for (let i = 0; i < alive.length; i++) {
+        for (let j = i + 1; j < alive.length; j++) {
+          const a = alive[i];
+          const b = alive[j];
+          let dx = a.posX - b.posX;
+          let dz = a.posZ - b.posZ;
+          let dist = Math.hypot(dx, dz);
+          if (dist < 0.0001) {
+            // 결정적 방향 (instanceId 해시) — 랜덤 진동 제거
+            let h = 0;
+            const key = a.instanceId + b.instanceId;
+            for (let k = 0; k < key.length; k++) h = (h * 31 + key.charCodeAt(k)) | 0;
+            const ang = ((h >>> 0) % 360) * (Math.PI / 180);
+            dx = Math.cos(ang) * 0.02;
+            dz = Math.sin(ang) * 0.02;
+            dist = Math.hypot(dx, dz);
+          }
+          if (dist >= minDist - slack) continue;
+
+          // 겹친 양의 일부만 밀어 진동을 줄임
+          const overlap = minDist - dist;
+          const push = overlap * 0.12;
+          const nx = dx / dist;
+          const nz = dz / dist;
+          a.posX += nx * push;
+          a.posZ += nz * push;
+          b.posX -= nx * push;
+          b.posZ -= nz * push;
+          const ca = HexGridMath.clampPlaneToBoard(a.posX, a.posZ);
+          const cb = HexGridMath.clampPlaneToBoard(b.posX, b.posZ);
+          a.posX = ca.x;
+          a.posZ = ca.z;
+          b.posX = cb.x;
+          b.posZ = cb.z;
+          this.syncUnitOccupancy(a);
+          this.syncUnitOccupancy(b);
+        }
+      }
+    }
   }
 
   /**
@@ -1510,6 +1756,9 @@ export class CombatEngine implements SkillCombatContext {
     const fromCol = unit.col;
     unit.row = targetRow;
     unit.col = targetCol;
+    const plane = HexGridMath.offsetToPlane(targetRow, targetCol);
+    unit.posX = plane.x;
+    unit.posZ = plane.z;
     this.emitEvent({
       type: 'LEAP',
       tick: this.currentTick,
@@ -1791,31 +2040,20 @@ export class CombatEngine implements SkillCombatContext {
 
   private findNearestEnemy(unit: CombatUnit): CombatUnit | null {
     let bestTarget: CombatUnit | null = null;
-    let bestHexDist = 9999;
-    let bestEuclidDist = 9999;
+    let bestPlaneDist = 9999;
 
     for (const other of this.units) {
       if (other.team === unit.team) continue;
       if (other.currentHp <= 0 || other.isReviving) continue;
 
-      const hexDist = HexGridMath.hexDistance(
-        unit.row,
-        unit.col,
-        other.row,
-        other.col
+      const planeDist = HexGridMath.planeDistance(
+        unit.posX,
+        unit.posZ,
+        other.posX,
+        other.posZ
       );
-      const euclidDist = HexGridMath.hexEuclideanDistance(
-        unit.row,
-        unit.col,
-        other.row,
-        other.col
-      );
-      if (
-        hexDist < bestHexDist ||
-        (hexDist === bestHexDist && euclidDist < bestEuclidDist)
-      ) {
-        bestHexDist = hexDist;
-        bestEuclidDist = euclidDist;
+      if (planeDist < bestPlaneDist) {
+        bestPlaneDist = planeDist;
         bestTarget = other;
       }
     }

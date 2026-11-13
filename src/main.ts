@@ -2,8 +2,10 @@
 
 import { getCreepMonsterTemplate } from './CreepMonsterData';
 import {
+  ALL_UNIT_LIST,
   AUGMENT_DEFINITIONS,
   BaseItemId,
+  CostTier,
   ITEM_DEFINITIONS,
   ItemId,
   SHOP_ODDS_BY_LEVEL,
@@ -25,7 +27,7 @@ import {
 } from './RankManager';
 import { CombatEngine } from './CombatEngine';
 import { PixiVfxEngine } from './PixiVfxEngine';
-import { CombatUnit } from './SkillRegistry';
+import { CombatUnit, estimateSkillDamagePreview } from './SkillRegistry';
 import { soundFX } from './SoundFXManager';
 import { SynergyEngine } from './SynergyEngine';
 import { ThreeJsGameRenderer } from './ThreeJsGameRenderer';
@@ -109,6 +111,22 @@ class FantasyAutoBattlerApp {
     this.pixelRenderer = new PixelGameRenderer(this.fxCanvas);
     this.pixiVfx = new PixiVfxEngine(this.pixiCanvas);
     this.threeRenderer = new ThreeJsGameRenderer(this.threeCanvas);
+    const overheadLayer = document.getElementById('unit-overhead-layer');
+    this.threeRenderer.setOverheadLayer(overheadLayer);
+    // 장착 아이템 아이콘 탭 → 능력치 툴팁
+    overheadLayer?.addEventListener('pointerdown', (e) => {
+      const chip = (e.target as HTMLElement | null)?.closest?.(
+        '.uoh-item'
+      ) as HTMLElement | null;
+      const itemId = chip?.dataset.itemId;
+      if (!itemId || !ITEM_DEFINITIONS[itemId as ItemId]) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.showEquippedItemTooltip(itemId as ItemId, {
+        x: e.clientX,
+        y: e.clientY,
+      });
+    });
     this.threeRenderer.onModelsLoaded = () => {
       if (this.is3DViewMode) {
         this.renderShopAndControls();
@@ -122,11 +140,13 @@ class FantasyAutoBattlerApp {
       this.threeCanvas.style.display = 'block';
       this.fxCanvas.classList.add('hidden');
       this.fxCanvas.style.display = 'none';
+      this.threeRenderer.setOverheadLayerVisible(true);
     } else {
       this.threeCanvas.classList.add('hidden');
       this.threeCanvas.style.display = 'none';
       this.fxCanvas.classList.remove('hidden');
       this.fxCanvas.style.display = 'block';
+      this.threeRenderer.setOverheadLayerVisible(false);
     }
 
     // 로비 화면 대기 상태로 초기화 (autoStart = false)
@@ -158,7 +178,14 @@ class FantasyAutoBattlerApp {
         y: winW - clientX,
       };
     }
-    const rect = this.fxCanvas.getBoundingClientRect();
+    // 3D 모드에서는 fx-canvas가 display:none이라 rect가 0이 됨 → 보이는 캔버스/#app 사용
+    const activeEl = this.is3DViewMode
+      ? this.threeCanvas
+      : this.fxCanvas;
+    let rect = activeEl.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) {
+      rect = (document.getElementById('app') ?? activeEl).getBoundingClientRect();
+    }
     return {
       x: clientX - rect.left,
       y: clientY - rect.top,
@@ -177,13 +204,68 @@ class FantasyAutoBattlerApp {
   }
 
   private isShopCurrentlyExpanded(): boolean {
-    if (
-      this.game.phase === 'COMBAT_PHASE' ||
-      this.game.phase === 'RESOLUTION_PHASE'
-    ) {
-      return false;
-    }
+    // 전투/정산 중에도 상점 사용 가능 (TFT식). 접힘만 수동 토글.
     return !this.isShopManuallyCollapsed;
+  }
+
+  /** 아이템/복제기는 전투 중에도 드래그 허용. 유닛 배치는 정비만. */
+  private canStartDragForPayload(payload: DragPayload | null): boolean {
+    if (!payload) return false;
+    if (this.game.viewedParticipantId !== this.game.player.id) return false;
+    if (payload.kind === 'ITEM' || payload.kind === 'DUPLICATOR') return true;
+    return this.game.phase === 'PREPARATION_PHASE';
+  }
+
+  private collectItemEquipCandidates(): Array<{
+    instanceId: string;
+    row?: number;
+    col?: number;
+    benchIndex?: number;
+    worldX?: number;
+    worldZ?: number;
+  }> {
+    const player = this.game.player;
+    const out: Array<{
+      instanceId: string;
+      row?: number;
+      col?: number;
+      benchIndex?: number;
+      worldX?: number;
+      worldZ?: number;
+    }> = [];
+
+    player.bench.forEach((u, idx) => {
+      if (u) out.push({ instanceId: u.instanceId, benchIndex: idx });
+    });
+
+    const inCombat =
+      this.game.phase === 'COMBAT_PHASE' ||
+      this.game.phase === 'RESOLUTION_PHASE';
+    if (inCombat) {
+      const ctx = this.game.getViewedCombatContext();
+      const engine = ctx?.engine ?? this.game.playerCombatEngine;
+      if (engine) {
+        for (const cu of engine.units) {
+          if (cu.team !== 'HOME' || cu.currentHp <= 0) continue;
+          const world = this.threeRenderer.planeToWorldPos(cu.posX, cu.posZ);
+          out.push({
+            instanceId: cu.instanceId,
+            row: cu.row,
+            col: cu.col,
+            worldX: world.x,
+            worldZ: world.z,
+          });
+        }
+      }
+    } else {
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 7; c++) {
+          const u = player.board[r]?.[c];
+          if (u) out.push({ instanceId: u.instanceId, row: r + 4, col: c });
+        }
+      }
+    }
+    return out;
   }
 
   // ==========================================================================
@@ -214,11 +296,13 @@ class FantasyAutoBattlerApp {
           this.threeCanvas.style.display = 'block';
           this.fxCanvas.classList.add('hidden');
           this.fxCanvas.style.display = 'none';
+          this.threeRenderer.setOverheadLayerVisible(true);
         } else {
           this.threeCanvas.classList.add('hidden');
           this.threeCanvas.style.display = 'none';
           this.fxCanvas.classList.remove('hidden');
           this.fxCanvas.style.display = 'block';
+          this.threeRenderer.setOverheadLayerVisible(false);
         }
         // 2D/3D 전환 시 상점 카드 초상화 즉시 동기화
         this.renderShopAndControls();
@@ -369,6 +453,19 @@ class FantasyAutoBattlerApp {
       });
     });
 
+    document.querySelectorAll('#settings-prep-mode-options .setting-opt-btn').forEach((btn) => {
+      btn.addEventListener('pointerup', (e) => {
+        const target = e.currentTarget as HTMLElement;
+        const mode = target.dataset.prepMode === 'MANUAL' ? 'MANUAL' : 'TIMER';
+        this.game.prepStartMode = mode;
+        document
+          .querySelectorAll('#settings-prep-mode-options .setting-opt-btn')
+          .forEach((b) => b.classList.remove('active'));
+        target.classList.add('active');
+        this.onGameStateUpdated();
+      });
+    });
+
     document
       .getElementById('play-again-btn')
       ?.addEventListener('pointerup', () => {
@@ -438,15 +535,6 @@ class FantasyAutoBattlerApp {
         this.renderShopAndControls();
       });
 
-    document
-      .getElementById('quick-open-shop-btn')
-      ?.addEventListener('pointerup', () => {
-        soundFX.playPickup();
-        this.isShopManuallyCollapsed = false;
-        this.pixelRenderer.recomputeLayoutMetrics(this.isShopCurrentlyExpanded());
-        this.renderShopAndControls();
-      });
-
     document.getElementById('buy-xp-btn')?.addEventListener('pointerup', (e) => {
       const pt = this.clientToCanvasPoint(e.clientX, e.clientY);
       if (this.game.player.buyXp()) {
@@ -460,7 +548,7 @@ class FantasyAutoBattlerApp {
     });
 
     document.getElementById('reroll-btn')?.addEventListener('pointerup', (e) => {
-      if (this.game.phase !== 'PREPARATION_PHASE') return;
+      // 전투 중에도 상점 리롤/구매로 대기석 조합 가능 (전투 중 보드 유닛는 클론이라 영향 없음)
       const pt = this.clientToCanvasPoint(e.clientX, e.clientY);
       if (this.game.player.rerollShop(this.game.sharedPool)) {
         soundFX.playReroll();
@@ -536,6 +624,10 @@ class FantasyAutoBattlerApp {
     const pt = this.clientToCanvasPoint(e.clientX, e.clientY);
     const px = pt.x;
     const py = pt.y;
+
+    // 상점 접기는 빈 필드 탭(pointerup)에서만 수행.
+    // pointerdown에서 접으면 유닛 드래그 시작과 동시에 판매 드롭존(#bottom-shop-bar)이
+    // 사라져 판매가 불가능해진다.
 
     const viewed = this.game.getViewedParticipant();
     const hit3D = this.is3DViewMode
@@ -737,6 +829,15 @@ class FantasyAutoBattlerApp {
     onShortTap: () => void
   ): void {
     e.stopPropagation();
+    // 아이템/복제기: 스크롤·제스처에 뺏기지 않게 캡처
+    if (payload?.kind === 'ITEM' || payload?.kind === 'DUPLICATOR') {
+      e.preventDefault();
+      try {
+        (e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
     const pt = this.clientToCanvasPoint(e.clientX, e.clientY);
     this.activePointerId = e.pointerId;
     this.pointerDownTime = performance.now();
@@ -756,17 +857,25 @@ class FantasyAutoBattlerApp {
     const dy = pt.y - this.pointerStartY;
     const dist = Math.hypot(dx, dy);
 
-    if (!this.isDragging && dist > 8 && this.dragPayload) {
+    // 아이템은 더 작은 움직임에도 드래그 시작
+    const dragThreshold =
+      this.dragPayload?.kind === 'ITEM' || this.dragPayload?.kind === 'DUPLICATOR'
+        ? 4
+        : 8;
+
+    if (!this.isDragging && dist > dragThreshold && this.dragPayload) {
       this.pendingAvatarMove = null;
-      if (
-        this.game.phase === 'PREPARATION_PHASE' &&
-        this.game.viewedParticipantId === this.game.player.id
-      ) {
+      if (this.canStartDragForPayload(this.dragPayload)) {
         this.isDragging = true;
         soundFX.playPickup();
         if (this.dragPayload.kind === 'UNIT') {
           this.selectedUnitInstanceId = this.dragPayload.instanceId;
-          // 주의: 상점을 수동으로 접어둔 상태라면, 배치 시야를 가리지 않도록 강제로 펼치지 않음!
+          // 판매 드롭존이 상점 바 안에 있으므로, 접혀 있으면 잠시 펼쳐 판매 가능하게 함
+          if (!this.isShopCurrentlyExpanded()) {
+            this.isShopManuallyCollapsed = false;
+            this.pixelRenderer.recomputeLayoutMetrics(true);
+            this.renderShopAndControls();
+          }
           this.showSellDropzoneOverlay(this.dragPayload.unit);
         }
         if (!this.is3DViewMode || this.dragPayload.kind !== 'UNIT') {
@@ -834,8 +943,20 @@ class FantasyAutoBattlerApp {
 
     // 드래그가 아니었고 기물을 탭한 것도 아니라면 빈 땅 탭 이동 실행!
     if (!wasDragging && avatarTarget && this.game.viewedParticipantId === this.game.player.id) {
+      // 빈 필드 탭: 상점 접기 (유닛/아이템 드래그와 분리)
+      if (this.isShopCurrentlyExpanded()) {
+        this.isShopManuallyCollapsed = true;
+        this.pixelRenderer.recomputeLayoutMetrics(false);
+        this.renderShopAndControls();
+      }
       this.pixelRenderer.movePlayerAvatarTo(avatarTarget.px, avatarTarget.py);
       this.pixelRenderer.spawnPixelSparks(avatarTarget.px, avatarTarget.py, '#38bdf8', 12);
+      if (this.is3DViewMode) {
+        this.threeRenderer.moveCommanderAvatarToScreen(
+          avatarTarget.px,
+          avatarTarget.py
+        );
+      }
       return;
     }
 
@@ -848,6 +969,11 @@ class FantasyAutoBattlerApp {
         activeHoveredBenchIndex
       );
     }
+  }
+
+  /** 뷰포트 커서에 고정 (body 밖 fixed — #app 회전과 무관) */
+  private setDragGhostPos(ghostEl: HTMLElement, clientX: number, clientY: number): void {
+    ghostEl.style.transform = `translate3d(${clientX}px, ${clientY}px, 0) translate(-50%, -120%)`;
   }
 
   private showDragGhost(clientX: number, clientY: number): void {
@@ -864,8 +990,9 @@ class FantasyAutoBattlerApp {
       ghostEl.innerHTML = `🌟 챔피언 복제기`;
     }
 
-    ghostEl.style.left = `${clientX}px`;
-    ghostEl.style.top = `${clientY}px`;
+    ghostEl.style.left = '0';
+    ghostEl.style.top = '0';
+    this.setDragGhostPos(ghostEl, clientX, clientY);
     ghostEl.classList.remove('hidden');
   }
 
@@ -877,8 +1004,8 @@ class FantasyAutoBattlerApp {
   ): void {
     const ghostEl = document.getElementById('drag-ghost');
     if (!ghostEl) return;
-    ghostEl.style.left = `${clientX}px`;
-    ghostEl.style.top = `${clientY}px`;
+    // 항상 실제 손가락/마우스 화면좌표를 추적
+    this.setDragGhostPos(ghostEl, clientX, clientY);
 
     if (!this.dragPayload || this.dragPayload.kind !== 'ITEM') return;
 
@@ -913,15 +1040,29 @@ class FantasyAutoBattlerApp {
       }
     }
 
-    // B. 자석 판정: 반경 70px 이내의 가장 가까운 기물 호버링 검사 (기물 합성/장착 미리보기)
-    const nearest = this.pixelRenderer.findNearestUnitInstance(
-      px,
-      py,
-      this.game.player,
-      70
-    );
-    if (nearest) {
-      const u = nearest.unit;
+    // B. 자석 판정 — 3D는 월드 투영, 2D는 픽셀 근접
+    let hoverUnit: UnitInstance | null = null;
+    if (this.is3DViewMode) {
+      const hit = this.threeRenderer.findNearestUnitForItemEquip(
+        px,
+        py,
+        this.collectItemEquipCandidates(),
+        150
+      );
+      if (hit) {
+        hoverUnit =
+          this.game.player.getAllUnitLocations().find(
+            (l) => l.unit.instanceId === hit.instanceId
+          )?.unit ?? null;
+      }
+    } else {
+      hoverUnit =
+        this.pixelRenderer.findNearestUnitInstance(px, py, this.game.player, 100)
+          ?.unit ?? null;
+    }
+
+    if (hoverUnit) {
+      const u = hoverUnit;
       const existingBaseId = u.items.find(
         (id) => !ITEM_DEFINITIONS[id]?.isCompleted
       ) as BaseItemId | undefined;
@@ -941,20 +1082,18 @@ class FantasyAutoBattlerApp {
           </div>
         `;
         return;
-      } else {
-        const slotCount = `${u.items.length}/3`;
-        ghostEl.innerHTML = `
-          <div class="ghost-item-title">${itemDef.icon} ${itemDef.name}</div>
-          <div class="craft-preview-banner">
-            <span class="craft-tag">${u.name} 장착 (${slotCount})</span>
-            <div class="craft-desc">${itemDef.description}</div>
-          </div>
-        `;
-        return;
       }
+      const slotCount = `${u.items.length}/3`;
+      ghostEl.innerHTML = `
+        <div class="ghost-item-title">${itemDef.icon} ${itemDef.name}</div>
+        <div class="craft-preview-banner">
+          <span class="craft-tag">${u.name} 장착 (${slotCount})</span>
+          <div class="craft-desc">${itemDef.description}</div>
+        </div>
+      `;
+      return;
     }
 
-    // 호버 대상이 없을 때 기본 표시
     ghostEl.innerHTML = `<div class="ghost-item-title">${itemDef.icon} ${itemDef.name}</div>`;
   }
 
@@ -1009,7 +1148,8 @@ class FantasyAutoBattlerApp {
         domTarget?.closest('#shop-cards-wrapper') ||
         (isShopExpanded &&
           (domTarget?.closest('#bottom-shop-bar') ||
-            py >= this.pixelRenderer.viewportHeight - 92));
+            // 상점 상단 배치: 상단 ~120px 밴드도 판매 영역
+            py <= 120));
 
       if (isSellingArea) {
         const earned = player.sellUnit(payload.instanceId, this.game.sharedPool);
@@ -1138,32 +1278,42 @@ class FantasyAutoBattlerApp {
       }
     }
 
-    // 2) 기물 탐색 (자석 스냅: 3D 모드 타일 및 터치 지점 반경 70px 이내 가장 가까운 기물 자동 인식)
+    // 2) 기물 탐색 (3D 투영 자석 → 타일 레이캐스트 → 2D 폴백)
     let targetInstanceId: string | undefined;
     let targetCenter = { x: px, y: py };
 
     if (this.is3DViewMode) {
-      if (hoveredBenchSnap !== undefined && hoveredBenchSnap !== null) {
+      const near3d = this.threeRenderer.findNearestUnitForItemEquip(
+        px,
+        py,
+        this.collectItemEquipCandidates(),
+        170
+      );
+      if (near3d) {
+        targetInstanceId = near3d.instanceId;
+        targetCenter = { x: near3d.screenX, y: near3d.screenY };
+      } else if (hoveredBenchSnap !== undefined && hoveredBenchSnap !== null) {
         targetInstanceId = player.bench[hoveredBenchSnap]?.instanceId;
       } else if (hoveredHexSnap && hoveredHexSnap.row >= 4) {
-        targetInstanceId = player.board[hoveredHexSnap.row - 4]?.[hoveredHexSnap.col]?.instanceId;
+        targetInstanceId =
+          player.board[hoveredHexSnap.row - 4]?.[hoveredHexSnap.col]?.instanceId;
       } else {
         const hit3D = this.threeRenderer.screenPointTo3DTarget(px, py);
         if (hit3D?.kind === 'BENCH') {
           targetInstanceId = player.bench[hit3D.index]?.instanceId;
         } else if (hit3D?.kind === 'HEX' && hit3D.row >= 4) {
-          targetInstanceId = player.board[hit3D.row - 4]?.[hit3D.col]?.instanceId;
+          targetInstanceId =
+            player.board[hit3D.row - 4]?.[hit3D.col]?.instanceId;
         }
       }
     }
 
     if (!targetInstanceId) {
-      const nearest = this.pixelRenderer.findNearestUnitInstance(px, py, player, 70);
+      const nearest = this.pixelRenderer.findNearestUnitInstance(px, py, player, 100);
       if (nearest) {
         targetInstanceId = nearest.unit.instanceId;
         targetCenter = nearest.center;
       } else {
-        // 보조 백업: 대기석 슬롯 또는 육각형 타일 직접 판정
         const benchIdx = this.pixelRenderer.screenPointToBenchIndex(px, py);
         if (benchIdx !== null) {
           targetInstanceId = player.bench[benchIdx]?.instanceId;
@@ -1185,6 +1335,7 @@ class FantasyAutoBattlerApp {
 
     if (payload.kind === 'ITEM') {
       if (player.equipItemToUnit(payload.itemBenchIndex, targetInstanceId)) {
+        this.syncCombatCloneFromPrepUnit(targetInstanceId);
         this.pixelRenderer.spawnPixelSparks(
           targetCenter.x,
           targetCenter.y,
@@ -1260,6 +1411,7 @@ class FantasyAutoBattlerApp {
       if (this.lastTriggeredLaserKey !== laserKey) {
         this.lastTriggeredLaserKey = laserKey;
         this.pixelRenderer.triggerAvatarFinisherLaser(this.game.activeFinisherLaser);
+        this.threeRenderer.triggerAvatarFinisherLaser(this.game.activeFinisherLaser);
       }
     }
 
@@ -1286,11 +1438,18 @@ class FantasyAutoBattlerApp {
     }
 
     const roundLabel = document.getElementById('round-label');
+    const roundProgress = document.getElementById('round-progress');
     const phaseLabel = document.getElementById('phase-label');
+    const matchTypeLabel = document.getElementById('match-type-label');
+    const roundDots = document.getElementById('round-dots');
     if (roundLabel && phaseLabel) {
-      roundLabel.textContent = this.game.getRoundLabel();
+      const info = this.game.getStageHudInfo();
+      roundLabel.textContent = info.stageTitle;
+      if (roundProgress) {
+        roundProgress.textContent = `${info.roundProgress}회차`;
+      }
       const phaseNames: Record<string, string> = {
-        AUGMENT_PHASE: '증강체',
+        AUGMENT_PHASE: '증강',
         ANVIL_PHASE: '모루',
         PREPARATION_PHASE: '정비',
         COMBAT_PHASE: '전투',
@@ -1298,37 +1457,68 @@ class FantasyAutoBattlerApp {
         GAME_OVER_PHASE: '종료',
       };
       phaseLabel.textContent = phaseNames[this.game.phase] ?? this.game.phase;
+      if (matchTypeLabel) {
+        matchTypeLabel.textContent = info.matchTypeLabel;
+      }
+      if (roundDots) {
+        const parts: string[] = [];
+        for (let i = 1; i <= info.roundsInStage; i++) {
+          const cls =
+            i < info.roundInStage
+              ? 'stage-dot is-done'
+              : i === info.roundInStage
+                ? 'stage-dot is-current'
+                : 'stage-dot';
+          parts.push(`<span class="${cls}"></span>`);
+        }
+        roundDots.innerHTML = parts.join('');
+      }
+      const badge = document.getElementById('round-badge');
+      if (badge) {
+        badge.title = `${info.stageTitle} · ${info.roundProgress}회차 (${info.code}) · ${info.matchTypeLabel}`;
+      }
     }
 
     // TFT 순정 실시간 정비 카운트다운 타이머 & 5초 이하 긴박 붉은 맥동(Pulse)
+    // 수동 시작 모드에서는 카운트다운 대신 "수동" 표기 — 유저가 [라운드 시작]을 눌러야 전투 진입
     const timerPill = document.getElementById('prep-timer-pill');
     const timerText = document.getElementById('prep-timer-text');
     const timerFill = document.getElementById('prep-timer-fill');
     const centerBanner = document.getElementById('hud-center-banner');
     const urgentVignette = document.getElementById('urgent-vignette-overlay');
+    const isManualPrep = this.game.prepStartMode === 'MANUAL';
 
     const isPrep = this.game.phase === 'PREPARATION_PHASE';
     const isUrgentFiveSec =
-      isPrep && this.game.prepRemainingSec <= 5 && this.game.prepRemainingSec > 0;
+      isPrep &&
+      !isManualPrep &&
+      this.game.prepRemainingSec <= 5 &&
+      this.game.prepRemainingSec > 0;
 
     if (timerPill && timerText && timerFill) {
       if (isPrep) {
         timerPill.classList.remove('hidden');
-        timerText.textContent = `⏱️${this.game.prepRemainingSec}s`;
-        const pct =
-          this.game.prepTotalSec > 0
-            ? Math.max(
-                0,
-                Math.min(
-                  100,
-                  Math.round(
-                    (this.game.prepRemainingSec / this.game.prepTotalSec) * 100
+        if (isManualPrep) {
+          timerText.textContent = '👆 수동';
+          timerFill.style.width = '100%';
+          timerPill.classList.remove('urgent-pulse');
+        } else {
+          timerText.textContent = `⏱️${this.game.prepRemainingSec}s`;
+          const pct =
+            this.game.prepTotalSec > 0
+              ? Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    Math.round(
+                      (this.game.prepRemainingSec / this.game.prepTotalSec) * 100
+                    )
                   )
                 )
-              )
-            : 100;
-        timerFill.style.width = `${pct}%`;
-        timerPill.classList.toggle('urgent-pulse', isUrgentFiveSec);
+              : 100;
+          timerFill.style.width = `${pct}%`;
+          timerPill.classList.toggle('urgent-pulse', isUrgentFiveSec);
+        }
       } else {
         timerPill.classList.add('hidden');
         timerPill.classList.remove('urgent-pulse');
@@ -1433,13 +1623,7 @@ class FantasyAutoBattlerApp {
           <span>${st.count}/${nextThresh}</span>
         `;
         badge.addEventListener('pointerup', () => {
-          this.showTapTooltip(
-            `<strong>${st.definition.icon} ${st.definition.name} (${st.count}명)</strong><br/>${
-              st.definition.description
-            }<br/><span style="color:#fde047">${
-              st.activeEffect ? st.activeEffect.label : '임계값 미달'
-            }</span>`
-          );
+          this.showSynergyDetailTooltip(st.definition.id, st.count);
         });
         synContainer.appendChild(badge);
       }
@@ -1471,6 +1655,7 @@ class FantasyAutoBattlerApp {
         chip.className = 'duplicator-chip';
         chip.innerHTML = `🌟x${viewed.duplicators}`;
         chip.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
           this.startPointerInteraction(
             e,
             viewed.id === this.game.player.id ? { kind: 'DUPLICATOR' } : null,
@@ -1496,14 +1681,20 @@ class FantasyAutoBattlerApp {
         slot.dataset.slotIndex = String(idx);
         slot.textContent = def.icon;
         slot.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
           this.startPointerInteraction(
             e,
             viewed.id === this.game.player.id
               ? { kind: 'ITEM', itemBenchIndex: idx, itemId }
               : null,
             () => {
+              const stats = this.formatItemStatLines(itemId);
+              const statsHtml = stats.length
+                ? `<div style="margin-top:4px;color:#fef08a">${stats.join('<br/>')}</div>`
+                : '';
               this.showTapTooltip(
-                `<strong>${def.icon} ${def.name}</strong><br/>${def.description}<br/><span style="color:#7dd3fc">기물 위로 드래그하여 장착하거나, 다른 재료 아이템 위로 올려 대기석에서 즉시 합성</span>`
+                `<strong>${def.icon} ${def.name}</strong><br/>${def.description}${statsHtml}<br/><span style="color:#7dd3fc">기물 위로 드래그하여 장착하거나, 다른 재료 위로 올려 대기석에서 즉시 합성</span>`,
+                { x: e.clientX, y: e.clientY }
               );
             }
           );
@@ -1516,6 +1707,98 @@ class FantasyAutoBattlerApp {
   /**
    * ? / ! 미스터리 보물상자(Mystery Box) 렌더링 & 터치 시 화려한 파티클 개봉 연출
    */
+  private getLootOrbScreenPercent(orb: {
+    x: number;
+    y: number;
+    hexRow?: number;
+    hexCol?: number;
+  }): { x: number; y: number } {
+    if (
+      orb.hexRow !== undefined &&
+      orb.hexCol !== undefined
+    ) {
+      if (this.is3DViewMode) {
+        return this.threeRenderer.hexToScreenPercent(orb.hexRow, orb.hexCol);
+      }
+      const center = HexGridMath.hexToScreenCenter(
+        orb.hexRow,
+        orb.hexCol,
+        this.pixelRenderer.hexMetrics
+      );
+      const w = Math.max(1, this.pixelRenderer.viewportWidth);
+      const h = Math.max(1, this.pixelRenderer.viewportHeight);
+      return {
+        x: Math.min(0.95, Math.max(0.05, center.x / w)),
+        y: Math.min(0.9, Math.max(0.08, center.y / h)),
+      };
+    }
+    return { x: 0.22 + orb.x * 0.54, y: 0.22 + orb.y * 0.36 };
+  }
+
+  /** 전투 중 아이템 장착 시 살아있는 HOME 클론에 스탯/아이템을 즉시 반영 (성급 업글은 반영하지 않음) */
+  private syncCombatCloneFromPrepUnit(prepInstanceId: string): void {
+    const inCombat =
+      this.game.phase === 'COMBAT_PHASE' ||
+      this.game.phase === 'RESOLUTION_PHASE';
+    if (!inCombat) return;
+    const prep = this.game.player
+      .getAllUnitLocations()
+      .find((l) => l.unit.instanceId === prepInstanceId)?.unit;
+    if (!prep) return;
+    const ctx = this.game.getViewedCombatContext();
+    const engine = ctx?.engine ?? this.game.playerCombatEngine;
+    if (!engine) return;
+    const clone = engine.units.find(
+      (u) =>
+        u.team === 'HOME' &&
+        (u.instanceId === prepInstanceId ||
+          u.instanceId === `HOME_${prepInstanceId}`)
+    );
+    if (!clone || clone.currentHp <= 0) return;
+    clone.items = [...prep.items];
+    const hpRatio = clone.maxHp > 0 ? clone.currentHp / clone.maxHp : 1;
+    clone.atk = prep.atk;
+    clone.def = prep.def;
+    clone.atkSpeed = prep.atkSpeed;
+    clone.spellPower = prep.spellPower;
+    clone.critChance = prep.critChance;
+    clone.critDamage = prep.critDamage;
+    clone.omnivamp = prep.omnivamp;
+    clone.maxHp = prep.maxHp;
+    clone.currentHp = Math.max(1, Math.round(prep.maxHp * hpRatio));
+  }
+
+  private openLootOrbAt(orbId: string, screenX: number, screenY: number): void {
+    const orb = this.game.playerLootOrbs.find((o) => o.id === orbId);
+    if (!orb) return;
+    soundFX.playCoin(1.4);
+    this.pixiVfx.triggerPlacementShockwave(screenX, screenY, 0xffea00);
+    this.pixelRenderer.triggerImpactShake(6, 180, 0);
+    this.pixelRenderer.spawnPixelSparks(
+      screenX,
+      screenY,
+      orb.tier === 'PRISMATIC'
+        ? '#f472b6'
+        : orb.tier === 'GOLD'
+        ? '#ffea00'
+        : '#38bdf8',
+      38
+    );
+    const rewards = this.game.openPlayerLootOrb(orb.id);
+    if (rewards.length > 0) {
+      this.pixelRenderer.spawnArcadePopupText(
+        screenX,
+        screenY - 20,
+        `🎉 ${rewards.join(' + ')}`,
+        orb.tier === 'PRISMATIC' ? '#f472b6' : '#ffea00',
+        16
+      );
+    }
+    this.renderLootOrbs();
+    this.renderLeftFloatingDock();
+    this.renderTopHud();
+  }
+
   private renderLootOrbs(): void {
     const orbLayer = document.getElementById('loot-orb-layer');
     if (!orbLayer) return;
@@ -1525,11 +1808,11 @@ class FantasyAutoBattlerApp {
 
     for (const orb of this.game.playerLootOrbs) {
       const btn = document.createElement('div');
-      btn.className = `loot-orb-btn mystery-box-chest orb-${orb.tier}`;
-      btn.style.left = `${Math.round(22 + orb.x * 54)}%`;
-      btn.style.top = `${Math.round(22 + orb.y * 36)}%`;
+      btn.className = `loot-orb-btn mystery-box-chest orb-${orb.tier} loot-pop-in`;
+      const pct = this.getLootOrbScreenPercent(orb);
+      btn.style.left = `${Math.round(pct.x * 100)}%`;
+      btn.style.top = `${Math.round(pct.y * 100)}%`;
 
-      // 프리즘/고등급 상자는 강렬한 '!' 마크, 일반/골드/블루 상자는 호기심을 자극하는 '?' 마크 표시
       const isExclaim =
         orb.tier === 'PRISMATIC' || (orb.label && orb.label.startsWith('!'));
       const mysteryMark = isExclaim ? '!' : '?';
@@ -1540,7 +1823,6 @@ class FantasyAutoBattlerApp {
           ? '🧰'
           : '📦';
 
-      // 불필요한 '미스터리', '대박상자' 텍스트 라벨 완전 삭제하고 순수한 ? / ! 도트 룬 심볼 및 보물상자만 직관적으로 표시
       btn.innerHTML = `
         <div class="mystery-badge-mark ${isExclaim ? 'mark-exclaim' : 'mark-question'}">${mysteryMark}</div>
         <div class="mystery-chest-body">
@@ -1550,14 +1832,21 @@ class FantasyAutoBattlerApp {
 
       btn.addEventListener('pointerup', (e) => {
         e.stopPropagation();
-        // 터치했을 때도 아바타가 해당 상자로 달려가서 먹도록 유도
         const orbCanvasX = Math.round(
-          this.pixelRenderer.viewportWidth * (0.22 + orb.x * 0.54)
+          this.pixelRenderer.viewportWidth * pct.x
         );
         const orbCanvasY = Math.round(
-          this.pixelRenderer.viewportHeight * (0.22 + orb.y * 0.36)
+          this.pixelRenderer.viewportHeight * pct.y
         );
+        // 탭하면 즉시 오픈하지 않고, 아바타가 상자로 걸어가 근접 획득
         this.pixelRenderer.movePlayerAvatarTo(orbCanvasX, orbCanvasY);
+        if (this.is3DViewMode) {
+          if (orb.hexRow !== undefined && orb.hexCol !== undefined) {
+            this.threeRenderer.moveCommanderAvatarToHex(orb.hexRow, orb.hexCol);
+          } else {
+            this.threeRenderer.moveCommanderAvatarToScreen(orbCanvasX, orbCanvasY);
+          }
+        }
       });
 
       orbLayer.appendChild(btn);
@@ -1597,7 +1886,7 @@ class FantasyAutoBattlerApp {
       );
       const nameLabel = isPlayer
         ? (needsReturn ? '🏠내전장' : '나')
-        : p.name.slice(0, 3);
+        : p.name.slice(0, 5);
 
       card.innerHTML = `
         <div class="leader-top-row">
@@ -1640,24 +1929,37 @@ class FantasyAutoBattlerApp {
     const toggleBar = document.getElementById('shop-drawer-toggle-bar');
     const toggleBtn = document.getElementById('toggle-shop-btn');
     const quickBar = document.getElementById('Collapsed-quick-bar');
-    const quickGold = document.getElementById('quick-gold-text');
     const quickCombatBtn = document.getElementById('quick-start-combat-btn');
 
-    if (shopBar && toggleBar && quickBar) {
+    // 상점 카드는 상단 독 / 우하단은 리롤·상점열기 상시 노출
+    if (shopBar) {
       shopBar.classList.toggle('hidden', !isExpanded);
+    }
+    if (toggleBar) {
       toggleBar.classList.toggle('hidden', !isExpanded);
-      quickBar.classList.toggle('hidden', isExpanded || inCombat);
+    }
+    if (quickBar) {
+      quickBar.classList.remove('hidden');
     }
     if (toggleBtn) {
-      toggleBtn.textContent = isExpanded ? '🛒 상점 접기 ▼' : '🛒 상점 열기 ▲';
+      toggleBtn.title = isExpanded ? '상점 접기' : '상점 열기';
+      toggleBtn.classList.toggle('shop-open-active', isExpanded);
     }
-    if (quickGold) {
-      quickGold.textContent = `${player.gold}G`;
-    }
+    document.getElementById('app')?.classList.toggle('shop-dock-top-expanded', isExpanded);
+
     if (quickCombatBtn) {
+      // 상점 좌측 미니 즉시시작 — 상점 열림과 무관하게 준비 단계에서만 표시
       quickCombatBtn.classList.toggle('hidden', inCombat);
       if (this.game.phase === 'PREPARATION_PHASE') {
-        quickCombatBtn.textContent = `⏱️ ${this.game.prepRemainingSec}s (출격)`;
+        const isManual = this.game.prepStartMode === 'MANUAL';
+        const isUrgent = !isManual && this.game.prepRemainingSec <= 5;
+        quickCombatBtn.classList.toggle('urgent-pulse', isUrgent);
+        quickCombatBtn.textContent = isManual
+          ? '⚔️'
+          : String(this.game.prepRemainingSec);
+        quickCombatBtn.title = isManual
+          ? '라운드 시작'
+          : `즉시 출격 (${this.game.prepRemainingSec}s)`;
       }
     }
 
@@ -1672,16 +1974,18 @@ class FantasyAutoBattlerApp {
 
     const goldText = document.getElementById('player-gold-text');
     const intText = document.getElementById('player-interest-text');
-    if (goldText && intText) {
-      goldText.textContent = `🪙${player.gold}G`;
-      intText.textContent = `+${player.calculateInterestGold()}G`;
+    if (goldText) {
+      goldText.textContent = `🪙${player.gold}`;
+    }
+    if (intText) {
+      intText.textContent = `+${player.calculateInterestGold()}`;
     }
 
     const rerollBtn = document.getElementById('reroll-btn');
     if (rerollBtn) {
       rerollBtn.innerHTML =
         player.freeRerolls > 0
-          ? `<span class="btn-main-label">🎟️무료리롤</span><span class="btn-sub-cost">${player.freeRerolls}회</span>`
+          ? `<span class="btn-main-label">🎟️무료</span><span class="btn-sub-cost">${player.freeRerolls}회</span>`
           : `<span class="btn-main-label">🎲리롤</span><span class="btn-sub-cost">2G</span>`;
     }
 
@@ -1704,15 +2008,8 @@ class FantasyAutoBattlerApp {
 
     const startCombatBtn = document.getElementById('start-combat-btn');
     if (startCombatBtn) {
-      startCombatBtn.classList.toggle('hidden', inCombat);
-      if (this.game.phase === 'PREPARATION_PHASE') {
-        const isUrgent = this.game.prepRemainingSec <= 5;
-        startCombatBtn.classList.toggle('urgent-pulse', isUrgent);
-        startCombatBtn.innerHTML = `
-          <span class="sword-emblem" style="font-size:15px;">⏱️${this.game.prepRemainingSec}s</span>
-          <span class="battle-label">즉시출격</span>
-        `;
-      }
+      // 레거시 숨김 슬롯 — 실제 UI는 quick-start-combat-btn
+      startCombatBtn.classList.add('hidden');
     }
 
     const shopContainer = document.getElementById('shop-cards-container');
@@ -1748,15 +2045,27 @@ class FantasyAutoBattlerApp {
       }
 
       const traitIconsHtml = template.traits
-        .map(
-          (t: TraitId) =>
-            `<span class="shop-trait-pill">${TRAIT_DEFINITIONS[t].icon}${TRAIT_DEFINITIONS[t].name.slice(0, 2)}</span>`
-        )
+        .map((t: TraitId) => {
+          const def = TRAIT_DEFINITIONS[t];
+          const isOrigin = def.type === 'ORIGIN';
+          const style = isOrigin
+            ? `border-color:${def.color};background:${def.color}55;color:#fff`
+            : '';
+          return `<span class="shop-trait-pill ${
+            isOrigin ? 'origin-pill' : 'class-pill'
+          }" style="${style}">${def.icon}${def.name.slice(0, 2)}</span>`;
+        })
         .join('');
 
       const nameTokens = template.name.trim().split(' ');
       const coreName = nameTokens[nameTokens.length - 1];
       const prefix = nameTokens.length > 1 ? nameTokens.slice(0, -1).join(' ') : '';
+      const originTrait = template.traits.find(
+        (t: TraitId) => TRAIT_DEFINITIONS[t].type === 'ORIGIN'
+      );
+      const originBgStyle = originTrait
+        ? `--origin-color:${TRAIT_DEFINITIONS[originTrait].color}`
+        : '';
 
       card.innerHTML = `
         <div class="shop-card-top cost-header-${template.cost}">
@@ -1767,7 +2076,9 @@ class FantasyAutoBattlerApp {
           <span class="shop-cost-pill cost-tag-${template.cost}">🪙${template.cost}G</span>
         </div>
         ${mergeHintBadge}
-        <div class="shop-portrait-stage">
+        <div class="shop-portrait-stage ${
+          originTrait ? `origin-stage origin-${originTrait}` : ''
+        }" style="${originBgStyle}">
           <canvas class="shop-pixel-portrait"></canvas>
           <div class="shop-trait-Overlay-strip">
             <div>${traitIconsHtml}</div>
@@ -2002,57 +2313,246 @@ class FantasyAutoBattlerApp {
     modal.classList.remove('hidden');
   }
 
-  private showTapTooltip(html: string): void {
+  private formatItemStatLines(itemId: ItemId): string[] {
+    const def = ITEM_DEFINITIONS[itemId];
+    if (!def) return [];
+    const s = def.stats;
+    const lines: string[] = [];
+    if (s.hp) lines.push(`❤️ 체력 +${s.hp}`);
+    if (s.atk) lines.push(`⚔️ 공격력 +${s.atk}`);
+    if (s.def) lines.push(`🛡️ 방어력 +${s.def}`);
+    if (s.atkSpeed) lines.push(`💨 공속 +${Math.round(s.atkSpeed * 100)}%`);
+    if (s.spellPower) lines.push(`✨ 주문력 +${Math.round(s.spellPower * 100)}%`);
+    if (s.startMana) lines.push(`💧 시작 마나 +${s.startMana}`);
+    if (s.critChance) lines.push(`🎯 치확 +${Math.round(s.critChance * 100)}%`);
+    if (s.critDamage) lines.push(`💥 치피 +${Math.round(s.critDamage * 100)}%`);
+    if (s.omnivamp) lines.push(`🩸 흡혈 +${Math.round(s.omnivamp * 100)}%`);
+    if (s.bonusRange) lines.push(`🏹 사거리 +${s.bonusRange}`);
+    return lines;
+  }
+
+  private showEquippedItemTooltip(
+    itemId: ItemId,
+    anchorClient?: { x: number; y: number }
+  ): void {
+    const def = ITEM_DEFINITIONS[itemId];
+    if (!def) return;
+    const stats = this.formatItemStatLines(itemId);
+    const statsHtml = stats.length
+      ? `<div style="margin-top:4px;color:#fef08a">${stats.join('<br/>')}</div>`
+      : '';
+    const kind = def.isCompleted ? '완성 아이템' : '기본 재료';
+    this.showTapTooltip(
+      `<strong>${def.icon} ${def.name}</strong> <span style="color:#94a3b8;font-size:11px">(${kind})</span><br/>${def.description}${statsHtml}`,
+      anchorClient
+    );
+  }
+
+  private showTapTooltip(
+    html: string,
+    anchorClient?: { x: number; y: number }
+  ): void {
     const bar = document.getElementById('tap-tooltip-bar');
     const content = document.getElementById('tap-tooltip-content');
     if (!bar || !content) return;
     content.innerHTML = html;
     bar.classList.remove('hidden');
+    // 아이템 등 클릭 지점 근처로 고정 — 화면 중앙을 떠다니지 않게
+    if (anchorClient) {
+      // #app force-landscape 회전 시에도 올바른 로컬 좌표 사용
+      const pt = this.clientToCanvasPoint(anchorClient.x, anchorClient.y);
+      const app = document.getElementById('app');
+      const w = app?.clientWidth || window.innerWidth || 360;
+      const h = app?.clientHeight || window.innerHeight || 640;
+      const maxW = Math.min(w * 0.92, 540);
+      const left = Math.max(8, Math.min(w - maxW - 8, pt.x - maxW * 0.5));
+      const top = Math.max(8, Math.min(h - 80, pt.y + 18));
+      bar.style.left = `${left}px`;
+      bar.style.top = `${top}px`;
+      bar.style.transform = 'none';
+      bar.classList.add('tooltip-anchored');
+    } else {
+      bar.style.left = '50%';
+      bar.style.top = '36px';
+      bar.style.transform = 'translateX(-50%)';
+      bar.classList.remove('tooltip-anchored');
+    }
+  }
+
+  private formatTraitsLine(traits: TraitId[]): string {
+    return traits
+      .map((t) => {
+        const def = TRAIT_DEFINITIONS[t];
+        return def ? `${def.icon}${def.name}` : t;
+      })
+      .join(' · ');
+  }
+
+  private formatSkillTooltipBlock(opts: {
+    unitId: string;
+    starLevel: 1 | 2 | 3;
+    atk: number;
+    spellPower: number;
+    fallbackName?: string;
+    fallbackDesc?: string;
+  }): string {
+    const preview = estimateSkillDamagePreview({
+      unitId: opts.unitId,
+      starLevel: opts.starLevel,
+      atk: opts.atk,
+      spellPower: opts.spellPower,
+    });
+    if (!preview) {
+      return `<span style="color:#fde047">[${opts.fallbackName ?? '스킬'}]:</span> ${
+        opts.fallbackDesc ?? '설명 없음'
+      }`;
+    }
+    const secondary =
+      preview.secondaryValue !== null
+        ? ` · 부가수치 ${preview.secondaryValue}`
+        : '';
+    const atkNote =
+      preview.atkRatio > 0
+        ? ` (계수 피해 + 공격력×${preview.atkRatio})`
+        : ' (주문력·성급 반영)';
+    return `<span style="color:#fde047">[${preview.skillName}]</span> ${preview.description}<br/><span class="tooltip-skill-dmg">예상 스킬 피해 ~${preview.primaryDamage}${secondary}${atkNote}</span>`;
   }
 
   private showUnitDetailTooltip(unit: UnitInstance): void {
     const template = UNIT_TEMPLATES[unit.unitId];
-    const traitsStr = unit.traits
-      .map((t) => `${TRAIT_DEFINITIONS[t].icon}${TRAIT_DEFINITIONS[t].name}`)
-      .join(', ');
+    const traitsStr = this.formatTraitsLine(unit.traits);
     const itemsStr =
       unit.items.length > 0
         ? unit.items.map((i) => ITEM_DEFINITIONS[i]?.name).join(', ')
         : '없음';
+    const apPct = Math.round((unit.spellPower ?? 1) * 100);
 
     const portrait3d = this.is3DViewMode
       ? this.threeRenderer.getChampion3DPortraitDataUrl(unit.unitId, unit.cost)
       : null;
     const thumbHtml = portrait3d
-      ? `<img src="${portrait3d}" style="width:40px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #38bdf8;float:left;margin-right:8px;background:#090d16;" />`
+      ? `<img src="${portrait3d}" class="tooltip-thumb" />`
+      : '';
+
+    const skillHtml = template
+      ? this.formatSkillTooltipBlock({
+          unitId: unit.unitId,
+          starLevel: unit.starLevel,
+          atk: unit.atk,
+          spellPower: unit.spellPower ?? 1,
+        })
       : '';
 
     this.showTapTooltip(
-      `${thumbHtml}<strong>${unit.icon} ${unit.name} (${'★'.repeat(unit.starLevel)} · ${
-        unit.cost
-      }코)</strong> [${traitsStr}]<br/>HP ${unit.maxHp} · 공격 ${
-        unit.atk
-      } · 방어 ${unit.def} · 사거리 ${unit.range}칸 · 아이템: ${itemsStr}<br/><span style="color:#fde047">[${
-        template.skill.name
-      }]:</span> ${template.skill.description}`
+      `${thumbHtml}<div class="tooltip-body"><strong>${unit.icon} ${unit.name}</strong> (${'★'.repeat(
+        unit.starLevel
+      )} · ${unit.cost}코)<br/><span class="tooltip-traits">${traitsStr}</span><br/>HP ${
+        unit.maxHp
+      } · 공격력 ${unit.atk} · 주문력 ${apPct}% · 방어 ${unit.def} · 공속 ${
+        unit.atkSpeed
+      } · 사거리 ${unit.range}칸<br/>아이템: ${itemsStr}<br/>${skillHtml}</div>`
     );
   }
 
   private showCombatUnitTooltip(cu: CombatUnit): void {
     const template =
       UNIT_TEMPLATES[cu.unitId] ?? getCreepMonsterTemplate(cu.unitId);
-    const skillName = template?.skill.name ?? '야생 본능';
-    const skillDesc = template?.skill.description ?? '야생 몬스터의 특수 공격을 수행합니다.';
+    const traitsStr =
+      cu.traits?.length > 0
+        ? this.formatTraitsLine(cu.traits)
+        : '야생/크립';
+    const apPct = Math.round((cu.spellPower ?? 1) * 100);
+    const itemsStr =
+      cu.items?.length > 0
+        ? cu.items.map((i) => ITEM_DEFINITIONS[i]?.name ?? i).join(', ')
+        : '없음';
 
-    const portrait3d = this.is3DViewMode && UNIT_TEMPLATES[cu.unitId]
-      ? this.threeRenderer.getChampion3DPortraitDataUrl(cu.unitId, cu.cost)
-      : null;
+    const portrait3d =
+      this.is3DViewMode && UNIT_TEMPLATES[cu.unitId]
+        ? this.threeRenderer.getChampion3DPortraitDataUrl(cu.unitId, cu.cost)
+        : null;
     const thumbHtml = portrait3d
-      ? `<img src="${portrait3d}" style="width:40px;height:32px;object-fit:cover;border-radius:4px;border:1px solid #38bdf8;float:left;margin-right:8px;background:#090d16;" />`
+      ? `<img src="${portrait3d}" class="tooltip-thumb" />`
       : '';
 
+    const skillHtml = UNIT_TEMPLATES[cu.unitId]
+      ? this.formatSkillTooltipBlock({
+          unitId: cu.unitId,
+          starLevel: cu.starLevel,
+          atk: cu.atk,
+          spellPower: cu.spellPower ?? 1,
+        })
+      : `<span style="color:#fde047">[${
+          template?.skill.name ?? '야생 본능'
+        }]:</span> ${
+          template?.skill.description ?? '야생 몬스터의 특수 공격을 수행합니다.'
+        }`;
+
+    const teamTag = cu.team === 'AWAY' ? '<span class="tooltip-enemy-tag">적</span> ' : '';
+
     this.showTapTooltip(
-      `${thumbHtml}<strong>${cu.icon} ${cu.name} (${cu.starLevel}성)</strong> | HP ${cu.currentHp}/${cu.maxHp} · 공격 ${cu.atk} · 딜량 ${cu.totalDamageDealt}<br/><span style="color:#fde047">[${skillName}]:</span> ${skillDesc}`
+      `${thumbHtml}<div class="tooltip-body">${teamTag}<strong>${cu.icon} ${
+        cu.name
+      }</strong> (${'★'.repeat(cu.starLevel)} · ${cu.cost}코)<br/><span class="tooltip-traits">${traitsStr}</span><br/>HP ${
+        cu.currentHp
+      }/${cu.maxHp} · 공격력 ${cu.atk} · 주문력 ${apPct}% · 방어 ${
+        cu.def
+      } · 딜량 ${cu.totalDamageDealt}<br/>아이템: ${itemsStr}<br/>${skillHtml}</div>`
+    );
+  }
+
+  private showSynergyDetailTooltip(traitId: TraitId, activeCount: number): void {
+    const def = TRAIT_DEFINITIONS[traitId];
+    if (!def) return;
+
+    const units = ALL_UNIT_LIST.filter((u) => u.traits.includes(traitId)).sort(
+      (a, b) => a.cost - b.cost || a.name.localeCompare(b.name)
+    );
+    const byCost = new Map<CostTier, typeof units>();
+    for (const u of units) {
+      const list = byCost.get(u.cost) ?? [];
+      list.push(u);
+      byCost.set(u.cost, list);
+    }
+
+    const rosterHtml = [1, 2, 3, 4, 5]
+      .map((cost) => {
+        const list = byCost.get(cost as CostTier);
+        if (!list || list.length === 0) return '';
+        const chips = list
+          .map(
+            (u) =>
+              `<span class="tooltip-unit-chip cost-${u.cost}">${u.icon} ${u.name} <em>${u.cost}</em></span>`
+          )
+          .join('');
+        return `<div class="tooltip-cost-row"><span class="tooltip-cost-label">${cost}코</span><div class="tooltip-unit-grid">${chips}</div></div>`;
+      })
+      .filter(Boolean)
+      .join('');
+
+    const tiersHtml = def.effects
+      .map((eff) => {
+        const reached = activeCount >= eff.threshold;
+        const style = SynergyEngine.buildSynergyState(def, eff.threshold).styleTier;
+        const cls = reached
+          ? `tooltip-tier-active style-${style}`
+          : `tooltip-tier-inactive style-${style}`;
+        const styleLabel =
+          style === 'PLATINUM'
+            ? '플레'
+            : style === 'GOLD'
+              ? '골드'
+              : style === 'SILVER'
+                ? '실버'
+                : style === 'BRONZE'
+                  ? '브론즈'
+                  : '';
+        return `<div class="${cls}">${reached ? '✓' : '○'} <span class="tier-chip">${styleLabel}</span> ${eff.label}</div>`;
+      })
+      .join('');
+
+    this.showTapTooltip(
+      `<div class="tooltip-body tooltip-synergy-detail"><strong>${def.icon} ${def.name}</strong> <span class="tooltip-synergy-count">${activeCount}명 활성</span><br/>${def.description}<br/><div class="tooltip-tier-list">${tiersHtml}</div><div class="tooltip-roster-title">소속 유닛</div>${rosterHtml}</div>`
     );
   }
 
@@ -2190,46 +2690,41 @@ class FantasyAutoBattlerApp {
       });
     }
 
-      // 내 아바타가 전장을 이동하다가 ? / ! 미스터리 상자와 접촉(거리 36px 이내)하면 상자 폭발 & 획득!
+      // 내 아바타가 전장을 이동하다가 ? / ! 미스터리 상자와 접촉하면 상자 폭발 & 획득
       if (
         viewed.id === this.game.player.id &&
         this.game.playerLootOrbs.length > 0
       ) {
-        const avatarPos = this.pixelRenderer.getPlayerAvatarCurrentPos();
-        for (const orb of [...this.game.playerLootOrbs]) {
-          const orbX = Math.round(
-            this.pixelRenderer.viewportWidth * (0.22 + orb.x * 0.54)
-          );
-          const orbY = Math.round(
-            this.pixelRenderer.viewportHeight * (0.22 + orb.y * 0.36)
-          );
-          const dist = Math.hypot(avatarPos.x - orbX, avatarPos.y - orbY);
-
-          if (dist <= 40) {
-            soundFX.playCoin(1.4);
-            this.pixiVfx.triggerPlacementShockwave(orbX, orbY, 0xffea00);
-            this.pixelRenderer.triggerImpactShake(6, 180, 0);
-            this.pixelRenderer.spawnPixelSparks(
-              orbX,
-              orbY,
-              orb.tier === 'PRISMATIC'
-                ? '#f472b6'
-                : orb.tier === 'GOLD'
-                ? '#ffea00'
-                : '#38bdf8',
-              38
-            );
-            const rewards = this.game.openPlayerLootOrb(orb.id);
-            if (rewards.length > 0) {
-              this.pixelRenderer.spawnArcadePopupText(
-                orbX,
-                orbY - 20,
-                `🎉 ${rewards.join(' + ')}`,
-                orb.tier === 'PRISMATIC' ? '#f472b6' : '#ffea00',
-                16
-              );
+        if (this.is3DViewMode) {
+          const cmd = this.threeRenderer.getCommanderWorldPos();
+          for (const orb of [...this.game.playerLootOrbs]) {
+            let ox: number;
+            let oz: number;
+            if (orb.hexRow !== undefined && orb.hexCol !== undefined) {
+              const w = this.threeRenderer.hexToWorldPos(orb.hexRow, orb.hexCol);
+              ox = w.x;
+              oz = w.z;
+            } else {
+              // 정규화 폴백 → 보드 대략 매핑
+              ox = (orb.x - 0.5) * 14;
+              oz = (orb.y - 0.5) * 12;
             }
-            this.renderLootOrbs();
+            if (Math.hypot(cmd.x - ox, cmd.z - oz) <= 1.55) {
+              const pct = this.getLootOrbScreenPercent(orb);
+              const orbX = Math.round(this.pixelRenderer.viewportWidth * pct.x);
+              const orbY = Math.round(this.pixelRenderer.viewportHeight * pct.y);
+              this.openLootOrbAt(orb.id, orbX, orbY);
+            }
+          }
+        } else {
+          const avatarPos = this.pixelRenderer.getPlayerAvatarCurrentPos();
+          for (const orb of [...this.game.playerLootOrbs]) {
+            const pct = this.getLootOrbScreenPercent(orb);
+            const orbX = Math.round(this.pixelRenderer.viewportWidth * pct.x);
+            const orbY = Math.round(this.pixelRenderer.viewportHeight * pct.y);
+            if (Math.hypot(avatarPos.x - orbX, avatarPos.y - orbY) <= 48) {
+              this.openLootOrbAt(orb.id, orbX, orbY);
+            }
           }
         }
       }
