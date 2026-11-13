@@ -23,10 +23,12 @@ import { SynergyEngine } from './SynergyEngine';
 import { NeuralBotEngine, NeuralInferenceResult } from './NeuralBotEngine';
 import {
   analyzeComps,
+  buildContestLedger,
   buildPivotPlan,
   defaultRuleBasedPlanner,
   isDynamicStrategyExperimentEnabled,
   ObservableStateSummary,
+  selectDenyTargets,
   StrategyChangeReason,
   validateStrategicPlan,
 } from './strategy';
@@ -88,6 +90,9 @@ export interface BotBrainState {
   pivotGoldFloorHint: number | null;
   pivotMaxRerollsHint: number | null;
   pivotPreferRolldown: boolean;
+  /** Stage3: 이번 판 견제 구매/홀드 텔레메트리 */
+  denyBuyCount: number;
+  denyHoldUnitIds: Set<string>;
   isRolldownActive: boolean;
   nextActionDelayMs: number;
   rerollsExecutedThisRound: number;
@@ -359,6 +364,8 @@ export class AIBotController {
       pivotGoldFloorHint: null,
       pivotMaxRerollsHint: null,
       pivotPreferRolldown: false,
+      denyBuyCount: 0,
+      denyHoldUnitIds: new Set<string>(),
       isRolldownActive: false,
       nextActionDelayMs: 900,
       rerollsExecutedThisRound: 0,
@@ -631,9 +638,14 @@ export class AIBotController {
       aiParams
     );
 
-    // Stage2: CompAnalyzer → PivotPlanner 실행
+    // Stage2/3: ContestLedger → CompAnalyzer → PivotPlanner
     const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
     try {
+      const contestLedger = buildContestLedger(
+        bot,
+        allParticipants,
+        sharedPool
+      );
       const analysis = analyzeComps({
         bot,
         allParticipants,
@@ -641,6 +653,7 @@ export class AIBotController {
         currentTrait: brain.targetTrait,
         stage: stageNum,
         roundLabel: currentRound,
+        contestLedger,
       });
       const plan = buildPivotPlan({
         bot,
@@ -701,6 +714,19 @@ export class AIBotController {
       if (plan.decision === 'hard-pivot' || plan.decision === 'soft-flex') {
         this.cleanupBenchIfFull(bot, brain, sharedPool);
       }
+
+      // Stage3: 컴프 keep/buy가 정해진 뒤 견제 대상 재선정 (듀얼 목적 반영)
+      const denyRefresh = selectDenyTargets({
+        ledger: contestLedger,
+        self: bot,
+        keepUnitIds: brain.keepUnitIds,
+        buyPriorityUnitIds: brain.buyPriorityUnitIds,
+        alreadyDenying: brain.unitsToDenyCache,
+        maxTargets: 3,
+        minDenyValue: 40,
+      });
+      for (const id of denyRefresh) brain.unitsToDenyCache.add(id);
+      brain.denyHoldUnitIds = new Set(brain.unitsToDenyCache);
     } catch {
       // 분석/플래너 실패해도 봇 루프는 계속
     }
@@ -1533,21 +1559,11 @@ export class AIBotController {
     sharedPool: SharedPoolManager,
     aiParams: AISkillParameters
   ): Set<string> {
-    const unitsToDenyFromPlayer = new Set<string>();
-    const traitContestedMap = new Map<TraitId, number>();
+    const unitsToDeny = new Set<string>();
 
+    // 인간 플레이어 대상 고전 견제 (고코스트 카피 임박)
     for (const other of allParticipants) {
       if (other.isEliminated || other.id === bot.id) continue;
-
-      // 다른 생존 참가자들의 활성화 시너지 스캔
-      const otherTraitCounts = other.getActiveTraitCounts();
-      for (const [traitId, count] of otherTraitCounts.entries()) {
-        if (count >= 2) {
-          traitContestedMap.set(traitId, (traitContestedMap.get(traitId) ?? 0) + 1);
-        }
-      }
-
-      // Soft skill gate + neural deny urgency
       const denyUrge = brain.lastNeuralResult?.urgencies.deny ?? 0.2;
       const neuralWantsDeny =
         brain.lastNeuralResult?.macroAction === 'DENY_HOLD' || denyUrge > 0.6;
@@ -1560,21 +1576,33 @@ export class AIBotController {
               playerCopies >= denyThreshold &&
               !other.hasThreeStarUnit(template.id)
             ) {
-              unitsToDenyFromPlayer.add(template.id);
+              unitsToDeny.add(template.id);
             }
           }
         }
       }
     }
 
-    // Stage2: 구식 "덜 경합 origin 고르기" 피벗은 비활성.
-    // trait 전환은 prepareBotForRealTimePrep의 CompAnalyzer+PivotPlanner가 수행.
-    void traitContestedMap;
-    void sharedPool;
-    void aiParams;
-    void bot;
+    // Stage3: ContestLedger 기반 봇↔봇 포함 견제 대상
+    const denyUrge = brain.lastNeuralResult?.urgencies.deny ?? 0.2;
+    const neuralWantsDeny =
+      brain.lastNeuralResult?.macroAction === 'DENY_HOLD' || denyUrge > 0.55;
+    if (this.softSkillGate(aiParams, neuralWantsDeny ? 0.4 : 0.62)) {
+      const ledger = buildContestLedger(bot, allParticipants, sharedPool);
+      const targets = selectDenyTargets({
+        ledger,
+        self: bot,
+        keepUnitIds: brain.keepUnitIds,
+        buyPriorityUnitIds: brain.buyPriorityUnitIds,
+        alreadyDenying: unitsToDeny,
+        maxTargets: neuralWantsDeny ? 4 : 3,
+        minDenyValue: neuralWantsDeny ? 36 : 42,
+      });
+      for (const id of targets) unitsToDeny.add(id);
+      brain.denyHoldUnitIds = new Set(unitsToDeny);
+    }
 
-    return unitsToDenyFromPlayer;
+    return unitsToDeny;
   }
 
   // ==========================================================================
@@ -1763,21 +1791,32 @@ export class AIBotController {
       const template = UNIT_TEMPLATES[unitId];
       if (!template) continue;
 
-      // 1) Soft skill gate 3성 견제 (Holding/Denying):
-      // 4코스트(풀 10개)는 2장만 쥐어도 상대가 3성 불가, 5코스트(풀 9개)는 단 1장만 쥐어도 상대가 복제기 없이 3성 불가!
+      // 1) Soft skill gate 견제 구매 (Stage3: 봇 간 ContestLedger 포함)
+      // 자해 방지: 이미 벤치 견제 홀드가 2기 이상이면 추가 순수견제 중단
+      const currentDenyHolds = brain.deniedUnitInstanceIds.size;
+      const dualPurpose =
+        brain.buyPriorityUnitIds.has(unitId) || brain.keepUnitIds.has(unitId);
+      const goldBuffer = dualPurpose ? 2 : 8;
+      const canAffordDeny = bot.gold >= template.cost + goldBuffer;
+      const denyCapOk = dualPurpose || currentDenyHolds < 2;
       if (
-        this.softSkillGate(aiParams, 0.7) &&
+        this.softSkillGate(aiParams, 0.58) &&
         unitsToDenyFromPlayer.has(unitId) &&
-        bot.gold >= template.cost + 8 &&
+        canAffordDeny &&
+        denyCapOk &&
         bot.canBuyUnit(unitId, template.cost) &&
-        !this.softShouldSkip(aiParams, 0.15)
+        !this.softShouldSkip(aiParams, 0.12)
       ) {
         if (bot.buyUnit(slotIdx, sharedPool)) {
+          brain.denyBuyCount += 1;
           const loc = bot
             .getAllUnitLocations()
             .find((l) => l.area === 'BENCH' && l.unit.unitId === unitId);
           if (loc) {
-            brain.deniedUnitInstanceIds.add(loc.unit.instanceId);
+            // 순수 견제만 denied 표시 — 내 컴프 유닛은 보드에 쓸 수 있게 둠
+            if (!dualPurpose) {
+              brain.deniedUnitInstanceIds.add(loc.unit.instanceId);
+            }
           }
           continue;
         }
@@ -1960,6 +1999,10 @@ export class AIBotController {
       template.cost >= 3
     ) {
       score -= 18; // 컴프 밖 고코스트 신규 수집 억제
+    }
+    // Stage3: 견제 대상이면 소폭 가산 (순수 견제는 deny 경로가 우선)
+    if (brain.unitsToDenyCache.has(template.id)) {
+      score += 12;
     }
 
     // 7. 인간적 오차(Temperature Noise) 적용

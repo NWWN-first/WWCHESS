@@ -15,6 +15,11 @@ import {
   CompDefinition,
   CompLevelHint,
 } from './CompCatalog';
+import {
+  ContestLedger,
+  buildContestLedger,
+  scoreCompContestEaseFromLedger,
+} from './ContestLedger';
 
 /** AIBotController 순환참조 방지용 로컬 역할 추정 */
 function estimateRole(
@@ -104,6 +109,8 @@ export interface CompAnalyzerInput {
   currentTrait: TraitId;
   stage: number;
   roundLabel?: string;
+  /** Stage3: 미리 만든 경합 장부 (없으면 내부 구축) */
+  contestLedger?: ContestLedger;
 }
 
 function clamp(n: number, lo = 0, hi = 100): number {
@@ -258,24 +265,13 @@ function scoreContestEase(
   comp: CompDefinition,
   bot: Participant,
   allParticipants: Participant[],
-  sharedPool: SharedPoolManager
+  sharedPool: SharedPoolManager,
+  ledger: ContestLedger
 ): { ease: number; reason?: CompReasonCode } {
-  let pressure = 0;
-  let samples = 0;
-  for (const unitId of comp.coreUnitIds) {
-    samples++;
-    const max = sharedPool.getMaxCount(unitId) || 1;
-    const rem = sharedPool.getRemainingCount(unitId);
-    const poolRatio = rem / max;
-    let heldByOthers = 0;
-    for (const other of allParticipants) {
-      if (other.id === bot.id || other.isEliminated) continue;
-      heldByOthers += other.getOwnedUnitCopiesCount(unitId);
-    }
-    // 타인이 많이 쥐고 풀이 말라 있으면 경합 압박
-    pressure += heldByOthers * 14 + (1 - poolRatio) * 40;
-  }
-  // primary trait contest: how many others have >=2 of trait
+  // Stage3: 유닛 장부 기반 평균 경합 용이성
+  let ease = scoreCompContestEaseFromLedger(ledger, comp.coreUnitIds);
+
+  // 시너지 인원 경합은 보조 가중
   let traitContested = 0;
   for (const other of allParticipants) {
     if (other.id === bot.id || other.isEliminated) continue;
@@ -283,9 +279,18 @@ function scoreContestEase(
       traitContested++;
     }
   }
-  pressure += traitContested * 12;
-  const avgPressure = samples > 0 ? pressure / samples : pressure;
-  const ease = clamp(100 - avgPressure);
+  ease = clamp(ease - traitContested * 6);
+
+  // 캐리 유닛이 특히 말라 있으면 추가 패널티
+  for (const carryId of comp.carryUnitIds) {
+    const e = ledger.byUnitId.get(carryId);
+    if (!e) continue;
+    if (e.maxHeldByOne >= 2 && e.poolRatio < 0.45) {
+      ease = clamp(ease - 8);
+    }
+  }
+
+  void sharedPool;
   const reason: CompReasonCode | undefined =
     ease < 35 ? 'CONTEST_CORE' : ease >= 75 ? 'LOW_CONTEST_ALT' : undefined;
   return { ease, reason };
@@ -421,7 +426,8 @@ function weightedTotal(b: CompScoreBreakdown, stage: number): number {
 function scoreComp(
   comp: CompDefinition,
   input: CompAnalyzerInput,
-  owned: ReturnType<typeof collectOwnedUnitMeta>
+  owned: ReturnType<typeof collectOwnedUnitMeta>,
+  ledger: ContestLedger
 ): CompCandidateScore {
   const stage = parseStage(input.roundLabel, input.stage);
   const combatNow = scoreCombatNow(comp, owned, input.bot);
@@ -430,7 +436,8 @@ function scoreComp(
     comp,
     input.bot,
     input.allParticipants,
-    input.sharedPool
+    input.sharedPool,
+    ledger
   );
   const completion = scoreCompletion(
     comp,
@@ -477,9 +484,12 @@ function scoreComp(
  */
 export function analyzeComps(input: CompAnalyzerInput): CompAnalysisResult {
   const owned = collectOwnedUnitMeta(input.bot);
-  const scored = COMP_CATALOG.map((c) => scoreComp(c, input, owned)).sort(
-    (a, b) => b.total - a.total
-  );
+  const ledger =
+    input.contestLedger ??
+    buildContestLedger(input.bot, input.allParticipants, input.sharedPool);
+  const scored = COMP_CATALOG.map((c) =>
+    scoreComp(c, input, owned, ledger)
+  ).sort((a, b) => b.total - a.total);
 
   const stayPool = scored.filter(
     (s) => s.comp.primaryTrait === input.currentTrait

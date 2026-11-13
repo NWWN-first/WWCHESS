@@ -166,6 +166,14 @@ const pivotFunnel = {
   nonPivotedTop1: 0,
 };
 
+/** Stage3 견제 KPI */
+const denyStats = {
+  botsWithDenyBuy: 0,
+  denyBuysTotal: 0,
+  denyHoldUnitsAtEnd: 0,
+  botsSampled: 0,
+};
+
 /** Stage1 CompAnalyzer 관측 (실행 전 추천 분포) */
 const compStats = {
   samples: 0,
@@ -714,6 +722,10 @@ function runOneGame(): void {
           if (place <= 4) bucket.top4++;
           if (place === 1) bucket.top1++;
         }
+        denyStats.botsSampled++;
+        denyStats.denyBuysTotal += brain.denyBuyCount ?? 0;
+        if ((brain.denyBuyCount ?? 0) > 0) denyStats.botsWithDenyBuy++;
+        denyStats.denyHoldUnitsAtEnd += brain.deniedUnitInstanceIds?.size ?? 0;
       }
     }
   }
@@ -1039,7 +1051,15 @@ if (pivotFunnel.nonPivotedBots > 0) {
   );
 }
 
-console.log('\n[4-C] CompAnalyzer 추천 분포 (Stage1 — 실행 전 관측)');
+console.log('\n[4-C2] ContestLedger 견제 KPI (Stage3)');
+console.log(
+  `  견제구매 경험 봇: ${denyStats.botsWithDenyBuy}/${denyStats.botsSampled} (${pct(denyStats.botsWithDenyBuy, denyStats.botsSampled)}) | 총 견제구매 ${denyStats.denyBuysTotal} (평균 ${(denyStats.botsSampled ? denyStats.denyBuysTotal / denyStats.botsSampled : 0).toFixed(2)}회/봇)`
+);
+console.log(
+  `  종료 시 벤치 견제홀드 인스턴스 합: ${denyStats.denyHoldUnitsAtEnd} (평균 ${(denyStats.botsSampled ? denyStats.denyHoldUnitsAtEnd / denyStats.botsSampled : 0).toFixed(2)}/봇)`
+);
+
+console.log('\n[4-C] CompAnalyzer 추천 분포 (Stage1/2 — Planner 반영 후)');
 console.log(
   `  샘플 ${compStats.samples} | stay ${compStats.stay} (${pct(compStats.stay, compStats.samples)}) | soft-flex ${compStats.softFlex} (${pct(compStats.softFlex, compStats.samples)}) | hard-pivot ${compStats.hardPivot} (${pct(compStats.hardPivot, compStats.samples)})`
 );
