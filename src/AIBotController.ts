@@ -133,6 +133,20 @@ export interface AIStateTensor {
   lossStreakNorm: number;
   contestedTraitRatio: number;
   emergencyFlag: number;
+  boardFillRatio: number;
+  interestProgress: number;
+  freeRerollNorm: number;
+  augmentCountNorm: number;
+  hasEconomyAug: number;
+  hasCombatAug: number;
+  threeStarNorm: number;
+  aliveOpponentsNorm: number;
+  relativeHpNorm: number;
+  goldLeadNorm: number;
+  pairPressureNorm: number;
+  stageLateFlag: number;
+  skillNorm: number;
+  /** 24-d feature vector for NeuralBotEngine */
   features: number[];
 }
 
@@ -548,6 +562,11 @@ export class AIBotController {
     brain.currentRoundLabel = currentRound;
     const aiParams = this.rankManager.getAISkillParameters();
 
+    // 0. 신경망 먼저 — 피봇/견제/매크로가 urgencies를 참조
+    const stateTensor = this.extractAIStateTensor(bot, allParticipants, currentRound);
+    const neuralResult = NeuralBotEngine.getInstance().predictSync(stateTensor.features);
+    brain.lastNeuralResult = neuralResult;
+
     // 1. 라운드 시작 정찰(Scouting) 및 덱 전환(Pivot)
     brain.unitsToDenyCache = this.performScoutingAndPivot(
       bot,
@@ -556,11 +575,6 @@ export class AIBotController {
       sharedPool,
       aiParams
     );
-
-    // 딥러닝 신경망 추론 (상태 텐서 기반 Value, MacroAction, ItemUrgency 산출)
-    const stateTensor = this.extractAIStateTensor(bot, allParticipants, currentRound);
-    const neuralResult = NeuralBotEngine.getInstance().predictSync(stateTensor.features);
-    brain.lastNeuralResult = neuralResult;
 
     const persona = brain.persona;
     const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
@@ -571,11 +585,13 @@ export class AIBotController {
     const isHighStageAllIn =
       (stageNum >= 4 && bot.gold >= 40) || bot.gold >= 50;
 
+    const macro = neuralResult.macroAction;
     brain.isRolldownActive =
       isEmergencySurvival ||
       isGoblinCashoutTurn ||
       isHighStageAllIn ||
-      neuralResult.macroAction === 'ROLLDOWN';
+      macro === 'ROLLDOWN' ||
+      macro === 'STABILIZE_REROLL';
     brain.rerollsExecutedThisRound = 0;
 
     brain.targetGoldFloorThisRound = this.getPersonaGoldFloor(
@@ -586,10 +602,22 @@ export class AIBotController {
       aiParams
     );
 
-    if (neuralResult.macroAction === 'SAVE_INTEREST') {
-      brain.targetGoldFloorThisRound = Math.max(brain.targetGoldFloorThisRound, 50);
-    } else if (neuralResult.macroAction === 'ROLLDOWN' || isEmergencySurvival) {
+    if (macro === 'SAVE_INTEREST' || macro === 'HIGHROLL_GREED') {
+      brain.targetGoldFloorThisRound = Math.max(
+        brain.targetGoldFloorThisRound,
+        macro === 'HIGHROLL_GREED' ? 50 : 40
+      );
+    } else if (macro === 'TEMPO_LEVEL') {
+      // 레벨템포: 이자보다 XP 우선 → 하한 완화
+      brain.targetGoldFloorThisRound = Math.min(brain.targetGoldFloorThisRound, 30);
+    } else if (
+      macro === 'ROLLDOWN' ||
+      macro === 'STABILIZE_REROLL' ||
+      isEmergencySurvival
+    ) {
       brain.targetGoldFloorThisRound = Math.min(brain.targetGoldFloorThisRound, 10);
+    } else if (macro === 'SLAM_ITEMS') {
+      brain.targetGoldFloorThisRound = Math.min(brain.targetGoldFloorThisRound, 20);
     }
     // Soft noise: 이자 하한선을 사람처럼 흔들기 (위기 올인 제외)
     if (!isEmergencySurvival && !isGoblinCashoutTurn) {
@@ -894,15 +922,23 @@ export class AIBotController {
     const itemBenchRatio = Math.min(1, bot.itemBench.length / 10);
 
     let boardPower = 0;
+    let boardUnits = 0;
+    const copyCounts = new Map<string, number>();
     for (let r = 0; r < Participant.BOARD_ROWS; r++) {
       for (let c = 0; c < Participant.BOARD_COLS; c++) {
         const u = bot.board[r][c];
         if (u) {
+          boardUnits++;
           boardPower += u.cost * 10 + u.starLevel * 25 + u.items.length * 15;
+          copyCounts.set(u.unitId, (copyCounts.get(u.unitId) ?? 0) + u.starLevel);
         }
       }
     }
+    for (const u of bot.bench) {
+      if (u) copyCounts.set(u.unitId, (copyCounts.get(u.unitId) ?? 0) + u.starLevel);
+    }
     const boardPowerNorm = Math.min(1, boardPower / 500);
+    const boardFillRatio = Math.min(1, boardUnits / Math.max(1, bot.level));
 
     const winStreakNorm = Math.min(1, bot.winStreak / 10);
     const lossStreakNorm = Math.min(1, bot.loseStreak / 10);
@@ -912,6 +948,44 @@ export class AIBotController {
     const contestedCount = scouting.traitContestedMap.get(brain.targetTrait) ?? 0;
     const contestedTraitRatio = Math.min(1, contestedCount / 4);
     const emergencyFlag = bot.hp <= 35 ? 1 : 0;
+
+    const interestProgress = Math.min(1, bot.gold / 50);
+    const freeRerollNorm = Math.min(1, bot.freeRerolls / 10);
+    const augmentCountNorm = Math.min(1, bot.augments.length / 3);
+
+    let hasEconomyAug = 0;
+    let hasCombatAug = 0;
+    for (const augId of bot.augments) {
+      const def = AUGMENT_DEFINITIONS.find((a) => a.id === augId);
+      if (!def) continue;
+      if (def.category === 'ECONOMY') hasEconomyAug = 1;
+      if (def.category === 'COMBAT' || def.category === 'TRAIT') hasCombatAug = 1;
+    }
+
+    const threeStarNorm = Math.min(1, this.countTotalThreeStarUnits(bot) / 3);
+    const aliveOthers = allParticipants.filter((p) => !p.isEliminated && p.id !== bot.id);
+    const aliveOpponentsNorm = Math.min(1, aliveOthers.length / 7);
+    const avgEnemyHp =
+      aliveOthers.length > 0
+        ? aliveOthers.reduce((s, p) => s + p.hp, 0) / aliveOthers.length
+        : bot.hp;
+    const relativeHpNorm = Math.max(0, Math.min(1, (bot.hp / Math.max(1, avgEnemyHp)) / 2));
+    const avgEnemyGold =
+      aliveOthers.length > 0
+        ? aliveOthers.reduce((s, p) => s + p.gold, 0) / aliveOthers.length
+        : bot.gold;
+    const goldLeadNorm = Math.max(0, Math.min(1, (bot.gold - avgEnemyGold + 30) / 60));
+
+    let nearPairs = 0;
+    for (const count of copyCounts.values()) {
+      if (count >= 2) nearPairs++;
+    }
+    const pairPressureNorm = Math.min(1, nearPairs / 6);
+    const stageLateFlag = stageNum >= 5 ? 1 : 0;
+    const skillNorm = Math.max(
+      0,
+      Math.min(1, this.rankManager.getAISkillParameters().skillLevel)
+    );
 
     const features = [
       hpRatio,
@@ -925,6 +999,19 @@ export class AIBotController {
       lossStreakNorm,
       contestedTraitRatio,
       emergencyFlag,
+      boardFillRatio,
+      interestProgress,
+      freeRerollNorm,
+      augmentCountNorm,
+      hasEconomyAug,
+      hasCombatAug,
+      threeStarNorm,
+      aliveOpponentsNorm,
+      relativeHpNorm,
+      goldLeadNorm,
+      pairPressureNorm,
+      stageLateFlag,
+      skillNorm,
     ];
 
     return {
@@ -939,6 +1026,19 @@ export class AIBotController {
       lossStreakNorm,
       contestedTraitRatio,
       emergencyFlag,
+      boardFillRatio,
+      interestProgress,
+      freeRerollNorm,
+      augmentCountNorm,
+      hasEconomyAug,
+      hasCombatAug,
+      threeStarNorm,
+      aliveOpponentsNorm,
+      relativeHpNorm,
+      goldLeadNorm,
+      pairPressureNorm,
+      stageLateFlag,
+      skillNorm,
       features,
     };
   }
@@ -959,16 +1059,29 @@ export class AIBotController {
     else if (aug.tier === 'GOLD') score += 25;
     else if (aug.tier === 'PRISMATIC') score += 45;
 
-    // 신경망 상태 가치 평가 연동 (순위 기대치 Value Score에 따른 증강 최적화)
+    // 신경망 value + combatAugBias 연동
     if (brain.lastNeuralResult) {
       const val = brain.lastNeuralResult.valueScore;
-      // 순위 기대치가 낮아 위기일 때(val < 0.45)는 즉발 전투력/골드 증강에 가산점
+      const combatBias = brain.lastNeuralResult.urgencies?.combatAugBias ?? 0.5;
       if (val < 0.45 && (aug.category === 'ECONOMY' || aug.category === 'HERO')) {
         score += 20;
       }
-      // 순위 기대치가 높아 여유로울 때(val >= 0.65)는 후반 고점/전투/프리즘 증강에 가산점
-      if (val >= 0.65 && (aug.category === 'COMBAT' || aug.category === 'TRAIT' || aug.tier === 'PRISMATIC')) {
+      if (
+        val >= 0.65 &&
+        (aug.category === 'COMBAT' || aug.category === 'TRAIT' || aug.tier === 'PRISMATIC')
+      ) {
         score += 25;
+      }
+      if (combatBias > 0.58 && (aug.category === 'COMBAT' || aug.category === 'TRAIT')) {
+        score += Math.round((combatBias - 0.5) * 70);
+      } else if (combatBias < 0.42 && aug.category === 'ECONOMY') {
+        score += Math.round((0.5 - combatBias) * 60);
+      }
+      if (brain.lastNeuralResult.macroAction === 'HIGHROLL_GREED' && aug.category === 'ECONOMY') {
+        score += 28;
+      }
+      if (brain.lastNeuralResult.macroAction === 'STABILIZE_REROLL' && aug.category === 'COMBAT') {
+        score += 22;
       }
     }
 
@@ -1294,8 +1407,11 @@ export class AIBotController {
         }
       }
 
-      // Soft skill gate: 저티어도 가끔 견제, 고티어도 가끔 놓침
-      if (!other.isAI && this.softSkillGate(aiParams, 0.7)) {
+      // Soft skill gate + neural deny urgency
+      const denyUrge = brain.lastNeuralResult?.urgencies.deny ?? 0.2;
+      const neuralWantsDeny =
+        brain.lastNeuralResult?.macroAction === 'DENY_HOLD' || denyUrge > 0.6;
+      if (!other.isAI && this.softSkillGate(aiParams, neuralWantsDeny ? 0.5 : 0.7)) {
         for (const template of Object.values(UNIT_TEMPLATES)) {
           if (template.cost >= 4) {
             const playerCopies = other.getOwnedUnitCopiesCount(template.id);
@@ -1311,10 +1427,14 @@ export class AIBotController {
       }
     }
 
-    // Soft skill gate + scoutingChance: 하드 클리프 대신 확률적 피봇 시도
+    // Soft skill gate + neural pivot urgency + scoutingChance
+    const pivotUrge = brain.lastNeuralResult?.urgencies.pivot ?? 0.2;
+    const neuralWantsPivot =
+      brain.lastNeuralResult?.macroAction === 'PIVOT_BOARD' || pivotUrge > 0.62;
     const shouldAttemptPivot =
-      this.softSkillGate(aiParams, 0.65) &&
-      Math.random() < Math.max(0.08, aiParams.scoutingChance) &&
+      (this.softSkillGate(aiParams, neuralWantsPivot ? 0.45 : 0.65) || neuralWantsPivot) &&
+      Math.random() <
+        Math.max(0.08, aiParams.scoutingChance) * (neuralWantsPivot ? 1.55 : 1) &&
       brain.pivotedCount < 2 &&
       !(brain.persona === 'GOBLIN_GAMBLER' && bot.goblinVaultStacks >= 12);
 
@@ -2269,11 +2389,15 @@ export class AIBotController {
             if (baseIndices.length >= 4) score += 30;
             else if (baseIndices.length >= 3) score += 15;
 
-            if (
-              brain.lastNeuralResult &&
-              brain.lastNeuralResult.itemUrgency > 0.55
-            ) {
-              score += Math.round(brain.lastNeuralResult.itemUrgency * 30);
+            const itemU =
+              brain.lastNeuralResult?.urgencies?.item ??
+              brain.lastNeuralResult?.itemUrgency ??
+              0;
+            if (brain.lastNeuralResult && itemU > 0.55) {
+              score += Math.round(itemU * 30);
+            }
+            if (brain.lastNeuralResult?.macroAction === 'SLAM_ITEMS') {
+              score += 35;
             }
 
             if (brain.heroTargetUnitId === unit.unitId) score += 25;

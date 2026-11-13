@@ -1083,10 +1083,32 @@ export class ThreeJsGameRenderer {
     const mixer = new THREE.AnimationMixer(clonedModel);
     const actions = new Map<string, THREE.AnimationAction>();
 
+    /** GLB walk/gallop root translation → 메시가 그룹 안에서 덜덜 떨림. 위치 트랙 제거 */
+    const stripRootMotion = (clip: THREE.AnimationClip): THREE.AnimationClip => {
+      const kept = clip.tracks.filter((track) => {
+        const n = track.name.toLowerCase();
+        if (!n.endsWith('.position')) return true;
+        // hips / root / armature / scene root
+        if (
+          n.includes('hip') ||
+          n.includes('root') ||
+          n.includes('armature') ||
+          n.includes('pelvis') ||
+          n === 'position' ||
+          n.startsWith('.position')
+        ) {
+          return false;
+        }
+        // 안전: 모든 position 트랙 제거 (이동은 엔진 posX/posZ가 담당)
+        return false;
+      });
+      return new THREE.AnimationClip(clip.name, clip.duration, kept.length ? kept : clip.tracks);
+    };
+
     const getClip = (names: string[]): THREE.AnimationClip | undefined => {
       for (const name of names) {
         const c = clips.find((clip) => clip.name === name || clip.name.includes(name));
-        if (c) return c;
+        if (c) return stripRootMotion(c);
       }
       return undefined;
     };
@@ -2548,8 +2570,8 @@ export class ThreeJsGameRenderer {
             group.position.x += (wantX - group.position.x) * follow;
             group.position.z += (wantZ - group.position.z) * follow;
           }
-          group.position.y =
-            0.2 + Math.sin(this.animClockMs * 0.004 + cu.row * 0.7) * 0.018;
+          // 이동 중 Y 바운스 제거 (떨림 체감의 큰 원인)
+          group.position.y = 0.2;
           juice.isMoving = false;
 
           const isStunned = (cu.stunTimerMs ?? 0) > 0;
