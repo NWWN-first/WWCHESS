@@ -22,6 +22,7 @@ import { SharedPoolManager } from './SharedPoolManager';
 import { SynergyEngine } from './SynergyEngine';
 import { NeuralBotEngine, NeuralInferenceResult } from './NeuralBotEngine';
 import {
+  analyzeComps,
   defaultRuleBasedPlanner,
   isDynamicStrategyExperimentEnabled,
   ObservableStateSummary,
@@ -69,6 +70,15 @@ export interface BotBrainState {
   deniedUnitInstanceIds: Set<string>;
   pivotedCount: number;
   pivotTelemetry: PivotTelemetry;
+  /** Stage1 CompAnalyzer 최근 추천 (실행은 Stage2) */
+  lastCompDecision?: {
+    decision: string;
+    compId: string;
+    compName: string;
+    total: number;
+    margin: number;
+    reason: string;
+  };
   isRolldownActive: boolean;
   nextActionDelayMs: number;
   rerollsExecutedThisRound: number;
@@ -606,6 +616,29 @@ export class AIBotController {
       sharedPool,
       aiParams
     );
+
+    // Stage1: CompAnalyzer 추천 기록 (실행/피벗 강제 변경은 Stage2)
+    try {
+      const stageNumForComp = parseInt(currentRound.split('-')[0] || '1', 10);
+      const analysis = analyzeComps({
+        bot,
+        allParticipants,
+        sharedPool,
+        currentTrait: brain.targetTrait,
+        stage: stageNumForComp,
+        roundLabel: currentRound,
+      });
+      brain.lastCompDecision = {
+        decision: analysis.decision,
+        compId: analysis.recommended.comp.id,
+        compName: analysis.recommended.comp.name,
+        total: analysis.recommended.total,
+        margin: analysis.margin,
+        reason: analysis.primaryReason,
+      };
+    } catch {
+      // 분석 실패해도 봇 루프는 계속
+    }
 
     const persona = brain.persona;
     const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);

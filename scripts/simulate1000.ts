@@ -166,6 +166,22 @@ const pivotFunnel = {
   nonPivotedTop1: 0,
 };
 
+/** Stage1 CompAnalyzer 관측 (실행 전 추천 분포) */
+const compStats = {
+  samples: 0,
+  stay: 0,
+  softFlex: 0,
+  hardPivot: 0,
+  byCompId: new Map<string, { n: number; name: string; totalSum: number }>(),
+  byReason: new Map<string, number>(),
+  /** 게임 종료 시 마지막 추천 기준 순위 */
+  endByDecision: {
+    stay: { n: 0, rankSum: 0, top4: 0, top1: 0 },
+    softFlex: { n: 0, rankSum: 0, top4: 0, top1: 0 },
+    hardPivot: { n: 0, rankSum: 0, top4: 0, top1: 0 },
+  },
+};
+
 const errors = new Map<string, number>();
 const drawCount = { pvp: 0, pvpTotal: 0, creepLoss: 0, creepTotal: 0 };
 const creepByRound = new Map<string, { total: number; loss: number }>();
@@ -430,6 +446,27 @@ function runOneGame(): void {
       if (brain.rerollsExecutedThisRound > before) {
         apm.botRoundsWithReroll++;
       }
+      // Stage1: CompAnalyzer 추천 스냅 (정비 종료 시점)
+      const cd = brain.lastCompDecision;
+      if (cd) {
+        compStats.samples++;
+        if (cd.decision === 'stay') compStats.stay++;
+        else if (cd.decision === 'soft-flex') compStats.softFlex++;
+        else if (cd.decision === 'hard-pivot') compStats.hardPivot++;
+        const row = compStats.byCompId.get(cd.compId) ?? {
+          n: 0,
+          name: cd.compName,
+          totalSum: 0,
+        };
+        row.n++;
+        row.totalSum += cd.total;
+        row.name = cd.compName;
+        compStats.byCompId.set(cd.compId, row);
+        compStats.byReason.set(
+          cd.reason,
+          (compStats.byReason.get(cd.reason) ?? 0) + 1
+        );
+      }
     }
 
     for (const p of alive()) {
@@ -663,6 +700,19 @@ function runOneGame(): void {
           pivotFunnel.nonPivotedRankSum += place;
           if (place <= 4) pivotFunnel.nonPivotedTop4++;
           if (place === 1) pivotFunnel.nonPivotedTop1++;
+        }
+        const cd = brain.lastCompDecision;
+        if (cd) {
+          const bucket =
+            cd.decision === 'soft-flex'
+              ? compStats.endByDecision.softFlex
+              : cd.decision === 'hard-pivot'
+                ? compStats.endByDecision.hardPivot
+                : compStats.endByDecision.stay;
+          bucket.n++;
+          bucket.rankSum += place;
+          if (place <= 4) bucket.top4++;
+          if (place === 1) bucket.top1++;
         }
       }
     }
@@ -986,6 +1036,39 @@ if (pivotFunnel.pivotedBots > 0) {
 if (pivotFunnel.nonPivotedBots > 0) {
   console.log(
     `  피벗 미실행 봇: N=${pivotFunnel.nonPivotedBots} 평균순위 ${(pivotFunnel.nonPivotedRankSum / pivotFunnel.nonPivotedBots).toFixed(2)}위 | 순방 ${pct(pivotFunnel.nonPivotedTop4, pivotFunnel.nonPivotedBots)} | 1위 ${pct(pivotFunnel.nonPivotedTop1, pivotFunnel.nonPivotedBots)}`
+  );
+}
+
+console.log('\n[4-C] CompAnalyzer 추천 분포 (Stage1 — 실행 전 관측)');
+console.log(
+  `  샘플 ${compStats.samples} | stay ${compStats.stay} (${pct(compStats.stay, compStats.samples)}) | soft-flex ${compStats.softFlex} (${pct(compStats.softFlex, compStats.samples)}) | hard-pivot ${compStats.hardPivot} (${pct(compStats.hardPivot, compStats.samples)})`
+);
+console.log('  이유 코드 TOP:');
+for (const [reason, n] of [...compStats.byReason.entries()].sort(
+  (a, b) => b[1] - a[1]
+).slice(0, 8)) {
+  console.log(`    ${reason.padEnd(18)} ${n} (${pct(n, compStats.samples)})`);
+}
+console.log('  추천 컴프 TOP 10:');
+for (const [id, row] of [...compStats.byCompId.entries()]
+  .sort((a, b) => b[1].n - a[1].n)
+  .slice(0, 10)) {
+  console.log(
+    `    ${id.padEnd(24)} ${row.name.padEnd(12)} n=${row.n} (${pct(row.n, compStats.samples)}) avgTotal=${(row.totalSum / row.n).toFixed(1)}`
+  );
+}
+console.log('  게임 종료 시 마지막 추천별 성적:');
+for (const [label, bucket] of [
+  ['stay', compStats.endByDecision.stay],
+  ['soft-flex', compStats.endByDecision.softFlex],
+  ['hard-pivot', compStats.endByDecision.hardPivot],
+] as const) {
+  if (bucket.n === 0) {
+    console.log(`    ${label}: 표본 없음`);
+    continue;
+  }
+  console.log(
+    `    ${label}: N=${bucket.n} 평균순위 ${(bucket.rankSum / bucket.n).toFixed(2)}위 | 순방 ${pct(bucket.top4, bucket.n)} | 1위 ${pct(bucket.top1, bucket.n)}`
   );
 }
 
