@@ -61,17 +61,18 @@ export function getPersonaBias(persona: AIPersona): PersonaBiasProfile {
       return {
         ...DEFAULT_BIAS,
         persona,
-        goldFloorBias: -8,
-        levelBias: -1,
-        rerollBias: 4,
-        lowCostShopBias: 22,
-        highCostShopBias: -14,
-        interestAppetite: 0.3,
-        rollAppetite: 0.75,
-        levelAppetite: 0.25,
+        // Lv5~7 롤 창 확보: 레벨을 너무 낮게 묶지 않음
+        goldFloorBias: -6,
+        levelBias: 0,
+        rerollBias: 5,
+        lowCostShopBias: 24,
+        highCostShopBias: -6, // 3코 페어는 허용, 4~5만 소폭 억제
+        interestAppetite: 0.28,
+        rollAppetite: 0.78,
+        levelAppetite: 0.4, // 최소 Lv5~6 도달
         augmentRerollBias: 55,
-        augmentEconomyBias: 15,
-        augmentCombatBias: 20,
+        augmentEconomyBias: 18,
+        augmentCombatBias: 28,
       };
     case 'FAST_NINE_GREEDY':
     case 'FAST_NINE_ECONOMIST':
@@ -94,18 +95,19 @@ export function getPersonaBias(persona: AIPersona): PersonaBiasProfile {
       return {
         ...DEFAULT_BIAS,
         persona,
-        goldFloorBias: 8,
-        levelBias: -1,
-        rerollBias: 0,
-        lowCostShopBias: 4,
-        highCostShopBias: 8,
-        goblinUnitBias: 48,
-        interestAppetite: 0.55,
-        rollAppetite: 0.4,
-        levelAppetite: 0.35,
-        augmentRerollBias: 5,
-        augmentEconomyBias: 60,
-        augmentCombatBias: 30,
+        // 금고 쌓되 보드가 붕괴하지 않게: 이자↓·전투↑·조기 레벨
+        goldFloorBias: 2,
+        levelBias: 0,
+        rerollBias: 1,
+        lowCostShopBias: 6,
+        highCostShopBias: 14,
+        goblinUnitBias: 42,
+        interestAppetite: 0.4,
+        rollAppetite: 0.45,
+        levelAppetite: 0.5,
+        augmentRerollBias: 8,
+        augmentEconomyBias: 45,
+        augmentCombatBias: 42,
         allowGoblinSandbag: true,
       };
     case 'FLEX_MASTER':

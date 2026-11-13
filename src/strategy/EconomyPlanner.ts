@@ -67,9 +67,11 @@ function resolveTargetLevel(
 ): number {
   let base: number;
   if (levelHint === 'reroll5') {
+    // 롤 컴프: 초반에도 최소 5, 중반은 6~7 유지
     if (bot.level < 5) base = 5;
-    else if (stage >= 5) base = Math.min(9, bot.level + 1);
-    else base = Math.min(7, Math.max(5, stage + 2));
+    else if (stage <= 2) base = 6;
+    else if (stage >= 5) base = Math.min(9, Math.max(7, bot.level));
+    else base = Math.min(7, Math.max(6, stage + 2));
   } else if (levelHint === 'fast8') {
     base = Math.min(8, Math.max(stage + 3, bot.level));
   } else if (levelHint === 'fast9') {

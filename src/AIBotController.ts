@@ -802,9 +802,10 @@ export class AIBotController {
     const persona = brain.persona;
     const isEmergencySurvival = bot.hp <= 30;
     // 고블린 금고 메커니즘(시너지 스택) — 페르소나 하드분기가 아니라 금고 상태
+    // 고블린 캐시아웃: 조금 일찍 (보드 붕괴 전 전환)
     const isGoblinCashoutTurn =
-      bot.goblinVaultStacks >= 12 &&
-      (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
+      bot.goblinVaultStacks >= 10 &&
+      (bot.hp <= 42 || bot.goblinVaultStacks >= 45);
 
     // Stage4: EconomyPlanner (Stage5: 페르소나는 bias delta만)
     let economyPlan = buildEconomyPlan({
@@ -935,8 +936,8 @@ export class AIBotController {
     const aiParams = this.rankManager.getAISkillParameters();
     const isEmergencySurvival = bot.hp <= 30;
     const isGoblinCashoutTurn =
-      bot.goblinVaultStacks >= 12 &&
-      (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
+      bot.goblinVaultStacks >= 10 &&
+      (bot.hp <= 42 || bot.goblinVaultStacks >= 45);
 
     // Stage4: 라운드 계획의 preferRolldown 유지, 위기만 동적 승격
     if (isEmergencySurvival || isGoblinCashoutTurn) {
@@ -1022,11 +1023,11 @@ export class AIBotController {
       Math.max(1, (brain.economyTargetLevel || 7) + levelJitter)
     );
 
-    // 롤 선호가 높고 다성 부족하면 목표를 조금 낮춤 (하드 return 대신)
+    // 롤 선호: Lv7 이상은 다성 전에 억제, 그 아래는 롤 창(5~7) 도달 허용
     if (bias.rollAppetite >= 0.65) {
       const threeStarCount = this.countTotalThreeStarUnits(bot);
-      if (threeStarCount < 2 && bot.level >= 5) {
-        levelCap = Math.min(levelCap, Math.max(5, brain.economyTargetLevel));
+      if (threeStarCount < 2) {
+        levelCap = Math.min(levelCap, Math.max(6, Math.min(7, brain.economyTargetLevel || 7)));
       }
     }
 
@@ -1672,8 +1673,8 @@ export class AIBotController {
     const persona = brain.persona;
     const isEmergencySurvival = bot.hp <= 30;
     const isGoblinCashoutTurn =
-      bot.goblinVaultStacks >= 12 &&
-      (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
+      bot.goblinVaultStacks >= 10 &&
+      (bot.hp <= 42 || bot.goblinVaultStacks >= 45);
     const stageNum = parseInt(currentRound.split('-')[0] || '2', 10);
 
     // Stage4/5/6: 즉시전투 경로 — 경제 계획 + 신경망 보정
@@ -2034,11 +2035,11 @@ export class AIBotController {
         score += bias.goblinUnitBias;
       }
       if (
-        bot.goblinVaultStacks >= 12 &&
-        (bot.hp <= 35 || bot.goblinVaultStacks >= 55) &&
+        bot.goblinVaultStacks >= 10 &&
+        (bot.hp <= 42 || bot.goblinVaultStacks >= 45) &&
         template.cost >= 4
       ) {
-        score += 28;
+        score += 32;
       }
       // FLEX류 기본 코스트 가산은 highCostShopBias가 낮을 때 약하게
       if (Math.abs(bias.lowCostShopBias) < 5 && Math.abs(bias.highCostShopBias) <= 10) {
@@ -2336,11 +2337,12 @@ export class AIBotController {
 
     if (allUnits.length === 0 && deniedUnits.length === 0) return;
 
+    // 샌드백: HP 여유 + 금고 중반만 (초반/캐시아웃 직전엔 풀보드)
     const isGoblinSandbagging =
       getPersonaBias(brain.persona).allowGoblinSandbag &&
-      bot.hp > 35 &&
-      bot.goblinVaultStacks >= 1 &&
-      bot.goblinVaultStacks < 55;
+      bot.hp >= 55 &&
+      bot.goblinVaultStacks >= 8 &&
+      bot.goblinVaultStacks < 40;
 
     // 2. 보드에 배치할 정예 기물(최대 bot.level기) 선정 (중복 unitId보다는 고유 기물 우선)
     // Stage5: 활성 컴프 캐리/탱 보드 우선

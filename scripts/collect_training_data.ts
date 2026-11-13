@@ -86,6 +86,19 @@ for (let g = 0; g < NUM_GAMES; g++) {
       if (p.hp <= 30 && p.gold >= 12) action = 3; // STABILIZE_REROLL
       else if (brain.isRolldownActive) action = 2; // ROLLDOWN
       else if (
+        (brain.persona === 'HYPER_ROLLER' || brain.persona === 'LOW_COST_REROLLER') &&
+        p.level >= 5 &&
+        p.level <= 7 &&
+        p.gold >= 16
+      ) {
+        action = 3; // STABILIZE_REROLL — 롤 창
+      }       else if (
+        p.goblinVaultStacks >= 10 &&
+        (p.hp <= 42 || p.goblinVaultStacks >= 45) &&
+        p.gold >= 12
+      ) {
+        action = 2; // ROLLDOWN — 고블린 캐시아웃
+      } else if (
         (brain.persona === 'FAST_NINE_GREEDY' || brain.persona === 'FAST_NINE_ECONOMIST') &&
         p.level < 8 &&
         p.hp >= 55 &&
