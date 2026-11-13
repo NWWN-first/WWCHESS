@@ -720,6 +720,18 @@ export class GameLoopManager {
       }
     }
 
+    // [Step 5 B] EXPERIMENT_BENCH_CLEAR: 정비 단계 종료 직전(전투 진입 직전) 대기석 정리
+    if (typeof process !== 'undefined' && process.env?.EXPERIMENT_BENCH_CLEAR === '1') {
+      for (const p of this.participants) {
+        if (!p.isEliminated) {
+          const brain = (this.aiController as any).botBrains?.get(p.id);
+          if (brain) {
+            this.aiController.executeExperimentalBenchClear(p, brain, this.sharedPool);
+          }
+        }
+      }
+    }
+
     // 전투 돌입 시 플레이어 보드에 빈자리가 있고 대기석에 기물이 있으면 자동 충원 보조
     while (this.player.getBoardUnitCount() < this.player.level) {
       const benchIdx = this.player.bench.findIndex((u) => u !== null);

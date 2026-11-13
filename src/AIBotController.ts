@@ -22,6 +22,15 @@ import { SharedPoolManager } from './SharedPoolManager';
 import { SynergyEngine } from './SynergyEngine';
 import { NeuralBotEngine, NeuralInferenceResult } from './NeuralBotEngine';
 
+export interface MissedDesirableBuyEvent {
+  botId: string;
+  persona: string;
+  roundLabel: string;
+  stageGroup: '2~3' | '4' | '5+';
+  unitId: string;
+  cost: number;
+}
+
 export interface BotBrainState {
   botId: string;
   persona: AIPersona;
@@ -37,6 +46,7 @@ export interface BotBrainState {
   targetGoldFloorThisRound: number;
   unitsToDenyCache: Set<string>;
   lastNeuralResult?: NeuralInferenceResult;
+  currentRoundLabel?: string;
 }
 
 
@@ -152,9 +162,14 @@ const DEFENSIVE_ITEM_IDS = new Set<ItemId>([
 export class AIBotController {
   private rankManager: RankManager;
   private botBrains: Map<string, BotBrainState> = new Map();
+  public missedDesirableBuyEvents: MissedDesirableBuyEvent[] = [];
 
   constructor(rankManager: RankManager) {
     this.rankManager = rankManager;
+  }
+
+  public resetMissedDesirableBuys(): void {
+    this.missedDesirableBuyEvents = [];
   }
 
   /**
@@ -258,6 +273,7 @@ export class AIBotController {
     if (bot.isEliminated) return;
 
     const brain = this.getOrCreateBrain(bot);
+    brain.currentRoundLabel = currentRound;
     const aiParams = this.rankManager.getAISkillParameters();
 
     // 1. 라운드 시작 정찰(Scouting) 및 덱 전환(Pivot)
@@ -356,6 +372,7 @@ export class AIBotController {
   ): boolean {
     if (bot.isEliminated) return false;
     const brain = this.getOrCreateBrain(bot);
+    brain.currentRoundLabel = currentRound;
 
     brain.nextActionDelayMs -= deltaMs;
     if (brain.nextActionDelayMs > 0) {
@@ -472,6 +489,7 @@ export class AIBotController {
     if (bot.isEliminated) return;
 
     const brain = this.getOrCreateBrain(bot);
+    brain.currentRoundLabel = currentRound;
     const aiParams = this.rankManager.getAISkillParameters();
 
     const unitsToDenyFromPlayer = this.performScoutingAndPivot(
@@ -1145,11 +1163,26 @@ export class AIBotController {
       );
 
       if (utilityScore >= 48) {
+        let cleanupAttempted = false;
         if (!bot.canBuyUnit(unitId, template.cost)) {
           // 대기석이 가득 찼다면 가치가 낮은 대기석 기물 1개를 팔아서 자리 확보 시도
           this.cleanupBenchIfFull(bot, brain, sharedPool);
+          cleanupAttempted = true;
         }
-        bot.buyUnit(slotIdx, sharedPool);
+        const bought = bot.buyUnit(slotIdx, sharedPool);
+        if (cleanupAttempted && !bought) {
+          const round = brain.currentRoundLabel ?? '1-1';
+          const stageNum = parseInt(round.split('-')[0] || '1', 10);
+          const stageGroup: '2~3' | '4' | '5+' = stageNum <= 3 ? '2~3' : stageNum === 4 ? '4' : '5+';
+          this.missedDesirableBuyEvents.push({
+            botId: bot.id,
+            persona: brain.persona,
+            roundLabel: round,
+            stageGroup,
+            unitId,
+            cost: template.cost,
+          });
+        }
       }
     }
   }
@@ -1323,6 +1356,55 @@ export class AIBotController {
     if (worstBenchUnit && (emptyCount === 0 || worstValue < 65)) {
       bot.sellUnit(worstBenchUnit.instanceId, sharedPool);
     }
+  }
+
+  /**
+   * [Step 5 B] EXPERIMENT_BENCH_CLEAR 실험용 대기석 정리
+   * 환경변수 EXPERIMENT_BENCH_CLEAR=1일 때만 활성화 (기본 0, 비활성 시 완전히 건너뜀).
+   * 정비 단계 종료 직전(전투 진입 직전)에 대기석 빈칸이 1개 이하이면,
+   * cleanupBenchIfFull과 같은 keepScore 기준으로 가장 낮은 1성 기물
+   * (targetTrait가 아니고 2성이 아닌 것)을 최대 2기까지 매각.
+   */
+  public executeExperimentalBenchClear(
+    bot: Participant,
+    brain: BotBrainState,
+    sharedPool: SharedPoolManager
+  ): { soldCount: number; goldGained: number } {
+    if (typeof process === 'undefined' || process.env?.EXPERIMENT_BENCH_CLEAR !== '1') {
+      return { soldCount: 0, goldGained: 0 };
+    }
+
+    const emptyCount = bot.bench.filter((s) => s === null).length;
+    if (emptyCount > 1) {
+      return { soldCount: 0, goldGained: 0 };
+    }
+
+    const candidates: { unit: UnitInstance; score: number }[] = [];
+    for (const unit of bot.bench) {
+      if (!unit) continue;
+      if (unit.starLevel >= 2) continue; // 2성이 아닌 것
+      if (unit.traits.includes(brain.targetTrait)) continue; // targetTrait가 아닌 것
+      if (brain.deniedUnitInstanceIds?.has(unit.instanceId)) continue; // 견제 기물 보호
+
+      let keepScore = unit.cost * 6 + bot.getOwnedUnitCopiesCount(unit.unitId) * 12;
+      if (unit.traits.includes('GOLDEN_GOBLIN') && brain.persona === 'GOBLIN_GAMBLER') {
+        keepScore += 45;
+      }
+      candidates.push({ unit, score: keepScore });
+    }
+
+    candidates.sort((a, b) => a.score - b.score);
+    const toSell = candidates.slice(0, 2);
+    let soldCount = 0;
+    let goldGained = 0;
+    for (const item of toSell) {
+      const gBefore = bot.gold;
+      if (bot.sellUnit(item.unit.instanceId, sharedPool)) {
+        soldCount++;
+        goldGained += bot.gold - gBefore;
+      }
+    }
+    return { soldCount, goldGained };
   }
 
   private tryUseBotDuplicators(
