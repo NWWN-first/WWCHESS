@@ -1143,11 +1143,18 @@ export class AIBotController {
     bot: Participant,
     tier: AugmentTier,
     sharedPool: SharedPoolManager,
-    allParticipants?: Participant[]
+    allParticipants?: Participant[],
+    stage?: '2-1' | '3-2' | '4-2'
   ): AugmentDefinition | null {
     if (bot.isEliminated) return null;
     const brain = this.getOrCreateBrain(bot);
-    const choices = DopamineEngine.rollAugmentChoices(bot, tier);
+    const choices = DopamineEngine.rollAugmentChoices(
+      bot,
+      tier,
+      [],
+      stage,
+      3
+    );
     if (choices.length === 0) return null;
 
     const aiParams = this.rankManager.getAISkillParameters();

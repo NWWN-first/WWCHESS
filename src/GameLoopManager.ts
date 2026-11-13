@@ -116,8 +116,12 @@ export class GameLoopManager {
    */
   public gameAugmentTiers: [AugmentTier, AugmentTier, AugmentTier] = ['SILVER', 'GOLD', 'PRISMATIC'];
   public currentAugmentTier: AugmentTier | null = null;
+  /** 현재 증강 페이즈의 라운드 라벨 (2-1 / 3-2 / 4-2) — 단계별 풀 게이트 */
+  public currentAugmentStage: '2-1' | '3-2' | '4-2' | null = null;
   public playerAugmentChoices: AugmentDefinition[] = [];
   public augmentCardRerolled: [boolean, boolean, boolean] = [false, false, false];
+  /** 이번 증강 페이즈에서 한 번이라도 제시된 ID (리롤로 버린 카드 포함 — 재출현 금지) */
+  public offeredAugmentIdsThisPhase: string[] = [];
 
   /**
    * 모바일형 회전초밥(운명의 모루) 선택지 4종
@@ -377,27 +381,41 @@ export class GameLoopManager {
   private triggerAugmentPhase(tier: AugmentTier): void {
     this.phase = 'AUGMENT_PHASE';
     this.currentAugmentTier = tier;
+    const label = this.getRoundLabel();
+    this.currentAugmentStage =
+      label === '2-1' || label === '3-2' || label === '4-2' ? label : null;
     this.augmentCardRerolled = [false, false, false];
+    this.offeredAugmentIdsThisPhase = [];
     this.playerAugmentChoices = DopamineEngine.rollAugmentChoices(
       this.player,
-      tier
+      tier,
+      [],
+      this.currentAugmentStage ?? undefined,
+      3
     );
+    this.offeredAugmentIdsThisPhase = this.playerAugmentChoices.map((c) => c.id);
 
-    // 생존한 AI 봇 7명도 자신의 페르소나와 덱에 맞는 증강체를 즉시 선택
     for (const p of this.participants) {
       if (p.isAI && !p.isEliminated) {
-        this.aiController.selectAugmentForBot(p, tier, this.sharedPool, this.participants);
+        this.aiController.selectAugmentForBot(
+          p,
+          tier,
+          this.sharedPool,
+          this.participants,
+          this.currentAugmentStage ?? undefined
+        );
       }
     }
 
     this.pushBannerNotification(
-      `✨ [${this.getRoundLabel()}] ${tier} 등급 증강체 선택 페이즈! 원하는 증강체 카드를 선택하세요.`
+      `✨ [${label}] ${tier} 등급 증강체 선택 페이즈! 원하는 증강체 카드를 선택하세요.`
     );
     this.notifyStateChange();
   }
 
   /**
    * 플레이어가 특정 증강체 카드(0, 1, 2)를 1회 리롤한다.
+   * 이미 제시됐던 카드(다른 칸·리롤로 버린 카드 포함)는 다시 나오지 않는다.
    */
   public rerollPlayerAugmentCard(cardIndex: 0 | 1 | 2): boolean {
     if (
@@ -408,15 +426,17 @@ export class GameLoopManager {
       return false;
     }
 
-    const currentIds = this.playerAugmentChoices.map((c) => c.id);
     const replacementList = DopamineEngine.rollAugmentChoices(
       this.player,
       this.currentAugmentTier,
-      currentIds
+      this.offeredAugmentIdsThisPhase,
+      this.currentAugmentStage ?? undefined,
+      1
     );
 
     if (replacementList.length > 0) {
       this.playerAugmentChoices[cardIndex] = replacementList[0];
+      this.offeredAugmentIdsThisPhase.push(replacementList[0].id);
       this.augmentCardRerolled[cardIndex] = true;
       this.notifyStateChange();
       return true;
@@ -438,6 +458,8 @@ export class GameLoopManager {
       `✨ 증강체 [${chosen.name}] 선택 완료! 정비 페이즈를 시작합니다.`
     );
     this.currentAugmentTier = null;
+    this.currentAugmentStage = null;
+    this.offeredAugmentIdsThisPhase = [];
     this.playerAugmentChoices = [];
     this.enterPreparationPhase();
     return true;
@@ -1157,15 +1179,36 @@ export class GameLoopManager {
       participant.loseStreak = 0;
       if (!isCreepMatch) {
         participant.gold += 1;
+        // 국왕시해자: 승리 시 1골드, 상대 체력이 더 높았다면 6골드
+        if (participant.augments.includes('AUG_KINGSLAYER')) {
+          participant.gold += 1;
+        }
       }
     } else if (!isDraw) {
       participant.loseStreak += 1;
       participant.winStreak = 0;
+      // 계산된 패배: 2골드 + 무료 새로고침 1
+      if (
+        !isCreepMatch &&
+        participant.augments.includes('AUG_CALCULATED_LOSS')
+      ) {
+        participant.gold += 2;
+        participant.freeRerolls += 1;
+      }
     }
 
-    // 체력 차감
-    if (damageTaken > 0) {
-      participant.hp = Math.max(0, participant.hp - damageTaken);
+    // 체력 차감 (저주받은 왕관: 패배 피해 2배)
+    let finalDamage = damageTaken;
+    if (
+      finalDamage > 0 &&
+      !didWin &&
+      !isDraw &&
+      participant.augments.includes('AUG_CURSED_CROWN')
+    ) {
+      finalDamage *= 2;
+    }
+    if (finalDamage > 0) {
+      participant.hp = Math.max(0, participant.hp - finalDamage);
     }
 
     // 황금 고블린(GOLDEN_GOBLIN) 시너지 패배 스택 축적 또는 승리 캐시아웃 발동!
@@ -1213,11 +1256,15 @@ export class GameLoopManager {
 
       const interestGold = p.calculateInterestGold();
       const maxStreak = Math.max(p.winStreak, p.loseStreak);
-      const streakGold =
+      let streakGold =
         maxStreak >= 5 ? 3 : maxStreak >= 4 ? 2 : maxStreak >= 2 ? 1 : 0;
+      // 전술적 후퇴: 연패 골드 1.5배
+      if (p.augments.includes('AUG_TACTICAL_RETREAT') && p.loseStreak >= 2) {
+        streakGold = Math.floor(streakGold * 1.5);
+      }
 
       p.gold += baseGold + interestGold + streakGold;
-      p.addXp(2);
+      p.addXp(2, this.sharedPool);
 
       if (!p.isShopLocked) {
         this.sharedPool.drawShopForParticipant(p);

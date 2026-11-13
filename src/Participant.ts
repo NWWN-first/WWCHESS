@@ -832,7 +832,11 @@ export class Participant implements PoolParticipant {
     }
 
     this.gold -= 4;
-    const xpGain = this.augments.includes('AUG_LEVEL_UP') ? 7 : 4;
+    const xpGain =
+      this.augments.includes('AUG_LEVEL_UP') ||
+      this.augments.includes('AUG_LEVEL_UP_GOLD')
+        ? 7
+        : 4;
     this.addXp(xpGain);
     return true;
   }
@@ -840,12 +844,13 @@ export class Participant implements PoolParticipant {
   /**
    * 경험치를 추가하고 레벨업 임계값 도달 시 자동 레벨업을 수행한다.
    */
-  public addXp(amount: number): void {
+  public addXp(amount: number, sharedPool?: SharedPoolManager): void {
     if (this.level >= 10) {
       this.xp = 0;
       return;
     }
 
+    const prevLevel = this.level;
     this.xp += amount;
     while (this.level < 10) {
       const nextLevel = this.level + 1;
@@ -861,6 +866,28 @@ export class Participant implements PoolParticipant {
     if (this.level >= 10) {
       this.xp = 0;
     }
+
+    // 생일 선물: 레벨 업마다 2성 기물 + 골드
+    if (
+      sharedPool &&
+      this.augments.includes('AUG_BIRTHDAY_PRESENT') &&
+      this.level > prevLevel
+    ) {
+      for (let lv = prevLevel + 1; lv <= this.level; lv++) {
+        this.gold += 1;
+        const cost = Math.max(1, Math.min(5, lv - 4)) as CostTier;
+        this.grantRandomUnitFromPool(sharedPool, cost, 2);
+      }
+    }
+
+    // 후반 전문가: 9레벨 도달 시 27골드
+    if (
+      this.augments.includes('AUG_LATE_SPECIALIST') &&
+      prevLevel < 9 &&
+      this.level >= 9
+    ) {
+      this.gold += 27;
+    }
   }
 
   /**
@@ -870,7 +897,8 @@ export class Participant implements PoolParticipant {
     if (this.augments.includes('AUG_HEDGE_FUND')) return 10;
     if (
       this.augments.includes('AUG_DIABOLIC_FINANCE') ||
-      this.augments.includes('AUG_RICH_GET_RICHER')
+      this.augments.includes('AUG_RICH_GET_RICHER') ||
+      this.augments.includes('AUG_HEDGE_FUND_GOLD')
     ) {
       return 7;
     }
@@ -881,6 +909,8 @@ export class Participant implements PoolParticipant {
    * 현재 보유 골드 기준 이자 골드 계산
    */
   public calculateInterestGold(): number {
+    // 수완가: 이자 없음
+    if (this.augments.includes('AUG_HYPER_ROLL')) return 0;
     const cap = this.getMaxInterestCap();
     return Math.min(cap, Math.floor(this.gold / 10));
   }
@@ -911,6 +941,53 @@ export class Participant implements PoolParticipant {
     return counts;
   }
 
+  private placeUnitOnBench(unit: UnitInstance): void {
+    const emptyIdx = this.bench.findIndex((s) => s === null);
+    if (emptyIdx !== -1) {
+      this.bench[emptyIdx] = unit;
+    } else {
+      this.overflowUnits.push(unit);
+    }
+  }
+
+  public grantRandomUnitFromPool(
+    sharedPool: SharedPoolManager,
+    cost: CostTier,
+    starLevel: StarLevel = 1
+  ): string | null {
+    const pool = Object.values(UNIT_TEMPLATES).filter(
+      (t) =>
+        t.cost === cost &&
+        sharedPool.getRemainingCount(t.id) > 0 &&
+        !this.hasThreeStarUnit(t.id)
+    );
+    if (pool.length === 0) return null;
+    const chosen = pool[Math.floor(Math.random() * pool.length)];
+    // 2성=풀 3장, 3성=풀 9장 소모
+    const copiesNeeded = starLevel === 3 ? 9 : starLevel === 2 ? 3 : 1;
+    for (let i = 0; i < copiesNeeded; i++) {
+      if (!sharedPool.pullSpecificUnitFromPool(chosen.id)) {
+        return null;
+      }
+    }
+    const unit = Participant.createUnitInstance(chosen.id, starLevel);
+    this.placeUnitOnBench(unit);
+    this.tryMergeUnits(chosen.id, sharedPool);
+    return chosen.id;
+  }
+
+  private randomCompletedItemId(): CompletedItemId {
+    const ids = Object.values(ITEM_DEFINITIONS)
+      .filter((d) => d.isCompleted)
+      .map((d) => d.id as CompletedItemId);
+    return ids[Math.floor(Math.random() * ids.length)];
+  }
+
+  private randomBaseItemId(): BaseItemId {
+    const ids: BaseItemId[] = ['SWORD', 'BOW', 'ROD', 'TEAR', 'ARMOR'];
+    return ids[Math.floor(Math.random() * ids.length)];
+  }
+
   /**
    * 증강체 선택 및 즉시 보상 적용
    */
@@ -930,7 +1007,7 @@ export class Participant implements PoolParticipant {
       this.freeRerolls += aug.freeRerollsGranted;
     }
     if (aug.immediateXp) {
-      this.addXp(aug.immediateXp);
+      this.addXp(aug.immediateXp, sharedPool);
     }
     if (aug.immediateHp) {
       this.hp = Math.min(this.maxHp, this.hp + aug.immediateHp);
@@ -945,12 +1022,21 @@ export class Participant implements PoolParticipant {
         this.addItemToBench(itemId);
       }
     }
+    if (aug.immediateRandomBaseItems) {
+      for (let i = 0; i < aug.immediateRandomBaseItems; i++) {
+        this.addItemToBench(this.randomBaseItemId());
+      }
+    }
+    if (aug.immediateRandomCompletedItems) {
+      for (let i = 0; i < aug.immediateRandomCompletedItems; i++) {
+        this.addItemToBench(this.randomCompletedItemId());
+      }
+    }
     if (aug.bonusTrait && aug.bonusTraitCount) {
       const prev = this.bonusTraits.get(aug.bonusTrait) ?? 0;
       this.bonusTraits.set(aug.bonusTrait, prev + aug.bonusTraitCount);
     }
     if (aug.effectKey === 'ARCANE_CREST') {
-      // 고대 마탑의 왕관: 마탑 +1 외에 대마법사(ARCHMAGE)도 +1 추가 부여
       const prevArchmage = this.bonusTraits.get('ARCHMAGE') ?? 0;
       this.bonusTraits.set('ARCHMAGE', prevArchmage + 1);
     }
@@ -958,16 +1044,63 @@ export class Participant implements PoolParticipant {
       this.maxHp = 130;
       this.hp = Math.min(this.maxHp, this.hp + 30);
     }
+    if (aug.effectKey === 'PREDICTED_RESULT') {
+      this.winStreak = Math.max(this.winStreak, 4);
+      this.loseStreak = 0;
+    }
+    if (aug.effectKey === 'FAST_STREAK') {
+      if (this.winStreak >= this.loseStreak) {
+        this.winStreak = Math.min(8, this.winStreak + 2);
+      } else {
+        this.loseStreak = Math.min(8, this.loseStreak + 2);
+      }
+    }
+    if (aug.effectKey === 'LATE_SPECIALIST' && this.level >= 9) {
+      this.gold += 27;
+    }
+
+    const grantUnit = (unitId: string, star: StarLevel = 1) => {
+      if (!sharedPool.pullSpecificUnitFromPool(unitId)) return;
+      // 2성/3성은 추가 풀 소모
+      const extra = star === 3 ? 8 : star === 2 ? 2 : 0;
+      for (let i = 0; i < extra; i++) {
+        if (!sharedPool.pullSpecificUnitFromPool(unitId)) break;
+      }
+      this.placeUnitOnBench(Participant.createUnitInstance(unitId, star));
+      this.tryMergeUnits(unitId, sharedPool);
+    };
+
     if (aug.immediateUnitId) {
-      if (sharedPool.pullSpecificUnitFromPool(aug.immediateUnitId)) {
-        const unit = Participant.createUnitInstance(aug.immediateUnitId, 1);
-        const emptyIdx = this.bench.findIndex((s) => s === null);
-        if (emptyIdx !== -1) {
-          this.bench[emptyIdx] = unit;
-        } else {
-          this.overflowUnits.push(unit);
+      grantUnit(aug.immediateUnitId, (aug.immediateUnitStarLevel as StarLevel) ?? 1);
+    }
+    if (aug.immediateUnitIds) {
+      for (const uid of aug.immediateUnitIds) {
+        grantUnit(uid, 1);
+      }
+    }
+    if (aug.immediateRandomUnits) {
+      for (const req of aug.immediateRandomUnits) {
+        for (let i = 0; i < req.count; i++) {
+          this.grantRandomUnitFromPool(
+            sharedPool,
+            req.cost,
+            (req.starLevel as StarLevel) ?? 1
+          );
         }
-        this.tryMergeUnits(aug.immediateUnitId, sharedPool);
+      }
+    }
+
+    // 은빛/금빛/프리즘 운명: 같은 등급의 다른 증강 1장 추가
+    if (aug.grantRandomAugmentTier) {
+      const candidates = AUGMENT_DEFINITIONS.filter(
+        (a) =>
+          a.tier === aug.grantRandomAugmentTier &&
+          !this.augments.includes(a.id) &&
+          !a.grantRandomAugmentTier // 운명 연쇄 방지
+      );
+      if (candidates.length > 0) {
+        const pick = candidates[Math.floor(Math.random() * candidates.length)];
+        this.applyAugment(pick.id, sharedPool);
       }
     }
 

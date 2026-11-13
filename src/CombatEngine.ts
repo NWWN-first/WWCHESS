@@ -280,12 +280,12 @@ export class CombatEngine implements SkillCombatContext {
     }
 
     // 증강체 전투 버프 반영
-    // 1) 사이버네틱 임플란트: 아이템 1개 이상 장착 시 체력 +250, 공격력 +25
+    // 1) 사이버네틱 이식술: 아이템 장착 시 체력 +100, 공격력 +15%
     if (owner.augments.includes('AUG_CYBERNETIC_IMPLANT') && cu.items.length > 0) {
-      cu.maxHp += 250;
-      cu.currentHp += 250;
-      cu.atk += 25;
-      cu.baseAtk += 25;
+      cu.maxHp += 100;
+      cu.currentHp += 100;
+      cu.atk = Math.round(cu.atk * 1.15);
+      cu.baseAtk = Math.round(cu.baseAtk * 1.15);
     }
     // 2) 전투 마법사: 전방 2열(원본 보드 기준 0~1행)에 배치된 아군 기물이 주문력 +35%, 방어력 +35
     const originalBoardRow = team === 'HOME' ? row - 4 : 3 - row;
@@ -294,9 +294,9 @@ export class CombatEngine implements SkillCombatContext {
       cu.def += 35;
       cu.baseDef += 35;
     }
-    // 3) 천상의 축복: 아군 전체 모든 피해 흡혈 +20%
+    // 3) 천상의 축복 I: 흡혈 +12%
     if (owner.augments.includes('AUG_CELESTIAL_BLESSING')) {
-      cu.omnivamp = Number((cu.omnivamp + 0.2).toFixed(2));
+      cu.omnivamp = Number((cu.omnivamp + 0.12).toFixed(2));
     }
     // 4) 무술 훈련 (Martial Training): 아군 전체 공격력 +25, 공속 +0.15
     if (owner.augments.includes('AUG_MARTIAL_TRAINING')) {
@@ -310,59 +310,113 @@ export class CombatEngine implements SkillCombatContext {
       cu.baseAtk = Math.round(cu.baseAtk * 1.3);
       cu.spellPower = Number((cu.spellPower + 0.3).toFixed(2));
     }
-    // 6) 단결된 힘 (Stand United): 활성화된 시너지당 아군 전체 공격력 +5, 주문력 +5%
+    // 6) 고단수 II / 단결된 힘: 활성 특성당 공·주문력 +2.5%, 방어 +2
     if (owner.augments.includes('AUG_STAND_UNITED')) {
       const activeTraitsCount = synergyMap.size;
-      cu.atk += activeTraitsCount * 5;
-      cu.baseAtk += activeTraitsCount * 5;
-      cu.spellPower = Number((cu.spellPower + activeTraitsCount * 0.05).toFixed(2));
+      cu.atk = Math.round(cu.atk * (1 + activeTraitsCount * 0.025));
+      cu.baseAtk = Math.round(cu.baseAtk * (1 + activeTraitsCount * 0.025));
+      cu.spellPower = Number(
+        (cu.spellPower + activeTraitsCount * 0.025).toFixed(2)
+      );
+      cu.def += activeTraitsCount * 2;
+      cu.baseDef += activeTraitsCount * 2;
     }
 
-    // TFT 시즌 18 신규 실버/골드 증강 전투 버프
+    // TFT 시즌 18 적응 증강 전투 버프
+    const frontlineCount = owner.board
+      .slice(0, 2)
+      .flat()
+      .filter((u) => u !== null).length;
+    const activeTraitsS18 = synergyMap.size;
+
     if (owner.augments.includes('AUG_STAND_UNITED_1')) {
-      const activeTraits = synergyMap.size;
-      cu.atk = Math.round(cu.atk * (1 + activeTraits * 0.02));
-      cu.baseAtk = Math.round(cu.baseAtk * (1 + activeTraits * 0.02));
-      cu.spellPower = Number((cu.spellPower + activeTraits * 0.02).toFixed(2));
-      cu.def += activeTraits * 2;
-      cu.baseDef += activeTraits * 2;
+      cu.atk = Math.round(cu.atk * (1 + activeTraitsS18 * 0.015));
+      cu.baseAtk = Math.round(cu.baseAtk * (1 + activeTraitsS18 * 0.015));
+      cu.spellPower = Number((cu.spellPower + activeTraitsS18 * 0.015).toFixed(2));
+      cu.def += Math.round(activeTraitsS18 * 1.5);
+      cu.baseDef += Math.round(activeTraitsS18 * 1.5);
+    }
+    if (owner.augments.includes('AUG_STAND_UNITED_3')) {
+      cu.atk = Math.round(cu.atk * (1 + activeTraitsS18 * 0.04));
+      cu.baseAtk = Math.round(cu.baseAtk * (1 + activeTraitsS18 * 0.04));
+      cu.spellPower = Number((cu.spellPower + activeTraitsS18 * 0.04).toFixed(2));
+      cu.def += Math.round(activeTraitsS18 * 3.5);
+      cu.baseDef += Math.round(activeTraitsS18 * 3.5);
+    }
+    if (owner.augments.includes('AUG_UNITED_WILL')) {
+      cu.atk = Math.round(cu.atk * (1 + activeTraitsS18 * 0.015));
+      cu.baseAtk = Math.round(cu.baseAtk * (1 + activeTraitsS18 * 0.015));
+      cu.spellPower = Number((cu.spellPower + activeTraitsS18 * 0.015).toFixed(2));
     }
     if (owner.augments.includes('AUG_BOXING_LESSON')) {
-      cu.maxHp += 180;
-      cu.currentHp += 180;
+      const bonus = frontlineCount * 30;
+      cu.maxHp += bonus;
+      cu.currentHp += bonus;
     }
     if (owner.augments.includes('AUG_MAKE_WAY')) {
-      cu.atk += 15;
-      cu.baseAtk += 15;
+      cu.atk += 10;
+      cu.baseAtk += 10;
+    }
+    if (owner.augments.includes('AUG_EXTRABUCKLE')) {
+      cu.maxHp += 80;
+      cu.currentHp += 80;
+    }
+    if (owner.augments.includes('AUG_SPARE_BOW')) {
+      cu.atkSpeed = Number((cu.atkSpeed * 1.08).toFixed(3));
+    }
+    if (owner.augments.includes('AUG_FLOWING_TEARS')) {
+      cu.currentMana = Math.min(cu.maxMana, cu.currentMana + 10);
     }
     if (owner.augments.includes('AUG_GROUP_HUG')) {
-      cu.def += 22;
-      cu.baseDef += 22;
+      cu.def += 10;
+      cu.baseDef += 10;
     }
-    if (owner.augments.includes('AUG_TWIN_GUARDIAN') && originalBoardRow <= 1) {
-      cu.maxHp += 220;
-      cu.currentHp += 220;
-      cu.def += 25;
-      cu.baseDef += 25;
+    if (owner.augments.includes('AUG_GROUP_HUG_2')) {
+      cu.def += 18;
+      cu.baseDef += 18;
+    }
+    if (owner.augments.includes('AUG_TWIN_GUARDIAN') && originalBoardRow <= 1 && frontlineCount >= 2) {
+      cu.maxHp += 100;
+      cu.currentHp += 100;
+      cu.def += 35;
+      cu.baseDef += 35;
     }
     if (owner.augments.includes('AUG_MAKESHIFT_ARMOR') && cu.items.length === 0) {
-      cu.def += 40;
-      cu.baseDef += 40;
+      cu.def += 30;
+      cu.baseDef += 30;
+    }
+    if (owner.augments.includes('AUG_MAKESHIFT_ARMOR_2') && cu.items.length === 0) {
+      cu.def += 50;
+      cu.baseDef += 50;
     }
     if (owner.augments.includes('AUG_GLASS_CANNON') && originalBoardRow >= 2) {
-      cu.atk = Math.round(cu.atk * 1.28);
-      cu.baseAtk = Math.round(cu.baseAtk * 1.28);
-      cu.spellPower = Number((cu.spellPower + 0.28).toFixed(2));
-      cu.maxHp = Math.max(100, cu.maxHp - 80);
+      cu.maxHp = Math.max(100, Math.round(cu.maxHp * 0.8));
       cu.currentHp = Math.min(cu.currentHp, cu.maxHp);
+      cu.atk = Math.round(cu.atk * 1.16);
+      cu.baseAtk = Math.round(cu.baseAtk * 1.16);
+      cu.spellPower = Number((cu.spellPower + 0.16).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_GLASS_CANNON_2') && originalBoardRow >= 2) {
+      cu.maxHp = Math.max(100, Math.round(cu.maxHp * 0.8));
+      cu.currentHp = Math.min(cu.currentHp, cu.maxHp);
+      cu.atk = Math.round(cu.atk * 1.25);
+      cu.baseAtk = Math.round(cu.baseAtk * 1.25);
+      cu.spellPower = Number((cu.spellPower + 0.25).toFixed(2));
     }
     if (owner.augments.includes('AUG_JEWELED_LOTUS')) {
       cu.enableSkillCrit = true;
-      cu.critChance = Math.min(1.0, cu.critChance + 0.25);
+      cu.critChance = Math.min(1.0, cu.critChance + 0.15);
     }
-    if (owner.augments.includes('AUG_TITANIC_FORCE') && cu.maxHp >= 1500) {
-      cu.atk = Math.round(cu.atk * 1.35);
-      cu.baseAtk = Math.round(cu.baseAtk * 1.35);
+    if (owner.augments.includes('AUG_JEWELED_LOTUS_2')) {
+      cu.enableSkillCrit = true;
+      cu.critChance = Math.min(1.0, cu.critChance + 0.25);
+      cu.critDamage += 0.1;
+    }
+    if (owner.augments.includes('AUG_TITANIC_FORCE')) {
+      cu.maxHp += 225;
+      cu.currentHp += 225;
+      cu.maxHp = Math.round(cu.maxHp * 1.1);
+      cu.currentHp = Math.round(cu.currentHp * 1.1);
     }
     if (
       owner.augments.includes('AUG_WARP_DRIVE') &&
@@ -379,6 +433,75 @@ export class CombatEngine implements SkillCombatContext {
         cu.atk = Math.round(cu.atk * (1 + threeStarCount * 0.12));
         cu.spellPower = Number((cu.spellPower + threeStarCount * 0.12).toFixed(2));
       }
+    }
+    if (owner.augments.includes('AUG_PASSIVE_HP')) {
+      cu.maxHp += 60;
+      cu.currentHp += 60;
+    }
+    if (owner.augments.includes('AUG_PASSIVE_HP_PLUS')) {
+      cu.maxHp += 75;
+      cu.currentHp += 75;
+    }
+    if (owner.augments.includes('AUG_PASSIVE_HP_PLUSPLUS')) {
+      cu.maxHp += 90;
+      cu.currentHp += 90;
+    }
+    if (owner.augments.includes('AUG_FOCUS_FIRE')) {
+      cu.atk = Math.round(cu.atk * 1.15);
+      cu.baseAtk = Math.round(cu.baseAtk * 1.15);
+    }
+    if (owner.augments.includes('AUG_CENTER_STAGE') && originalBoardRow === 0) {
+      cu.atk = Math.round(cu.atk * 1.15);
+      cu.spellPower = Number((cu.spellPower + 0.15).toFixed(2));
+      cu.maxHp = Math.round(cu.maxHp * 1.25);
+      cu.currentHp = Math.round(cu.currentHp * 1.25);
+    }
+    if (owner.augments.includes('AUG_HEALING_ORB_1')) {
+      cu.omnivamp = Number((cu.omnivamp + 0.08).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_HEALING_ORB_2')) {
+      cu.omnivamp = Number((cu.omnivamp + 0.15).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_ELECTRIC_1')) {
+      cu.spellPower = Number((cu.spellPower + 0.12).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_ELECTRIC_2')) {
+      cu.spellPower = Number((cu.spellPower + 0.22).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_CELESTIAL_BLESSING_2')) {
+      cu.omnivamp = Number((cu.omnivamp + 0.18).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_CELESTIAL_BLESSING_3')) {
+      cu.omnivamp = Number((cu.omnivamp + 0.25).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_OVERFLOWING_BELT')) {
+      cu.maxHp += 85;
+      cu.currentHp += 85;
+    }
+    if (owner.augments.includes('AUG_OVERFLOWING_BLADE')) {
+      cu.atkSpeed = Number((cu.atkSpeed * 1.04).toFixed(3));
+    }
+    if (owner.augments.includes('AUG_PHALANX') && originalBoardRow >= 2) {
+      const mult = 1 + frontlineCount * 0.11;
+      cu.atk = Math.round(cu.atk * mult);
+      cu.baseAtk = Math.round(cu.baseAtk * mult);
+      cu.spellPower = Number((cu.spellPower + frontlineCount * 0.11).toFixed(2));
+    }
+    if (owner.augments.includes('AUG_LAST_STAND')) {
+      cu.def += 8;
+      cu.baseDef += 8;
+      if (cu.currentHp / Math.max(1, cu.maxHp) < 0.5) {
+        cu.def += 32;
+        cu.baseDef += 32;
+      }
+    }
+    if (
+      owner.augments.includes('AUG_GARGANTUAN') &&
+      cu.cost <= 4 &&
+      owner.board.flat().some((u) => u && u.cost === 5)
+    ) {
+      cu.maxHp = Math.round(cu.maxHp * 1.08);
+      cu.currentHp = Math.round(cu.currentHp * 1.08);
     }
 
     // 황금 고블린(GOLDEN_GOBLIN) 5/7 전투력 보너스
