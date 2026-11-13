@@ -36,7 +36,48 @@ export type ChampionArchetype =
   | 'BEAST_GOLEM'; // 용족, 몬스터, PVE 크립 (Dragon.glb)
 
 export interface Champion3DVisualConfig {
-  modelKey: 'Knight' | 'Mage' | 'Rogue' | 'Rogue_Hooded' | 'Barbarian' | 'Skeleton_Warrior' | 'Skeleton_Mage' | 'Skeleton_Rogue' | 'Wolf' | 'Dragon' | 'Imp';
+  modelKey:
+    | 'Barbarian'
+    | 'BlueSoldier_Female'
+    | 'BlueSoldier_Male'
+    | 'Cleric'
+    | 'Dragon'
+    | 'Elf'
+    | 'Goblin_Female'
+    | 'Goblin_Male'
+    | 'Imp'
+    | 'Kimono_Female'
+    | 'Knight'
+    | 'Knight_Golden_Female'
+    | 'Knight_Golden_Male'
+    | 'Knight_Male'
+    | 'Mage'
+    | 'Monk'
+    | 'Ninja_Female'
+    | 'Ninja_Male'
+    | 'Ninja_Male_Hair'
+    | 'Ninja_Sand'
+    | 'Pirate_Female'
+    | 'Pirate_Male'
+    | 'RPG_Rogue'
+    | 'RPG_Wizard'
+    | 'Ranger'
+    | 'Rogue'
+    | 'Rogue_Hooded'
+    | 'Skeleton_Mage'
+    | 'Skeleton_Rogue'
+    | 'Skeleton_Warrior'
+    | 'Soldier_Female'
+    | 'Soldier_Male'
+    | 'Viking_Female'
+    | 'Viking_Male'
+    | 'Warrior'
+    | 'Witch'
+    | 'Wizard'
+    | 'Wolf'
+    | 'Worker_Male'
+    | 'Zombie_Female'
+    | 'Zombie_Male';
   scale: number;
   offsetY?: number;
   primaryColor?: number;
@@ -71,7 +112,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 2. 핍 (고블린 소매치기 핍) - 1코 Golden Goblin / Shadow Assassin (날렵한 녹색/황금 단검 암살자)
   u1_pip: {
-    modelKey: 'Rogue',
+    modelKey: 'Goblin_Male',
     scale: 0.95,
     primaryColor: 0x16a34a,
     emissiveColor: 0xca8a04,
@@ -79,6 +120,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Melee_Attack_Stab',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 3. 스켈 (해골 전사 스켈) - 1코 Undead Scourge / Berserker (언데드 녹슨 장검 & 도골 해골병)
   u1_skel: {
@@ -93,7 +136,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 4. 루미 (견습 마법사 루미) - 1코 Arcane Tower / Archmage (사파이어 로브 & 비전 지팡이)
   u1_lumi: {
-    modelKey: 'Mage',
+    modelKey: 'Wizard',
     scale: 1.05,
     primaryColor: 0x38bdf8,
     emissiveColor: 0x0284c7,
@@ -101,10 +144,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'ARCANE_BLUE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 5. 데스나이트 (망자 기병 데스나이트) - 2코 Undead Scourge / Vanguard / Berserker (흑철 갑주 해골 챔피언)
   u2_boneknight: {
-    modelKey: 'Skeleton_Warrior',
+    modelKey: 'Warrior',
     scale: 1.25,
     primaryColor: 0x1e293b,
     emissiveColor: 0x06b6d4,
@@ -113,6 +158,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     deathAnim: 'Death_B',
     stunAnim: 'Lie_Idle',
     aura: 'FROST_CYAN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 6. 펜리르 (서리송곳니 광전사 펜리르) - 3코 Undead Scourge / Berserker (서리 늑대 맹수)
   u3_fenrir: {
@@ -142,7 +189,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 8. 타나토스 (칠흑의 사신 타나토스) - 4코 Undead Scourge / Shadow Assassin (칠흑 후드 망토 & 영혼 수확도)
   u4_thanatos: {
-    modelKey: 'Rogue_Hooded',
+    modelKey: 'Rogue',
     scale: 1.22,
     primaryColor: 0x1e1b4b,
     emissiveColor: 0x8b5cf6,
@@ -153,7 +200,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 9. 멀린 (대마도사 멀린) - 4코 Arcane Tower / Archmage (신비의 대마도사 & 유성 낙하 주술)
   u4_merlin: {
-    modelKey: 'Mage',
+    modelKey: 'Wizard',
     scale: 1.25,
     primaryColor: 0x6366f1,
     emissiveColor: 0xa855f7,
@@ -161,6 +208,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Long',
     stunAnim: 'Lie_Idle',
     aura: 'ARCANE_BLUE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 10. 이그니스 (고대 종말룡 이그니스) - 5코 Dragonkin / Abyssal Demon / Berserker (거대 고대 화염룡)
   u5_ignis: {
@@ -183,7 +232,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   // -------------------------------------------------------------
   // 11. 아리아 (엘프 궁수 아리아) - 1코 Elven Sylvan / Ranger (초록빛 숲의 정찰 궁수 & 연속사격)
   u1_aria: {
-    modelKey: 'Rogue',
+    modelKey: 'Ranger',
     scale: 1.08,
     primaryColor: 0x15803d,
     emissiveColor: 0x22c55e,
@@ -191,10 +240,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 12. 발렌 (성당 수련기사 발렌) - 1코 Holy Empire / Paladin (순백의 수련기사 & 성스러운 축복 방패)
   u1_valen: {
-    modelKey: 'Knight',
+    modelKey: 'Knight_Male',
     scale: 1.12,
     primaryColor: 0xe2e8f0,
     emissiveColor: 0xfacc15,
@@ -202,6 +253,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 13. 렉스 (심연 화염임프 렉스) - 1코 Abyssal Demon / Archmage (귀여운 전용 화염 도깨비 임프)
   u1_imp: {
@@ -235,7 +288,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 15. 구울 (무덤 도굴꾼 구울) - 1코 Undead Scourge / Shadow Assassin (쌍단검 해골 자객 도굴꾼)
   u1_ghoul: {
-    modelKey: 'Skeleton_Rogue',
+    modelKey: 'Zombie_Male',
     scale: 1.08,
     primaryColor: 0x475569,
     emissiveColor: 0xa855f7,
@@ -244,10 +297,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     deathAnim: 'Death_C_Skeletons',
     stunAnim: 'Skeleton_Inactive_Standing_Pose',
     aura: 'SHADOW_PURPLE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 16. 잔느 (성전사 잔느) - 2코 Holy Empire / Paladin / Vanguard (백은 갑주 성처녀 여기사)
   u2_jeanne: {
-    modelKey: 'Knight',
+    modelKey: 'Knight_Golden_Female',
     scale: 1.18,
     primaryColor: 0xf1f5f9,
     emissiveColor: 0x3b82f6,
@@ -255,10 +310,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 17. 제드 (그림자 칼날 제드) - 2코 Undead Scourge / Shadow Assassin (칠흑 후드 닌자 자객)
   u2_zed: {
-    modelKey: 'Rogue_Hooded',
+    modelKey: 'Ninja_Male',
     scale: 1.18,
     primaryColor: 0x0f172a,
     emissiveColor: 0x06b6d4,
@@ -266,6 +323,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Dualwield_Melee_Attack_Stab',
     stunAnim: 'Lie_Idle',
     aura: 'SHADOW_PURPLE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 18. 그롬 (고블린 용병대장 그롬) - 3코 Golden Goblin / Berserker (거구의 초록 고블린 족장 버서커)
   u3_grom: {
@@ -280,7 +339,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 19. 실바나 (신궁 여왕 실바나) - 4코 Elven Sylvan / Ranger (세계수의 은빛 활 여왕 & 화살비)
   u4_sylph: {
-    modelKey: 'Rogue_Hooded',
+    modelKey: 'Ranger',
     scale: 1.25,
     primaryColor: 0x047857,
     emissiveColor: 0xfacc15,
@@ -288,10 +347,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 20. 미카엘 (천군 총사령관 미카엘) - 5코 Holy Empire / Paladin / Vanguard (신성 대천사 군단장)
   u5_michael: {
-    modelKey: 'Knight',
+    modelKey: 'Knight_Male',
     scale: 1.40,
     primaryColor: 0xfffbeb,
     emissiveColor: 0xfacc15,
@@ -299,6 +360,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
 
   // -------------------------------------------------------------
@@ -306,7 +369,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   // -------------------------------------------------------------
   // 21. 쏜 (가시덩굴 파수꾼 쏜) - 1코 Elven Sylvan / Vanguard (엘프 고목 덩굴 전사)
   u1_thorn: {
-    modelKey: 'Barbarian',
+    modelKey: 'Worker_Male',
     scale: 1.18,
     primaryColor: 0x166534,
     emissiveColor: 0x4ade80,
@@ -314,10 +377,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Chop',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 22. 크로나 (마탑 파수병 크로나) - 1코 Arcane Tower / Vanguard (비전 룬 마법 판금병)
   u1_chrona: {
-    modelKey: 'Knight',
+    modelKey: 'BlueSoldier_Male',
     scale: 1.16,
     primaryColor: 0x1e3a8a,
     emissiveColor: 0x38bdf8,
@@ -325,10 +390,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'ARCANE_BLUE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 23. 스내치 (고블린 투창병 스내치) - 1코 Golden Goblin / Ranger (황금 고블린 투창 저격병)
   u1_snatch: {
-    modelKey: 'Rogue',
+    modelKey: 'Goblin_Female',
     scale: 0.95,
     primaryColor: 0x15803d,
     emissiveColor: 0xeab308,
@@ -336,10 +403,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 24. 프레이 (황혼의 도끼병 프레이) - 1코 Holy Empire / Berserker / Vanguard (황혼 발키리 전사)
   u1_shieldmaiden: {
-    modelKey: 'Barbarian',
+    modelKey: 'Viking_Female',
     scale: 1.12,
     primaryColor: 0xb91c1c,
     emissiveColor: 0xf59e0b,
@@ -347,10 +416,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Melee_Attack_Jump_Chop',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 25. 모르그 (심연 방패병 모르그) - 1코 Abyssal Demon / Vanguard / Undead Scourge (용암 해골 방패병)
   u1_ember: {
-    modelKey: 'Skeleton_Warrior',
+    modelKey: 'Skeleton_Rogue',
     scale: 1.20,
     primaryColor: 0x7f1d1d,
     emissiveColor: 0xf97316,
@@ -362,7 +433,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 26. 팅크 (고블린 연금술사 팅크) - 2코 Golden Goblin / Arcane Tower / Archmage (고블린 비전 연금술사)
   u2_tink: {
-    modelKey: 'Mage',
+    modelKey: 'RPG_Wizard',
     scale: 0.96,
     primaryColor: 0x16a34a,
     emissiveColor: 0x84cc16,
@@ -370,10 +441,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 27. 카일 (심연의 사냥꾼 카일) - 2코 Abyssal Demon / Ranger (심연 흑가죽 흑궁수)
   u2_kyle: {
-    modelKey: 'Rogue_Hooded',
+    modelKey: 'Ninja_Sand',
     scale: 1.15,
     primaryColor: 0x18181b,
     emissiveColor: 0xdc2626,
@@ -381,10 +454,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 28. 엔트 (숲의 수호신 엔트) - 2코 Elven Sylvan / Vanguard / Paladin (거대 고목 수호신)
   u2_ent: {
-    modelKey: 'Barbarian',
+    modelKey: 'Elf',
     scale: 1.35,
     primaryColor: 0x3f2e1e,
     emissiveColor: 0x22c55e,
@@ -392,10 +467,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 29. 제피르 (심연 암살자 제피르) - 2코 Abyssal Demon / Shadow Assassin (심연 돌풍 자객)
   u2_zephyr: {
-    modelKey: 'Rogue',
+    modelKey: 'RPG_Rogue',
     scale: 1.14,
     primaryColor: 0x3b0764,
     emissiveColor: 0xa855f7,
@@ -403,10 +480,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Dualwield_Melee_Attack_Stab',
     stunAnim: 'Lie_Idle',
     aura: 'SHADOW_PURPLE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 30. 엘로웬 (숲의 무녀 엘로웬) - 2코 Elven Sylvan / Paladin (생명의 숲 성스러운 무녀 힐러)
   u2_elowen: {
-    modelKey: 'Mage',
+    modelKey: 'Witch',
     scale: 1.08,
     primaryColor: 0xf0fdf4,
     emissiveColor: 0x10b981,
@@ -414,6 +493,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Long',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
 
   // -------------------------------------------------------------
@@ -421,7 +502,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   // -------------------------------------------------------------
   // 31. 볼더 (룬 거석병 볼더) - 2코 Arcane Tower / Vanguard (거대 비전 룬 거석병)
   u2_boulder: {
-    modelKey: 'Barbarian',
+    modelKey: 'Monk',
     scale: 1.38,
     primaryColor: 0x64748b,
     emissiveColor: 0x38bdf8,
@@ -429,10 +510,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Jump_Chop',
     stunAnim: 'Lie_Idle',
     aura: 'ARCANE_BLUE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 32. 붐 (고블린 폭격수 붐) - 2코 Golden Goblin / Ranger (황금 고블린 폭탄마)
   u2_boom: {
-    modelKey: 'Rogue',
+    modelKey: 'Pirate_Male',
     scale: 0.95,
     primaryColor: 0x16a34a,
     emissiveColor: 0xf97316,
@@ -440,10 +523,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 33. 베인 (제국 석궁병 베인) - 2코 Holy Empire / Ranger (신성 제국 정예 은화살 석궁수)
   u2_vayne: {
-    modelKey: 'Rogue',
+    modelKey: 'Soldier_Female',
     scale: 1.10,
     primaryColor: 0xe2e8f0,
     emissiveColor: 0xfacc15,
@@ -451,10 +536,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 34. 파이어 (화염 비늘 전사 파이어) - 2코 Dragonkin / Berserker (용린 화염 버서커 전사)
   u2_pyre: {
-    modelKey: 'Barbarian',
+    modelKey: 'Viking_Male',
     scale: 1.25,
     primaryColor: 0xd97706,
     emissiveColor: 0xef4444,
@@ -462,6 +549,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 35. 말리스 (심연 흑마법사 말리스) - 2코 Abyssal Demon / Archmage (칠흑 보라 심연 사령술사)
   u2_malice: {
@@ -477,7 +566,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 36. 지크 (드래곤 나이트 지크) - 3코 Dragonkin / Vanguard (용린 판금 갑주 거대 용기사)
   u3_sieg: {
-    modelKey: 'Knight',
+    modelKey: 'Knight_Golden_Male',
     scale: 1.28,
     primaryColor: 0x991b1b,
     emissiveColor: 0xf59e0b,
@@ -485,6 +574,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Chop',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 37. 실피 (엘프 바람술사 실피) - 3코 Elven Sylvan / Archmage (돌풍과 폭풍을 부리는 요정 술사)
   u3_sylphie: {
@@ -499,7 +590,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 38. 블라드 (블러드 로드 블라드) - 3코 Abyssal Demon / Arcane Tower (선혈 흡혈 군주 뱀파이어)
   u3_vlad: {
-    modelKey: 'Rogue_Hooded',
+    modelKey: 'Kimono_Female',
     scale: 1.20,
     primaryColor: 0x450a0a,
     emissiveColor: 0xb91c1c,
@@ -507,10 +598,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Long',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 39. 드레이크 (적염의 용기병 드레이크) - 3코 Dragonkin / Berserker / Vanguard (적염의 맹렬한 용기병)
   u3_drake: {
-    modelKey: 'Barbarian',
+    modelKey: 'Soldier_Male',
     scale: 1.26,
     primaryColor: 0xb45309,
     emissiveColor: 0xf97316,
@@ -518,10 +611,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 40. 레오나 (태양의 성기사 레오나) - 3코 Holy Empire / Vanguard / Paladin (광채의 태양 방패 여기사)
   u3_leona: {
-    modelKey: 'Knight',
+    modelKey: 'Cleric',
     scale: 1.22,
     primaryColor: 0xfacc15,
     emissiveColor: 0xfef08a,
@@ -529,6 +624,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
 
   // -------------------------------------------------------------
@@ -536,7 +633,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   // -------------------------------------------------------------
   // 41. 카즈 (환영의 검객 카즈) - 3코 Elven Sylvan / Shadow Assassin / Berserker (엘프 환영 신속 검객)
   u3_kazu: {
-    modelKey: 'Rogue',
+    modelKey: 'Ninja_Male_Hair',
     scale: 1.16,
     primaryColor: 0x065f46,
     emissiveColor: 0x34d399,
@@ -544,10 +641,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 42. 말라코르 (영혼 수확자 말라코르) - 3코 Undead Scourge / Archmage (망령 영혼 수확 사령관)
   u3_malakor: {
-    modelKey: 'Skeleton_Mage',
+    modelKey: 'Zombie_Female',
     scale: 1.20,
     primaryColor: 0x1e293b,
     emissiveColor: 0x06b6d4,
@@ -556,10 +655,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     deathAnim: 'Death_C_Skeletons',
     stunAnim: 'Skeleton_Inactive_Standing_Pose',
     aura: 'FROST_CYAN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 43. 세라피나 (빛의 사제 세라피나) - 3코 Holy Empire / Arcane Tower / Paladin (순백의 대천사 사제)
   u3_seraphina: {
-    modelKey: 'Mage',
+    modelKey: 'RPG_Wizard',
     scale: 1.10,
     primaryColor: 0xfffbeb,
     emissiveColor: 0xfacc15,
@@ -567,10 +668,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Long',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 44. 그리즐 (고블린 중장갑차 그리즐) - 3코 Golden Goblin / Vanguard (황금 강철 중장갑 전사)
   u3_grizzle: {
-    modelKey: 'Knight',
+    modelKey: 'Pirate_Female',
     scale: 1.30,
     primaryColor: 0xd97706,
     emissiveColor: 0xfacc15,
@@ -578,6 +681,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 45. 오리온 (별자리 명궁 오리온) - 3코 Arcane Tower / Ranger / Archmage (비전 성운 천문 명궁)
   u3_orion: {
@@ -592,7 +697,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 46. 닉스 (심연의 밤마녀 닉스) - 3코 Abyssal Demon / Shadow Assassin / Archmage (심연 서큐버스 자객)
   u3_nyx: {
-    modelKey: 'Rogue',
+    modelKey: 'Ninja_Female',
     scale: 1.12,
     primaryColor: 0x581c87,
     emissiveColor: 0xc084fc,
@@ -600,6 +705,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Dualwield_Melee_Attack_Stab',
     stunAnim: 'Lie_Idle',
     aura: 'SHADOW_PURPLE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 47. 아스타로트 (심연의 대공 아스타로트) - 4코 Abyssal Demon / Berserker (거대 심연 악마 버서커 군주)
   u4_astaroth: {
@@ -614,7 +721,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 48. 벨코라 (공허의 여제 벨코라) - 4코 Abyssal Demon / Arcane Tower / Archmage (차원의 균열 공허 여제)
   u4_velkora: {
-    modelKey: 'Mage',
+    modelKey: 'Witch',
     scale: 1.22,
     primaryColor: 0x312e81,
     emissiveColor: 0xa855f7,
@@ -622,10 +729,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Long',
     stunAnim: 'Lie_Idle',
     aura: 'SHADOW_PURPLE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 49. 브륜힐드 (천상의 발키리 브륜힐드) - 4코 Holy Empire / Paladin / Ranger (황금빛 전장의 수호 발키리)
   u4_valkyrie: {
-    modelKey: 'Knight',
+    modelKey: 'Viking_Female',
     scale: 1.26,
     primaryColor: 0xf8fafc,
     emissiveColor: 0xfacc15,
@@ -633,6 +742,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Chop',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 50. 파프니르 (황금 갑주룡 파프니르) - 4코 Dragonkin / Golden Goblin / Vanguard (탐욕의 거대 황금 갑주룡)
   u4_fafnir: {
@@ -667,7 +778,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 52. 미다스 (황금 연금술사 미다스) - 4코 Golden Goblin / Archmage / Arcane Tower (만물 황금 연금술 대가)
   u4_midas: {
-    modelKey: 'Mage',
+    modelKey: 'Goblin_Male',
     scale: 1.18,
     primaryColor: 0xfacc15,
     emissiveColor: 0xfde047,
@@ -675,10 +786,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 53. 아르테미스 (용사냥꾼 아르테미스) - 4코 Dragonkin / Ranger / Berserker (용린 갑주 전설의 용 학살자)
   u4_artemis: {
-    modelKey: 'Rogue_Hooded',
+    modelKey: 'Ninja_Sand',
     scale: 1.22,
     primaryColor: 0xb91c1c,
     emissiveColor: 0xf59e0b,
@@ -686,10 +799,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 54. 오베론 (숲의 고대수호자 오베론) - 4코 Elven Sylvan / Vanguard / Paladin (고대 요정왕 수호 기사)
   u4_diablo: {
-    modelKey: 'Knight',
+    modelKey: 'Elf',
     scale: 1.32,
     primaryColor: 0x065f46,
     emissiveColor: 0x22c55e,
@@ -697,10 +812,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 55. 골드투스 (황금 고블린 왕 골드투스) - 5코 전설 Golden Goblin / Paladin / Vanguard (탐욕의 황금 고블린 황제)
   u5_goldtooth: {
-    modelKey: 'Barbarian',
+    modelKey: 'Goblin_Female',
     scale: 1.30,
     primaryColor: 0xeab308,
     emissiveColor: 0xfef08a,
@@ -708,10 +825,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Jump_Chop',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 56. 루시엘 (타락한 대천사 루시엘) - 5코 전설 Holy Empire / Undead Scourge / Ranger (흑백 날개 타락천사 명궁)
   u5_luciel: {
-    modelKey: 'Rogue_Hooded',
+    modelKey: 'BlueSoldier_Female',
     scale: 1.32,
     primaryColor: 0x111827,
     emissiveColor: 0xe0e7ff,
@@ -719,6 +838,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'SHADOW_PURPLE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 57. 바하무트 (성운의 창세룡 바하무트) - 5코 전설 Dragonkin / Arcane Tower / Archmage (우주 성운 초대형 창세룡)
   u5_bahamut: {
@@ -748,7 +869,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 59. 릴리스 (심연의 여왕 릴리스) - 5코 전설 Abyssal Demon / Shadow Assassin / Berserker (피의 지옥 심연 여왕)
   u5_lilith: {
-    modelKey: 'Rogue',
+    modelKey: 'Kimono_Female',
     scale: 1.24,
     primaryColor: 0x881337,
     emissiveColor: 0xef4444,
@@ -756,10 +877,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Dualwield_Melee_Attack_Stab',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 60. 이그드라실 (세계수의 화신 이그드라실) - 5코 전설 Elven Sylvan / Vanguard / Paladin (태고의 거대 세계수 현신)
   u5_yggdrasil: {
-    modelKey: 'Barbarian',
+    modelKey: 'Worker_Male',
     scale: 1.45,
     primaryColor: 0x271c14,
     emissiveColor: 0x10b981,
@@ -767,6 +890,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
 };
 
@@ -1383,21 +1508,51 @@ export class ThreeJsGameRenderer {
   }
 
   /**
-   * 외부 GLB 모델 파일 10종 비동기 사전 로딩
+   * 외부 GLB 모델 파일 사전 로딩 (기존 아키타입 + Quaternius CC0 추가 메시)
    */
   private loadGlbCharacterModels(): void {
     const modelSources: { key: string; url: string; scale: number; offsetY: number }[] = [
-      { key: 'Knight', url: './models/Knight.glb', scale: 1.15, offsetY: 0 },
-      { key: 'Mage', url: './models/Mage.glb', scale: 1.15, offsetY: 0 },
-      { key: 'Rogue', url: './models/Rogue.glb', scale: 1.10, offsetY: 0 },
-      { key: 'Rogue_Hooded', url: './models/Rogue_Hooded.glb', scale: 1.12, offsetY: 0 },
-      { key: 'Barbarian', url: './models/Barbarian.glb', scale: 1.20, offsetY: 0 },
-      { key: 'Skeleton_Warrior', url: './models/Skeleton_Warrior.glb', scale: 1.15, offsetY: 0 },
-      { key: 'Skeleton_Mage', url: './models/Skeleton_Mage.glb', scale: 1.15, offsetY: 0 },
-      { key: 'Skeleton_Rogue', url: './models/Skeleton_Rogue.glb', scale: 1.10, offsetY: 0 },
-      { key: 'Wolf', url: './models/Wolf.glb', scale: 1.22, offsetY: 0 },
+      { key: 'Barbarian', url: './models/Barbarian.glb', scale: 1.2, offsetY: 0 },
+      { key: 'BlueSoldier_Female', url: './models/BlueSoldier_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'BlueSoldier_Male', url: './models/BlueSoldier_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Cleric', url: './models/Cleric.glb', scale: 1.05, offsetY: 0 },
       { key: 'Dragon', url: './models/Dragon.glb', scale: 0.95, offsetY: 0 },
-      { key: 'Imp', url: './models/Imp.glb', scale: 1.10, offsetY: 0 },
+      { key: 'Elf', url: './models/Elf.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Goblin_Female', url: './models/Goblin_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Goblin_Male', url: './models/Goblin_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Imp', url: './models/Imp.glb', scale: 1.1, offsetY: 0 },
+      { key: 'Kimono_Female', url: './models/Kimono_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Knight', url: './models/Knight.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Knight_Golden_Female', url: './models/Knight_Golden_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Knight_Golden_Male', url: './models/Knight_Golden_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Knight_Male', url: './models/Knight_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Mage', url: './models/Mage.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Monk', url: './models/Monk.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Ninja_Female', url: './models/Ninja_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Ninja_Male', url: './models/Ninja_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Ninja_Male_Hair', url: './models/Ninja_Male_Hair.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Ninja_Sand', url: './models/Ninja_Sand.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Pirate_Female', url: './models/Pirate_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Pirate_Male', url: './models/Pirate_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'RPG_Rogue', url: './models/RPG_Rogue.glb', scale: 1.05, offsetY: 0 },
+      { key: 'RPG_Wizard', url: './models/RPG_Wizard.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Ranger', url: './models/Ranger.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Rogue', url: './models/Rogue.glb', scale: 1.1, offsetY: 0 },
+      { key: 'Rogue_Hooded', url: './models/Rogue_Hooded.glb', scale: 1.12, offsetY: 0 },
+      { key: 'Skeleton_Mage', url: './models/Skeleton_Mage.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Skeleton_Rogue', url: './models/Skeleton_Rogue.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Skeleton_Warrior', url: './models/Skeleton_Warrior.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Soldier_Female', url: './models/Soldier_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Soldier_Male', url: './models/Soldier_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Viking_Female', url: './models/Viking_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Viking_Male', url: './models/Viking_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Warrior', url: './models/Warrior.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Witch', url: './models/Witch.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Wizard', url: './models/Wizard.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Wolf', url: './models/Wolf.glb', scale: 1.22, offsetY: 0 },
+      { key: 'Worker_Male', url: './models/Worker_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Zombie_Female', url: './models/Zombie_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Zombie_Male', url: './models/Zombie_Male.glb', scale: 1.05, offsetY: 0 },
     ];
 
     modelSources.forEach((src) => {
@@ -1457,13 +1612,27 @@ export class ThreeJsGameRenderer {
           clonedModel.name = 'GLB_MODEL_ROOT';
 
           if (cfg.primaryColor) {
+            const legacyKeys = new Set([
+              'Knight',
+              'Mage',
+              'Rogue',
+              'Rogue_Hooded',
+              'Barbarian',
+              'Skeleton_Warrior',
+              'Skeleton_Mage',
+              'Skeleton_Rogue',
+              'Wolf',
+              'Dragon',
+              'Imp',
+            ]);
+            const tintStrength = legacyKeys.has(cfg.modelKey) ? 0.3 : 0.12;
             clonedModel.traverse((child) => {
               if ((child as THREE.Mesh).isMesh) {
                 const mesh = child as THREE.Mesh;
                 if (mesh.material) {
                   const mat = (mesh.material as THREE.Material).clone() as THREE.MeshStandardMaterial;
                   if (mat.color && cfg.primaryColor) {
-                    mat.color.lerp(new THREE.Color(cfg.primaryColor), 0.3);
+                    mat.color.lerp(new THREE.Color(cfg.primaryColor), tintStrength);
                   }
                   mesh.material = mat;
                 }
@@ -1548,7 +1717,10 @@ export class ThreeJsGameRenderer {
         '1H_Melee_Attack_Chop',
         '2H_Melee_Attack_Chop',
         'Spellcast_Shoot',
-        'Attack'
+        'Attack',
+        'SwordSlash',
+        'Punch',
+        'Shoot_OneHanded',
       ]);
     }
     if (attackClip) actions.set('attack', mixer.clipAction(attackClip));
@@ -1572,11 +1744,28 @@ export class ThreeJsGameRenderer {
     if (spellClip) actions.set('spell', mixer.clipAction(spellClip));
 
     // 5. Hit (피격 리액션)
-    const hitClip = cfg.hitAnim ? getClip([cfg.hitAnim]) : getClip(['Hit_A', 'Hit_B', 'Block_Hit', 'Dragon_Hit', 'Idle_HitReact_Left']);
+    const hitClip = cfg.hitAnim
+      ? getClip([cfg.hitAnim])
+      : getClip([
+          'Hit_A',
+          'Hit_B',
+          'Block_Hit',
+          'Dragon_Hit',
+          'Idle_HitReact_Left',
+          'RecieveHit',
+        ]);
     if (hitClip) actions.set('hit', mixer.clipAction(hitClip));
 
     // 6. Death (사망 쓰러짐)
-    const deathClip = cfg.deathAnim ? getClip([cfg.deathAnim]) : getClip(['Death_A', 'Death_B', 'Death_C_Skeletons', 'Death']);
+    const deathClip = cfg.deathAnim
+      ? getClip([cfg.deathAnim])
+      : getClip([
+          'Death_A',
+          'Death_B',
+          'Death_C_Skeletons',
+          'Death',
+          'Defeat',
+        ]);
     if (deathClip) actions.set('death', mixer.clipAction(deathClip));
 
     // 7. Stun (기절/상태이상 쓰러짐 및 기절 포즈)
@@ -2737,8 +2926,16 @@ export class ThreeJsGameRenderer {
           mesh.receiveShadow = true;
           if (mesh.material) {
             const mat = (mesh.material as THREE.Material).clone() as THREE.MeshStandardMaterial;
+            // 신규 Quaternius 텍스처 메시는 실루엣 유지 위해 틴트 약하게
+            const tintStrength =
+              typeof cfg.modelKey === 'string' &&
+              !['Knight', 'Mage', 'Rogue', 'Rogue_Hooded', 'Barbarian', 'Skeleton_Warrior', 'Skeleton_Mage', 'Skeleton_Rogue', 'Wolf', 'Dragon', 'Imp'].includes(
+                cfg.modelKey
+              )
+                ? 0.12
+                : 0.3;
             if (mat.color && cfg.primaryColor) {
-              mat.color.lerp(new THREE.Color(cfg.primaryColor), 0.3);
+              mat.color.lerp(new THREE.Color(cfg.primaryColor), tintStrength);
             } else if (mat.color && cost >= 3) {
               mat.color.lerp(new THREE.Color(palette.primary), 0.25);
             }

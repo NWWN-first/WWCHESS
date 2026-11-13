@@ -1,0 +1,6 @@
+Quaternius CC0 character models (https://quaternius.com/)
+- Ultimate Animated Character Pack (Nov 2019) — OpenGameArt / Quaternius
+- RPG Characters Pack (Nov 2020) — OpenGameArt / Quaternius
+
+License: CC0 1.0 Universal (public domain dedication)
+Converted to GLB for WWCHESS runtime use. No attribution required; credit kept for courtesy.
