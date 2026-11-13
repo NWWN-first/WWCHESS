@@ -504,19 +504,51 @@ export class CombatEngine implements SkillCombatContext {
       cu.currentHp = Math.round(cu.currentHp * 1.08);
     }
 
-    // 황금 고블린(GOLDEN_GOBLIN) 5/7 전투력 보너스
+    // 황금 고블린: 경제 시너지라 전투가 약해 3/5/7 단계에 스탯 보정 (시뮬 승률 34% 상향용)
     const goblin = synergyMap.get('GOLDEN_GOBLIN');
     if (goblin && cu.traits.includes('GOLDEN_GOBLIN')) {
       if (goblin.count >= 7) {
-        cu.maxHp += 600;
-        cu.currentHp += 600;
-        cu.atk += 50;
-        cu.baseAtk += 50;
-        cu.atkSpeed = Number((cu.atkSpeed + 0.35).toFixed(2));
+        cu.maxHp += 720;
+        cu.currentHp += 720;
+        cu.atk += 60;
+        cu.baseAtk += 60;
+        cu.atkSpeed = Number((cu.atkSpeed + 0.4).toFixed(2));
+        cu.omnivamp = Number((cu.omnivamp + 0.08).toFixed(2));
       } else if (goblin.count >= 5) {
-        cu.atk += 25;
-        cu.baseAtk += 25;
-        cu.atkSpeed = Number((cu.atkSpeed + 0.25).toFixed(2));
+        cu.maxHp += 220;
+        cu.currentHp += 220;
+        cu.atk += 35;
+        cu.baseAtk += 35;
+        cu.atkSpeed = Number((cu.atkSpeed + 0.28).toFixed(2));
+      } else if (goblin.count >= 3) {
+        cu.maxHp += 100;
+        cu.currentHp += 100;
+        cu.atk += 15;
+        cu.baseAtk += 15;
+        cu.atkSpeed = Number((cu.atkSpeed + 0.1).toFixed(2));
+      }
+    }
+
+    // 용족: 개전 화상 외 상시 스탯 (시뮬 승률 43% 상향용)
+    const dragonkinSyn = synergyMap.get('DRAGONKIN');
+    if (dragonkinSyn && cu.traits.includes('DRAGONKIN')) {
+      if (dragonkinSyn.count >= 6) {
+        cu.maxHp += 280;
+        cu.currentHp += 280;
+        cu.atk = Math.round(cu.atk * 1.18);
+        cu.baseAtk = Math.round(cu.baseAtk * 1.18);
+        cu.spellPower = Number((cu.spellPower + 0.2).toFixed(2));
+      } else if (dragonkinSyn.count >= 4) {
+        cu.maxHp += 160;
+        cu.currentHp += 160;
+        cu.atk = Math.round(cu.atk * 1.1);
+        cu.baseAtk = Math.round(cu.baseAtk * 1.1);
+        cu.spellPower = Number((cu.spellPower + 0.12).toFixed(2));
+      } else if (dragonkinSyn.count >= 2) {
+        cu.maxHp += 80;
+        cu.currentHp += 80;
+        cu.atk = Math.round(cu.atk * 1.05);
+        cu.baseAtk = Math.round(cu.baseAtk * 1.05);
       }
     }
 
@@ -538,10 +570,11 @@ export class CombatEngine implements SkillCombatContext {
       cu.baseAtk += 40;
     }
     if (cu.unitId === 'u2_jeanne' && owner.augments.includes('AUG_HERO_JEANNE')) {
-      cu.maxHp += 500;
-      cu.currentHp += 500;
-      cu.def += 40;
-      cu.baseDef += 40;
+      cu.maxHp += 700;
+      cu.currentHp += 700;
+      cu.def += 55;
+      cu.baseDef += 55;
+      cu.omnivamp = Number((cu.omnivamp + 0.1).toFixed(2));
     }
     if (cu.unitId === 'u3_orion' && owner.augments.includes('AUG_HERO_ORION')) {
       cu.range = 4;
@@ -550,11 +583,12 @@ export class CombatEngine implements SkillCombatContext {
       cu.baseAtk += 35;
     }
     if (cu.unitId === 'u3_drake' && owner.augments.includes('AUG_HERO_DRAKE')) {
-      cu.maxHp += 400;
-      cu.currentHp += 400;
-      cu.atk += 35;
-      cu.baseAtk += 35;
-      cu.omnivamp = Number((cu.omnivamp + 0.15).toFixed(2));
+      cu.maxHp += 550;
+      cu.currentHp += 550;
+      cu.atk += 50;
+      cu.baseAtk += 50;
+      cu.atkSpeed = Number((cu.atkSpeed + 0.15).toFixed(2));
+      cu.omnivamp = Number((cu.omnivamp + 0.22).toFixed(2));
     }
     if (cu.unitId === 'u3_malakor' && owner.augments.includes('AUG_HERO_MALAKOR')) {
       cu.spellPower = Number((cu.spellPower + 0.5).toFixed(2));

@@ -1021,57 +1021,92 @@ export class AIBotController {
     const isCrisis = bot.hp <= 35;
     const isHealthy = bot.hp >= 70;
 
-    // 아이템 관련 증강 여부
+    // 아이템 관련 증강 여부 (S18 확장)
     const isItemAug =
       aug.effectKey === 'ITEM_PACK_1' ||
       aug.effectKey === 'SMALL_PACK' ||
       aug.effectKey === 'USEFUL_METAL' ||
       aug.effectKey === 'THIEF_GLOVES' ||
+      aug.effectKey === 'THIEF_GLOVES_2' ||
       aug.effectKey === 'RADIANT_RELICS' ||
       aug.effectKey === 'LIVING_FORGE' ||
-      aug.effectKey === 'MAKE_WAY';
+      aug.effectKey === 'MAKE_WAY' ||
+      aug.effectKey === 'OVERFLOWING_BLADE' ||
+      aug.effectKey === 'OVERFLOWING_ROD' ||
+      aug.effectKey === 'OVERFLOWING_BELT' ||
+      aug.effectKey === 'PORTABLE_FORGE' ||
+      aug.effectKey === 'SWORD_CRAFT' ||
+      aug.effectKey === 'ROD_CRAFT' ||
+      aug.effectKey === 'PANDORA_ITEMS' ||
+      aug.effectKey === 'PANDORA_ITEMS_2' ||
+      (aug.immediateRandomCompletedItems ?? 0) > 0 ||
+      (aug.immediateRandomBaseItems ?? 0) > 0;
+
+    // 즉발 골드 폭탄 — 시뮬에서 돈폭풍/거래중심지 과픽 방지
+    const rawGold = aug.immediateGold ?? 0;
+    if (rawGold >= 30) score -= 25;
+    else if (rawGold >= 20) score -= 8;
+    if ((aug.freeRerollsGranted ?? 0) >= 12) score -= 15;
 
     if (isCrisis) {
-      // 즉발 전투력/체력 증강에 대폭 가산점!
       if (
         aug.effectKey === 'TINY_TITANS' ||
         aug.effectKey === 'CELESTIAL_BLESSING' ||
+        aug.effectKey === 'CELESTIAL_BLESSING_2' ||
+        aug.effectKey === 'CELESTIAL_BLESSING_3' ||
         aug.effectKey === 'ASCENSION' ||
         aug.effectKey === 'INCOMPLETE_ASCENSION' ||
         aug.effectKey === 'FINAL_ASCENSION' ||
         aug.effectKey === 'GROUP_HUG' ||
+        aug.effectKey === 'GROUP_HUG_2' ||
         aug.effectKey === 'STAND_UNITED' ||
         aug.effectKey === 'STAND_UNITED_1' ||
-        aug.effectKey === 'LAST_STAND'
+        aug.effectKey === 'STAND_UNITED_2' ||
+        aug.effectKey === 'STAND_UNITED_3' ||
+        aug.effectKey === 'LAST_STAND' ||
+        aug.effectKey === 'HEALING_ORB_1' ||
+        aug.effectKey === 'HEALING_ORB_2' ||
+        aug.effectKey === 'ARCANE_VICTORY'
       ) {
         score += 90;
-      } else if (aug.category === 'COMBAT') {
+      } else if (aug.category === 'COMBAT' || isItemAug) {
         score += 55;
       }
 
-      // 장기적 이자/골드 증강은 죽기 전에 쓸모없으므로 강력 감점!
       if (
         aug.effectKey === 'HEDGE_FUND' ||
+        aug.effectKey === 'HEDGE_FUND_GOLD' ||
         aug.effectKey === 'DIABOLIC_FINANCE' ||
         aug.effectKey === 'LEVEL_UP' ||
         aug.effectKey === 'RICH_GET_RICHER' ||
         aug.effectKey === 'CAPITAL_GAIN_1' ||
-        aug.effectKey === 'GOLDEN_EGG'
+        aug.effectKey === 'CAPITAL_GAIN_2' ||
+        aug.effectKey === 'GOLDEN_EGG' ||
+        aug.effectKey === 'MONEY_STORM' ||
+        aug.effectKey === 'INVESTMENT' ||
+        aug.effectKey === 'INVESTMENT_PLUS'
       ) {
         score -= 70;
+      } else if (aug.category === 'ECONOMY' && rawGold < 12) {
+        score -= 20;
       } else if (aug.category === 'ECONOMY') {
         score -= 35;
       }
     } else if (isHealthy) {
-      // 체력이 넉넉할 때는 레벨업/이자/골드 스노우볼 증강 우대
       if (
         aug.category === 'ECONOMY' ||
         aug.effectKey === 'LEVEL_UP' ||
         aug.effectKey === 'DIABOLIC_FINANCE' ||
         aug.effectKey === 'HEDGE_FUND' ||
-        aug.effectKey === 'RICH_GET_RICHER'
+        aug.effectKey === 'HEDGE_FUND_GOLD' ||
+        aug.effectKey === 'EXPLOSIVE_GROWTH' ||
+        aug.effectKey === 'SILVER_SPOON'
       ) {
         score += 55;
+      }
+      // 여유 체력인데 즉발 전투만 과도하면 약간 감점
+      if (aug.effectKey === 'FINAL_ASCENSION' || aug.effectKey === 'ARCANE_VICTORY') {
+        score -= 10;
       }
     }
 
@@ -1082,19 +1117,31 @@ export class AIBotController {
       aug.effectKey === 'PANDORA_BENCH' ||
       aug.effectKey === 'FATED_DUPLICATION' ||
       aug.effectKey === 'TRADE_SECTOR' ||
+      aug.effectKey === 'TRADE_SECTOR_PLUS' ||
       aug.effectKey === 'REROLL_DAY' ||
       aug.effectKey === 'HYPER_ROLL' ||
-      aug.effectKey === 'PRISMATIC_TICKET';
+      aug.effectKey === 'PRISMATIC_TICKET' ||
+      aug.effectKey === 'EPIC_REROLL' ||
+      aug.effectKey === 'MAXED_OUT' ||
+      (aug.freeRerollsGranted ?? 0) >= 5;
 
     if (brain.persona === 'HYPER_ROLLER' || brain.persona === 'LOW_COST_REROLLER') {
       if (threeStarCount >= 2) {
-        // 이미 3성이 2개 이상 완성됨 -> 전투/스탯 증강 집중
         if (aug.category === 'COMBAT') score += 50;
-        if (aug.category === 'ECONOMY') score += 30;
+        if (isItemAug) score += 40;
+        if (aug.category === 'ECONOMY') score += 20;
       } else {
-        // 아직 3성 미완성 -> 리롤 및 복제기 증강 집중
-        if (isRerollAug) score += 75;
-        if (aug.category === 'COMBAT') score += 20;
+        if (isRerollAug) score += 70;
+        if (
+          aug.effectKey === 'BUILD_A_BUDDY' ||
+          aug.effectKey === 'FORGE_A_FRIEND' ||
+          aug.effectKey === 'CHAMP_DELIVERY' ||
+          aug.effectKey === 'COLD_START' ||
+          aug.effectKey === 'ONE_TWO_THREE'
+        ) {
+          score += 45;
+        }
+        if (aug.category === 'COMBAT') score += 15;
       }
     } else if (
       brain.persona === 'FAST_NINE_GREEDY' ||
@@ -1105,33 +1152,69 @@ export class AIBotController {
           aug.category === 'ECONOMY' ||
           aug.effectKey === 'LEVEL_UP' ||
           aug.effectKey === 'SILVER_SPOON' ||
-          aug.effectKey === 'HEDGE_FUND'
+          aug.effectKey === 'HEDGE_FUND' ||
+          aug.effectKey === 'EXPLOSIVE_GROWTH' ||
+          aug.effectKey === 'EXPLOSIVE_GROWTH_PLUS' ||
+          aug.effectKey === 'NEW_ERA' ||
+          aug.effectKey === 'LATER_GROWTH'
         ) {
           score += 70;
         }
+        // 저코 리롤 올인은 패스트9과 충돌
+        if (aug.effectKey === 'BUILD_A_BUDDY' || aug.effectKey === 'FORGE_A_FRIEND') {
+          score -= 25;
+        }
       } else {
         if (aug.category === 'COMBAT') score += 60;
+        if (
+          aug.effectKey === 'BINARY_AERODROME' ||
+          aug.effectKey === 'BOOSTER_PACK_PLUSPLUS' ||
+          aug.effectKey === 'GARGANTUAN_RESOLVE'
+        ) {
+          score += 40;
+        }
       }
     } else if (brain.persona === 'GOBLIN_GAMBLER') {
       if (
         aug.effectKey === 'GOBLIN_CROWN' ||
         aug.effectKey === 'DIABOLIC_FINANCE' ||
         aug.effectKey === 'CALCULATED_LOSS' ||
+        aug.effectKey === 'TACTICAL_RETREAT' ||
+        aug.effectKey === 'KINGSLAYER' ||
         aug.category === 'ECONOMY'
       ) {
         score += 80;
+      }
+      // 고블린은 전투력 보강도 필요 (시뮬 약세 반영)
+      if (aug.category === 'COMBAT' || isItemAug) score += 35;
+      if (aug.heroUnitId && UNIT_TEMPLATES[aug.heroUnitId]?.traits.includes('GOLDEN_GOBLIN')) {
+        score += 50;
       }
     } else {
       // FLEX_MASTER
       if (aug.category === 'COMBAT') score += 40;
       if (isItemAug) score += 35;
+      if (aug.grantRandomAugmentTier) score += 20; // 운명 계열은 유연성에 맞음
     }
 
-    // 5. 아이템 보유량 연계 (대기석 및 장착 아이템이 적으면 아이템 증강 우대)
-    const totalItems = bot.itemBench.length + ownedLocations.reduce((acc, l) => acc + l.unit.items.length, 0);
+    // 5. 아이템 보유량 연계
+    const totalItems =
+      bot.itemBench.length +
+      ownedLocations.reduce((acc, l) => acc + l.unit.items.length, 0);
     if (totalItems <= 4 && isItemAug) {
       score += 45;
     }
+
+    // 6. 즉발 유닛/XP 보상 가산 (배달·부스터·성장)
+    if (aug.immediateRandomUnits && aug.immediateRandomUnits.length > 0) {
+      const unitValue = aug.immediateRandomUnits.reduce(
+        (s, r) => s + r.cost * r.count * (r.starLevel ?? 1) * 4,
+        0
+      );
+      score += Math.min(55, unitValue);
+    }
+    if ((aug.immediateXp ?? 0) >= 10) score += 20;
+    if (aug.grantRandomAugmentTier) score += 15;
 
     return score;
   }

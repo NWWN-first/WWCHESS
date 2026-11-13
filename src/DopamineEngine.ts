@@ -248,8 +248,8 @@ export class DopamineEngine {
 
     // 거래 중심지 / 교환의 장: 라운드마다 무료 리롤
     if (participant.augments.includes('AUG_TRADE_SECTOR')) {
-      participant.freeRerolls += 3;
-      transformLogs.push('🏛️ [거래 중심지] 무료 새로고침 +3');
+      participant.freeRerolls += 2;
+      transformLogs.push('🏛️ [거래 중심지] 무료 새로고침 +2');
     }
     if (participant.augments.includes('AUG_TRADE_SECTOR_PLUS')) {
       participant.freeRerolls += 1;
@@ -260,9 +260,9 @@ export class DopamineEngine {
       participant.gold += 3;
     }
 
-    // 돈 폭풍: 매 라운드 추가 7골드 (즉시분은 apply 시 지급)
+    // 돈 폭풍: 매 라운드 추가 4골드 (즉시분은 apply 시 지급)
     if (participant.augments.includes('AUG_MONEY_STORM')) {
-      participant.gold += 7;
+      participant.gold += 4;
     }
 
     if (transformLogs.length > 0) {

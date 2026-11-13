@@ -147,15 +147,16 @@ export const STAR_STAT_MULTIPLIER: Record<
  * 코스트별 전투력 보정 (플레이 피드백: 저코스트가 지나치게 약함).
  * Participant 스탯 재계산 및 SkillRegistry 스킬 피해에 공통 적용.
  */
+/** 코스트 밴드 전투 배율 — 500판 시뮬(post-augment) 기준 5코 순방 88% 과강 / 3코·고블린 약세 보정 */
 export const COST_COMBAT_BALANCE: Record<
   CostTier,
   { hp: number; atk: number; skill: number }
 > = {
-  1: { hp: 1.2, atk: 1.18, skill: 1.22 },
-  2: { hp: 1.12, atk: 1.1, skill: 1.14 },
-  3: { hp: 1.03, atk: 1.03, skill: 1.05 },
-  4: { hp: 1.0, atk: 1.0, skill: 1.0 },
-  5: { hp: 1.0, atk: 1.0, skill: 1.0 },
+  1: { hp: 1.24, atk: 1.22, skill: 1.26 },
+  2: { hp: 1.16, atk: 1.14, skill: 1.18 },
+  3: { hp: 1.1, atk: 1.1, skill: 1.12 },
+  4: { hp: 1.02, atk: 1.02, skill: 1.02 },
+  5: { hp: 0.86, atk: 0.84, skill: 0.86 },
 };
 
 // ============================================================================
@@ -266,24 +267,24 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     effects: [
       {
         threshold: 2,
-        label: '(2) 개전 화상 18%, 스킬 치명타 활성화 (+30% 치명타 피해)',
-        initialBurnMaxHpRatio: 0.18,
+        label: '(2) 개전 화상 22%, 스킬 치명타 활성화 (+35% 치명타 피해)',
+        initialBurnMaxHpRatio: 0.22,
         enableSkillCrit: true,
-        bonusCritDamage: 0.30,
+        bonusCritDamage: 0.35,
       },
       {
         threshold: 4,
-        label: '(4) 개전 화상 42%, 스킬 치명타 활성화 (+85% 치명타 피해)',
-        initialBurnMaxHpRatio: 0.42,
+        label: '(4) 개전 화상 48%, 스킬 치명타 활성화 (+95% 치명타 피해)',
+        initialBurnMaxHpRatio: 0.48,
         enableSkillCrit: true,
-        bonusCritDamage: 0.85,
+        bonusCritDamage: 0.95,
       },
       {
         threshold: 6,
-        label: '(6) [프리즘/문장필수] 개전 화상 70%, 스킬 치명타 활성화 (+180% 치명타 피해)',
-        initialBurnMaxHpRatio: 0.70,
+        label: '(6) [프리즘/문장필수] 개전 화상 78%, 스킬 치명타 활성화 (+200% 치명타 피해)',
+        initialBurnMaxHpRatio: 0.78,
         enableSkillCrit: true,
-        bonusCritDamage: 1.8,
+        bonusCritDamage: 2.0,
       },
     ],
   },
