@@ -30,7 +30,7 @@ export type ChampionArchetype =
   | 'BEAST_GOLEM'; // 용족, 몬스터, PVE 크립 (Dragon.glb)
 
 export interface Champion3DVisualConfig {
-  modelKey: 'Knight' | 'Mage' | 'Rogue' | 'Rogue_Hooded' | 'Barbarian' | 'Skeleton_Warrior' | 'Skeleton_Mage' | 'Skeleton_Rogue' | 'Wolf' | 'Dragon';
+  modelKey: 'Knight' | 'Mage' | 'Rogue' | 'Rogue_Hooded' | 'Barbarian' | 'Skeleton_Warrior' | 'Skeleton_Mage' | 'Skeleton_Rogue' | 'Wolf' | 'Dragon' | 'Imp';
   scale: number;
   offsetY?: number;
   primaryColor?: number;
@@ -46,9 +46,12 @@ export interface Champion3DVisualConfig {
 }
 
 /**
- * 10대 핵심 우선 챔피언 및 시너지/의도에 직결된 맞춤형 3D 비주얼 설정
+ * 20대 핵심 챔피언 및 시너지/의도에 직결된 맞춤형 3D 비주얼 설정 (1~2차 완료)
  */
 export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> = {
+  // -------------------------------------------------------------
+  // [1차 완료 10종]
+  // -------------------------------------------------------------
   // 1. 가렌 (제국 보병 가렌) - 1코 Holy Empire / Vanguard (신성 제국 판금 갑주 & 방패검)
   u1_garen: {
     modelKey: 'Knight',
@@ -167,6 +170,129 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     deathAnim: 'Death_A',
     stunAnim: 'DragonArmature|DragonArmature|Dragon_Hit',
     aura: 'FIRE_RED',
+  },
+
+  // -------------------------------------------------------------
+  // [2차 신규 추가 10종]
+  // -------------------------------------------------------------
+  // 11. 아리아 (엘프 궁수 아리아) - 1코 Elven Sylvan / Ranger (초록빛 숲의 정찰 궁수 & 연속사격)
+  u1_aria: {
+    modelKey: 'Rogue',
+    scale: 1.08,
+    primaryColor: 0x15803d,
+    emissiveColor: 0x22c55e,
+    attackAnim: '2H_Ranged_Shoot',
+    skillAnim: '1H_Ranged_Shoot',
+    stunAnim: 'Lie_Idle',
+    aura: 'POISON_GREEN',
+  },
+  // 12. 발렌 (성당 수련기사 발렌) - 1코 Holy Empire / Paladin (순백의 수련기사 & 성스러운 축복 방패)
+  u1_valen: {
+    modelKey: 'Knight',
+    scale: 1.12,
+    primaryColor: 0xe2e8f0,
+    emissiveColor: 0xfacc15,
+    attackAnim: '1H_Melee_Attack_Slice_Horizontal',
+    skillAnim: 'Spellcast_Raise',
+    stunAnim: 'Lie_Idle',
+    aura: 'HOLY_GOLD',
+  },
+  // 13. 렉스 (심연 화염임프 렉스) - 1코 Abyssal Demon / Archmage (귀여운 전용 화염 도깨비 임프)
+  u1_imp: {
+    modelKey: 'Imp',
+    scale: 1.10,
+    primaryColor: 0xd97706,
+    emissiveColor: 0xef4444,
+    idleAnim: 'MonsterArmature|Idle',
+    walkAnim: 'MonsterArmature|Walk',
+    attackAnim: 'MonsterArmature|Bite_Front',
+    skillAnim: 'MonsterArmature|Jump',
+    hitAnim: 'MonsterArmature|HitRecieve',
+    deathAnim: 'MonsterArmature|Death',
+    stunAnim: 'MonsterArmature|HitRecieve',
+    aura: 'FIRE_RED',
+  },
+  // 14. 이그니 (새끼 화염룡 이그니) - 1코 Dragonkin / Ranger (소형 비행 아기 비룡)
+  u1_whelp: {
+    modelKey: 'Dragon',
+    scale: 0.65,
+    primaryColor: 0xf97316,
+    emissiveColor: 0xfbbf24,
+    idleAnim: 'Idle',
+    walkAnim: 'Idle',
+    attackAnim: 'DragonArmature|DragonArmature|Dragon_Attack2',
+    skillAnim: '2H_Melee_Attack_Chop',
+    hitAnim: 'DragonArmature|DragonArmature|Dragon_Hit',
+    deathAnim: 'Death_A',
+    stunAnim: 'DragonArmature|DragonArmature|Dragon_Hit',
+    aura: 'FIRE_RED',
+  },
+  // 15. 구울 (무덤 도굴꾼 구울) - 1코 Undead Scourge / Shadow Assassin (쌍단검 해골 자객 도굴꾼)
+  u1_ghoul: {
+    modelKey: 'Skeleton_Rogue',
+    scale: 1.08,
+    primaryColor: 0x475569,
+    emissiveColor: 0xa855f7,
+    attackAnim: 'Dualwield_Melee_Attack_Slice',
+    skillAnim: '1H_Melee_Attack_Stab',
+    deathAnim: 'Death_C_Skeletons',
+    stunAnim: 'Skeleton_Inactive_Standing_Pose',
+    aura: 'SHADOW_PURPLE',
+  },
+  // 16. 잔느 (성전사 잔느) - 2코 Holy Empire / Paladin / Vanguard (백은 갑주 성처녀 여기사)
+  u2_jeanne: {
+    modelKey: 'Knight',
+    scale: 1.18,
+    primaryColor: 0xf1f5f9,
+    emissiveColor: 0x3b82f6,
+    attackAnim: '1H_Melee_Attack_Slice_Horizontal',
+    skillAnim: 'Spellcast_Raise',
+    stunAnim: 'Lie_Idle',
+    aura: 'HOLY_GOLD',
+  },
+  // 17. 제드 (그림자 칼날 제드) - 2코 Undead Scourge / Shadow Assassin (칠흑 후드 닌자 자객)
+  u2_zed: {
+    modelKey: 'Rogue_Hooded',
+    scale: 1.18,
+    primaryColor: 0x0f172a,
+    emissiveColor: 0x06b6d4,
+    attackAnim: 'Dualwield_Melee_Attack_Slice',
+    skillAnim: 'Dualwield_Melee_Attack_Stab',
+    stunAnim: 'Lie_Idle',
+    aura: 'SHADOW_PURPLE',
+  },
+  // 18. 그롬 (고블린 용병대장 그롬) - 3코 Golden Goblin / Berserker (거구의 초록 고블린 족장 버서커)
+  u3_grom: {
+    modelKey: 'Barbarian',
+    scale: 1.25,
+    primaryColor: 0x15803d,
+    emissiveColor: 0xeab308,
+    attackAnim: '1H_Melee_Attack_Chop',
+    skillAnim: '2H_Melee_Attack_Spin',
+    stunAnim: 'Lie_Idle',
+    aura: 'GOBLIN_GOLD',
+  },
+  // 19. 실바나 (신궁 여왕 실바나) - 4코 Elven Sylvan / Ranger (세계수의 은빛 활 여왕 & 화살비)
+  u4_sylph: {
+    modelKey: 'Rogue_Hooded',
+    scale: 1.25,
+    primaryColor: 0x047857,
+    emissiveColor: 0xfacc15,
+    attackAnim: '2H_Ranged_Shoot',
+    skillAnim: '1H_Ranged_Shoot',
+    stunAnim: 'Lie_Idle',
+    aura: 'POISON_GREEN',
+  },
+  // 20. 미카엘 (천군 총사령관 미카엘) - 5코 Holy Empire / Paladin / Vanguard (신성 대천사 군단장)
+  u5_michael: {
+    modelKey: 'Knight',
+    scale: 1.40,
+    primaryColor: 0xfffbeb,
+    emissiveColor: 0xfacc15,
+    attackAnim: '2H_Melee_Attack_Chop',
+    skillAnim: '2H_Melee_Attack_Spin',
+    stunAnim: 'Lie_Idle',
+    aura: 'HOLY_GOLD',
   },
 };
 
@@ -366,6 +492,7 @@ export class ThreeJsGameRenderer {
       { key: 'Skeleton_Rogue', url: './models/Skeleton_Rogue.glb', scale: 1.10, offsetY: 0 },
       { key: 'Wolf', url: './models/Wolf.glb', scale: 1.22, offsetY: 0 },
       { key: 'Dragon', url: './models/Dragon.glb', scale: 0.95, offsetY: 0 },
+      { key: 'Imp', url: './models/Imp.glb', scale: 1.10, offsetY: 0 },
     ];
 
     modelSources.forEach((src) => {
