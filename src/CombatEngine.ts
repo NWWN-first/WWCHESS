@@ -958,7 +958,8 @@ export class CombatEngine implements SkillCombatContext {
 
     // 2. 모든 유닛 루프 (부활 대기, 기절, 자유이동, 스킬 시전, 기본 공격)
     const dtSec = deltaMs / 1000;
-    const UNIT_RADIUS = 0.48;
+    // 반지름을 헥스 간격(≈1)보다 충분히 작게 두어 인접칸끼리 매틱 충돌 진동이 안 나게 함
+    const UNIT_RADIUS = 0.34;
     for (const unit of this.units) {
       if (this.isFinished) break;
 
@@ -1035,7 +1036,7 @@ export class CombatEngine implements SkillCombatContext {
         dx /= len;
         dz /= len;
 
-        // 유닛 간 겹침 방지: 가까운 유닛에게서 밀어내기
+        // 유닛 간 부드러운 분리(조향에만 약하게 반영 — 하드 반발은 틱 끝에 약하게)
         let sepX = 0;
         let sepZ = 0;
         for (const other of this.units) {
@@ -1044,9 +1045,9 @@ export class CombatEngine implements SkillCombatContext {
           const odx = unit.posX - other.posX;
           const odz = unit.posZ - other.posZ;
           const od = Math.hypot(odx, odz);
-          const minDist = UNIT_RADIUS * 2;
+          const minDist = UNIT_RADIUS * 2.15;
           if (od > 0.001 && od < minDist) {
-            const push = (minDist - od) / minDist;
+            const push = ((minDist - od) / minDist) * 0.55;
             sepX += (odx / od) * push;
             sepZ += (odz / od) * push;
           }
@@ -1057,8 +1058,9 @@ export class CombatEngine implements SkillCombatContext {
           : unit.baseMoveIntervalMs;
         // 1헥스/stepInterval 속도 ≈ 초당 plane 유닛
         const speed = 1.0 / Math.max(0.28, stepIntervalMs / 1000);
-        const steerX = dx * 1.0 + sepX * 1.35;
-        const steerZ = dz * 1.0 + sepZ * 1.35;
+        // 목표 방향이 분리력에 완전히 먹히지 않도록 조향 가중치 유지
+        const steerX = dx * 1.0 + sepX * 0.7;
+        const steerZ = dz * 1.0 + sepZ * 0.7;
         const steerLen = Math.max(0.001, Math.hypot(steerX, steerZ));
         const nx = unit.posX + (steerX / steerLen) * speed * dtSec;
         const nz = unit.posZ + (steerZ / steerLen) * speed * dtSec;
@@ -1067,19 +1069,23 @@ export class CombatEngine implements SkillCombatContext {
         unit.posZ = clamped.z;
         this.syncUnitOccupancy(unit);
 
-        this.emitEvent({
-          type: 'MOVE',
-          tick: this.currentTick,
-          sourceId: unit.instanceId,
-          team: unit.team,
-          unitId: unit.unitId,
-          fromRow,
-          fromCol,
-          toRow: unit.row,
-          toCol: unit.col,
-          durationMs: deltaMs,
-          amount: Math.round(HexGridMath.planeDistance(fromX, fromZ, unit.posX, unit.posZ) * 1000),
-        });
+        const movedAmt = HexGridMath.planeDistance(fromX, fromZ, unit.posX, unit.posZ);
+        // 미세 진동은 MOVE 이벤트로 내보내지 않음 (3D walk 깜빡임 방지)
+        if (movedAmt > 0.012) {
+          this.emitEvent({
+            type: 'MOVE',
+            tick: this.currentTick,
+            sourceId: unit.instanceId,
+            team: unit.team,
+            unitId: unit.unitId,
+            fromRow,
+            fromCol,
+            toRow: unit.row,
+            toCol: unit.col,
+            durationMs: deltaMs,
+            amount: Math.round(movedAmt * 1000),
+          });
+        }
         continue;
       }
 
@@ -1114,9 +1120,14 @@ export class CombatEngine implements SkillCombatContext {
     unit.col = nearest.col;
   }
 
-  /** 유닛 원형 충돌 해소 (서로 겹치지 않게) */
+  /**
+   * 유닛 원형 충돌 해소 — 완전 분리 대신 약한 댐핑 푸시.
+   * (이전: 매 틱 풀 반발 + Math.random → 3D에서 덜덜 떨림)
+   */
   private resolveUnitOverlaps(radius: number): void {
     const alive = this.units.filter((u) => u.currentHp > 0 || u.isReviving);
+    const minDist = radius * 2;
+    const slack = 0.04; // 이 정도 겹침은 무시 (히스테리시스)
     for (let iter = 0; iter < 2; iter++) {
       for (let i = 0; i < alive.length; i++) {
         for (let j = i + 1; j < alive.length; j++) {
@@ -1125,29 +1136,35 @@ export class CombatEngine implements SkillCombatContext {
           let dx = a.posX - b.posX;
           let dz = a.posZ - b.posZ;
           let dist = Math.hypot(dx, dz);
-          const minDist = radius * 2;
           if (dist < 0.0001) {
-            dx = (Math.random() - 0.5) * 0.02;
-            dz = (Math.random() - 0.5) * 0.02;
+            // 결정적 방향 (instanceId 해시) — 랜덤 진동 제거
+            let h = 0;
+            const key = a.instanceId + b.instanceId;
+            for (let k = 0; k < key.length; k++) h = (h * 31 + key.charCodeAt(k)) | 0;
+            const ang = ((h >>> 0) % 360) * (Math.PI / 180);
+            dx = Math.cos(ang) * 0.02;
+            dz = Math.sin(ang) * 0.02;
             dist = Math.hypot(dx, dz);
           }
-          if (dist < minDist) {
-            const push = (minDist - dist) * 0.5;
-            const nx = dx / dist;
-            const nz = dz / dist;
-            a.posX += nx * push;
-            a.posZ += nz * push;
-            b.posX -= nx * push;
-            b.posZ -= nz * push;
-            const ca = HexGridMath.clampPlaneToBoard(a.posX, a.posZ);
-            const cb = HexGridMath.clampPlaneToBoard(b.posX, b.posZ);
-            a.posX = ca.x;
-            a.posZ = ca.z;
-            b.posX = cb.x;
-            b.posZ = cb.z;
-            this.syncUnitOccupancy(a);
-            this.syncUnitOccupancy(b);
-          }
+          if (dist >= minDist - slack) continue;
+
+          // 겹친 양의 일부만 밀어 진동을 줄임
+          const overlap = minDist - dist;
+          const push = overlap * 0.22;
+          const nx = dx / dist;
+          const nz = dz / dist;
+          a.posX += nx * push;
+          a.posZ += nz * push;
+          b.posX -= nx * push;
+          b.posZ -= nz * push;
+          const ca = HexGridMath.clampPlaneToBoard(a.posX, a.posZ);
+          const cb = HexGridMath.clampPlaneToBoard(b.posX, b.posZ);
+          a.posX = ca.x;
+          a.posZ = ca.z;
+          b.posX = cb.x;
+          b.posZ = cb.z;
+          this.syncUnitOccupancy(a);
+          this.syncUnitOccupancy(b);
         }
       }
     }

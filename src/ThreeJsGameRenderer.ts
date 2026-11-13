@@ -2536,13 +2536,20 @@ export class ThreeJsGameRenderer {
         } else {
           const prevX = group.position.x;
           const prevZ = group.position.z;
-          const follow = Math.min(1, dtMs / 55);
-          group.position.x +=
-            (planeTarget.x + lungeOffsetX - group.position.x) * follow;
-          group.position.z +=
-            (planeTarget.z + lungeOffsetZ - group.position.z) * follow;
+          const wantX = planeTarget.x + lungeOffsetX;
+          const wantZ = planeTarget.z + lungeOffsetZ;
+          const err = Math.hypot(wantX - group.position.x, wantZ - group.position.z);
+          // 엔진 미세 충돌 보정이 메시를 흔들지 않도록 데드존 + 부드러운 추종
+          if (err < 0.035) {
+            group.position.x = wantX;
+            group.position.z = wantZ;
+          } else {
+            const follow = 1 - Math.exp(-dtMs / 90);
+            group.position.x += (wantX - group.position.x) * follow;
+            group.position.z += (wantZ - group.position.z) * follow;
+          }
           group.position.y =
-            0.2 + Math.sin(this.animClockMs * 0.005 + cu.row) * 0.05;
+            0.2 + Math.sin(this.animClockMs * 0.004 + cu.row * 0.7) * 0.018;
           juice.isMoving = false;
 
           const isStunned = (cu.stunTimerMs ?? 0) > 0;
@@ -2554,9 +2561,9 @@ export class ThreeJsGameRenderer {
 
           if (isStunned) {
             this.playUnitAnimation(cu.instanceId, 'stun');
-          } else if (distToTarget > 0.12 && distMoved > 0.008) {
+          } else if (distToTarget > 0.18 && distMoved > 0.012) {
             this.playUnitAnimation(cu.instanceId, 'walk');
-            if (Math.abs(group.position.x - prevX) > 0.002) {
+            if (distMoved > 0.015) {
               juice.facingY = Math.atan2(
                 group.position.x - prevX,
                 group.position.z - prevZ
