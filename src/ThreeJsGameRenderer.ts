@@ -789,6 +789,12 @@ interface UnitJuice3D {
   leapProgress: number;
   leapStartPos: THREE.Vector3;
   leapTargetPos: THREE.Vector3;
+  /** MOVE 이벤트 기반 시간 보간 (시각적 순간이동 방지) */
+  moveFrom: THREE.Vector3;
+  moveTo: THREE.Vector3;
+  moveElapsedMs: number;
+  moveDurationMs: number;
+  isMoving: boolean;
 }
 
 interface Active3DProjectile {
@@ -898,11 +904,11 @@ export class ThreeJsGameRenderer {
     this.scene.background = new THREE.Color(0x60a5fa);
     this.scene.fog = new THREE.FogExp2(0x93c5fd, 0.012);
 
-    // 1. TFT 스타일 48° 쿼터뷰 3D 카메라 설정 (얼굴과 전신이 또렷하게 보이는 비스듬한 최적 앵글)
+    // 1. TFT 스타일 쿼터뷰 — 필드를 더 크게 보이도록 FOV↑ / 카메라 당김
     const aspect = (window.innerWidth || 800) / (window.innerHeight || 600);
-    this.camera = new THREE.PerspectiveCamera(43, aspect, 0.5, 140);
-    this.camera.position.set(0, 17.5, 16.2);
-    this.camera.lookAt(0, 0, 1.2);
+    this.camera = new THREE.PerspectiveCamera(50, aspect, 0.5, 140);
+    this.camera.position.set(0, 15.2, 14.0);
+    this.camera.lookAt(0, 0, 1.0);
 
     // 2. WebGL 렌더러
     this.renderer = new THREE.WebGLRenderer({
@@ -1729,6 +1735,81 @@ export class ThreeJsGameRenderer {
     return null;
   }
 
+  /** 월드 좌표 → 캔버스 정규화 비율(0~1) */
+  public worldToScreenPercent(
+    worldX: number,
+    worldY: number,
+    worldZ: number
+  ): { x: number; y: number } {
+    const v = new THREE.Vector3(worldX, worldY, worldZ);
+    v.project(this.camera);
+    return {
+      x: Math.min(0.98, Math.max(0.02, (v.x + 1) * 0.5)),
+      y: Math.min(0.98, Math.max(0.02, (1 - v.y) * 0.5)),
+    };
+  }
+
+  /** 헥스 → 화면 % (루트 오브 배치용) */
+  public hexToScreenPercent(row: number, col: number): { x: number; y: number } {
+    const pos = this.hexToWorldPos(row, col);
+    return this.worldToScreenPercent(pos.x, 0.6, pos.z);
+  }
+
+  /**
+   * 아이템 장착용: 화면 좌표에서 가장 가까운 아군(정비 보드/대기석) 기물.
+   * 전투 중에는 HOME_ 접두 클론을 원본 instanceId로 환원한다.
+   */
+  public findNearestUnitForItemEquip(
+    px: number,
+    py: number,
+    candidates: Array<{ instanceId: string; row?: number; col?: number; benchIndex?: number }>,
+    maxDistPx: number = 90
+  ): { instanceId: string; screenX: number; screenY: number } | null {
+    const w =
+      this.renderer.domElement.clientWidth ||
+      this.canvas.clientWidth ||
+      window.innerWidth ||
+      1;
+    const h =
+      this.renderer.domElement.clientHeight ||
+      this.canvas.clientHeight ||
+      window.innerHeight ||
+      1;
+
+    let best: { instanceId: string; screenX: number; screenY: number; dist: number } | null =
+      null;
+
+    for (const c of candidates) {
+      let world: { x: number; z: number } | null = null;
+      if (c.benchIndex !== undefined) {
+        world = this.benchIndexToWorldPos(c.benchIndex);
+      } else if (c.row !== undefined && c.col !== undefined) {
+        world = this.hexToWorldPos(c.row, c.col);
+      }
+      if (!world) continue;
+
+      const pct = this.worldToScreenPercent(world.x, 0.8, world.z);
+      const sx = pct.x * w;
+      const sy = pct.y * h;
+      const dist = Math.hypot(px - sx, py - sy);
+      if (dist <= maxDistPx && (!best || dist < best.dist)) {
+        const rawId = c.instanceId.startsWith('HOME_')
+          ? c.instanceId.slice('HOME_'.length)
+          : c.instanceId.startsWith('AWAY_')
+          ? c.instanceId.slice('AWAY_'.length)
+          : c.instanceId;
+        best = { instanceId: rawId, screenX: sx, screenY: sy, dist };
+      }
+    }
+    return best
+      ? {
+          instanceId: best.instanceId,
+          screenX: best.screenX,
+          screenY: best.screenY,
+        }
+      : null;
+  }
+
   /**
    * 3D 캐릭터 메시 빌더 (GLB 에셋 복제 또는 정교한 로우폴리 피규어)
    */
@@ -1998,11 +2079,18 @@ export class ThreeJsGameRenderer {
           this.playUnitAnimation(ev.sourceId, 'walk');
 
           if (ev.type === 'LEAP') {
+            juice.isMoving = false;
             juice.leapProgress = 0.01;
             juice.leapStartPos.set(pFrom.x, 0.2, pFrom.z);
             juice.leapTargetPos.set(pTo.x, 0.2, pTo.z);
             this.spawnSparks(pFrom.x, 0.5, pFrom.z, 0x9333ea, 8);
             this.spawnSparks(pTo.x, 0.5, pTo.z, 0xc084fc, 12);
+          } else {
+            juice.isMoving = true;
+            juice.moveFrom.set(pFrom.x, 0.2, pFrom.z);
+            juice.moveTo.set(pTo.x, 0.2, pTo.z);
+            juice.moveElapsedMs = 0;
+            juice.moveDurationMs = Math.max(420, ev.durationMs ?? 700);
           }
         }
       } else if (ev.type === 'BASIC_ATTACK' || ev.type === 'SKILL_CAST') {
@@ -2228,6 +2316,11 @@ export class ThreeJsGameRenderer {
         leapProgress: 0,
         leapStartPos: new THREE.Vector3(),
         leapTargetPos: new THREE.Vector3(),
+        moveFrom: new THREE.Vector3(),
+        moveTo: new THREE.Vector3(),
+        moveElapsedMs: 0,
+        moveDurationMs: 700,
+        isMoving: false,
       };
       this.unitJuiceMap.set(instanceId, juice);
     }
@@ -2267,9 +2360,9 @@ export class ThreeJsGameRenderer {
       shakeOffsetY = (Math.random() - 0.5) * this.shakeIntensity * decay;
     }
     this.camera.position.x = shakeOffsetX;
-    this.camera.position.y = 17.5 + shakeOffsetY;
-    this.camera.position.z = 16.2;
-    this.camera.lookAt(0, 0, 1.2);
+    this.camera.position.y = 15.2 + shakeOffsetY;
+    this.camera.position.z = 14.0;
+    this.camera.lookAt(0, 0, 1.0);
 
     // 2. 판타지 횃불 깜빡임 (Flickering Torches)
     this.torchLights.forEach((t) => {
@@ -2421,21 +2514,42 @@ export class ThreeJsGameRenderer {
         }
 
         if (juice.leapProgress > 0 && juice.leapProgress < 1.0) {
-          juice.leapProgress = Math.min(1.0, juice.leapProgress + dtMs * 0.0035);
+          juice.leapProgress = Math.min(1.0, juice.leapProgress + dtMs * 0.0026);
           const lp = juice.leapProgress;
           const lx = juice.leapStartPos.x + (juice.leapTargetPos.x - juice.leapStartPos.x) * lp;
           const lz = juice.leapStartPos.z + (juice.leapTargetPos.z - juice.leapStartPos.z) * lp;
           const ly = juice.leapStartPos.y + Math.sin(lp * Math.PI) * 2.8;
           group.position.set(lx, ly, lz);
           this.playUnitAnimation(cu.instanceId, 'walk');
+        } else if (juice.isMoving) {
+          juice.moveElapsedMs += dtMs;
+          const t = Math.min(1, juice.moveElapsedMs / juice.moveDurationMs);
+          // ease-out cubic — 착지감 유지하면서 순간이동 방지
+          const ease = 1 - Math.pow(1 - t, 3);
+          const prevX = group.position.x;
+          const prevZ = group.position.z;
+          group.position.x =
+            juice.moveFrom.x + (juice.moveTo.x - juice.moveFrom.x) * ease + lungeOffsetX;
+          group.position.z =
+            juice.moveFrom.z + (juice.moveTo.z - juice.moveFrom.z) * ease + lungeOffsetZ;
+          group.position.y = 0.2 + Math.sin(this.animClockMs * 0.005 + cu.row) * 0.05;
+          if (t >= 1) juice.isMoving = false;
+
+          const isStunned = (cu.stunTimerMs ?? 0) > 0;
+          const distMoved = Math.hypot(group.position.x - prevX, group.position.z - prevZ);
+          if (isStunned) {
+            this.playUnitAnimation(cu.instanceId, 'stun');
+          } else if (distMoved > 0.01) {
+            this.playUnitAnimation(cu.instanceId, 'walk');
+          }
         } else {
           const prevX = group.position.x;
           const prevZ = group.position.z;
-          group.position.x += (targetPos.x + lungeOffsetX - group.position.x) * 0.3;
-          group.position.z += (targetPos.z + lungeOffsetZ - group.position.z) * 0.3;
+          // 정착 스냅만 부드럽게 (이동 자체는 MOVE 보간으로 처리)
+          group.position.x += (targetPos.x + lungeOffsetX - group.position.x) * 0.12;
+          group.position.z += (targetPos.z + lungeOffsetZ - group.position.z) * 0.12;
           group.position.y = 0.2 + Math.sin(this.animClockMs * 0.005 + cu.row) * 0.05;
 
-          // 기절(Stun) 상태 확인
           const isStunned = (cu.stunTimerMs ?? 0) > 0;
           const distMoved = Math.hypot(group.position.x - prevX, group.position.z - prevZ);
           const distToTarget = Math.hypot(targetPos.x - group.position.x, targetPos.z - group.position.z);

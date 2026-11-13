@@ -160,7 +160,14 @@ class FantasyAutoBattlerApp {
         y: winW - clientX,
       };
     }
-    const rect = this.fxCanvas.getBoundingClientRect();
+    // 3D 모드에서는 fx-canvas가 display:none이라 rect가 0이 됨 → 보이는 캔버스/#app 사용
+    const activeEl = this.is3DViewMode
+      ? this.threeCanvas
+      : this.fxCanvas;
+    let rect = activeEl.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) {
+      rect = (document.getElementById('app') ?? activeEl).getBoundingClientRect();
+    }
     return {
       x: clientX - rect.left,
       y: clientY - rect.top,
@@ -179,13 +186,61 @@ class FantasyAutoBattlerApp {
   }
 
   private isShopCurrentlyExpanded(): boolean {
-    if (
-      this.game.phase === 'COMBAT_PHASE' ||
-      this.game.phase === 'RESOLUTION_PHASE'
-    ) {
-      return false;
-    }
+    // 전투/정산 중에도 상점 사용 가능 (TFT식). 접힘만 수동 토글.
     return !this.isShopManuallyCollapsed;
+  }
+
+  /** 아이템/복제기는 전투 중에도 드래그 허용. 유닛 배치는 정비만. */
+  private canStartDragForPayload(payload: DragPayload | null): boolean {
+    if (!payload) return false;
+    if (this.game.viewedParticipantId !== this.game.player.id) return false;
+    if (payload.kind === 'ITEM' || payload.kind === 'DUPLICATOR') return true;
+    return this.game.phase === 'PREPARATION_PHASE';
+  }
+
+  private collectItemEquipCandidates(): Array<{
+    instanceId: string;
+    row?: number;
+    col?: number;
+    benchIndex?: number;
+  }> {
+    const player = this.game.player;
+    const out: Array<{
+      instanceId: string;
+      row?: number;
+      col?: number;
+      benchIndex?: number;
+    }> = [];
+
+    player.bench.forEach((u, idx) => {
+      if (u) out.push({ instanceId: u.instanceId, benchIndex: idx });
+    });
+
+    const inCombat =
+      this.game.phase === 'COMBAT_PHASE' ||
+      this.game.phase === 'RESOLUTION_PHASE';
+    if (inCombat) {
+      const ctx = this.game.getViewedCombatContext();
+      const engine = ctx?.engine ?? this.game.playerCombatEngine;
+      if (engine) {
+        for (const cu of engine.units) {
+          if (cu.team !== 'HOME' || cu.currentHp <= 0) continue;
+          out.push({
+            instanceId: cu.instanceId,
+            row: cu.row,
+            col: cu.col,
+          });
+        }
+      }
+    } else {
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 7; c++) {
+          const u = player.board[r]?.[c];
+          if (u) out.push({ instanceId: u.instanceId, row: r + 4, col: c });
+        }
+      }
+    }
+    return out;
   }
 
   // ==========================================================================
@@ -462,7 +517,7 @@ class FantasyAutoBattlerApp {
     });
 
     document.getElementById('reroll-btn')?.addEventListener('pointerup', (e) => {
-      if (this.game.phase !== 'PREPARATION_PHASE') return;
+      // 전투 중에도 상점 리롤/구매로 대기석 조합 가능 (전투 중 보드 유닛는 클론이라 영향 없음)
       const pt = this.clientToCanvasPoint(e.clientX, e.clientY);
       if (this.game.player.rerollShop(this.game.sharedPool)) {
         soundFX.playReroll();
@@ -760,15 +815,11 @@ class FantasyAutoBattlerApp {
 
     if (!this.isDragging && dist > 8 && this.dragPayload) {
       this.pendingAvatarMove = null;
-      if (
-        this.game.phase === 'PREPARATION_PHASE' &&
-        this.game.viewedParticipantId === this.game.player.id
-      ) {
+      if (this.canStartDragForPayload(this.dragPayload)) {
         this.isDragging = true;
         soundFX.playPickup();
         if (this.dragPayload.kind === 'UNIT') {
           this.selectedUnitInstanceId = this.dragPayload.instanceId;
-          // 주의: 상점을 수동으로 접어둔 상태라면, 배치 시야를 가리지 않도록 강제로 펼치지 않음!
           this.showSellDropzoneOverlay(this.dragPayload.unit);
         }
         if (!this.is3DViewMode || this.dragPayload.kind !== 'UNIT') {
@@ -915,15 +966,29 @@ class FantasyAutoBattlerApp {
       }
     }
 
-    // B. 자석 판정: 반경 70px 이내의 가장 가까운 기물 호버링 검사 (기물 합성/장착 미리보기)
-    const nearest = this.pixelRenderer.findNearestUnitInstance(
-      px,
-      py,
-      this.game.player,
-      70
-    );
-    if (nearest) {
-      const u = nearest.unit;
+    // B. 자석 판정 — 3D는 월드 투영, 2D는 픽셀 근접
+    let hoverUnit: UnitInstance | null = null;
+    if (this.is3DViewMode) {
+      const hit = this.threeRenderer.findNearestUnitForItemEquip(
+        px,
+        py,
+        this.collectItemEquipCandidates(),
+        96
+      );
+      if (hit) {
+        hoverUnit =
+          this.game.player.getAllUnitLocations().find(
+            (l) => l.unit.instanceId === hit.instanceId
+          )?.unit ?? null;
+      }
+    } else {
+      hoverUnit =
+        this.pixelRenderer.findNearestUnitInstance(px, py, this.game.player, 70)
+          ?.unit ?? null;
+    }
+
+    if (hoverUnit) {
+      const u = hoverUnit;
       const existingBaseId = u.items.find(
         (id) => !ITEM_DEFINITIONS[id]?.isCompleted
       ) as BaseItemId | undefined;
@@ -943,20 +1008,18 @@ class FantasyAutoBattlerApp {
           </div>
         `;
         return;
-      } else {
-        const slotCount = `${u.items.length}/3`;
-        ghostEl.innerHTML = `
-          <div class="ghost-item-title">${itemDef.icon} ${itemDef.name}</div>
-          <div class="craft-preview-banner">
-            <span class="craft-tag">${u.name} 장착 (${slotCount})</span>
-            <div class="craft-desc">${itemDef.description}</div>
-          </div>
-        `;
-        return;
       }
+      const slotCount = `${u.items.length}/3`;
+      ghostEl.innerHTML = `
+        <div class="ghost-item-title">${itemDef.icon} ${itemDef.name}</div>
+        <div class="craft-preview-banner">
+          <span class="craft-tag">${u.name} 장착 (${slotCount})</span>
+          <div class="craft-desc">${itemDef.description}</div>
+        </div>
+      `;
+      return;
     }
 
-    // 호버 대상이 없을 때 기본 표시
     ghostEl.innerHTML = `<div class="ghost-item-title">${itemDef.icon} ${itemDef.name}</div>`;
   }
 
@@ -1011,7 +1074,8 @@ class FantasyAutoBattlerApp {
         domTarget?.closest('#shop-cards-wrapper') ||
         (isShopExpanded &&
           (domTarget?.closest('#bottom-shop-bar') ||
-            py >= this.pixelRenderer.viewportHeight - 92));
+            // 상점 상단 배치: 상단 ~120px 밴드도 판매 영역
+            py <= 120));
 
       if (isSellingArea) {
         const earned = player.sellUnit(payload.instanceId, this.game.sharedPool);
@@ -1140,21 +1204,32 @@ class FantasyAutoBattlerApp {
       }
     }
 
-    // 2) 기물 탐색 (자석 스냅: 3D 모드 타일 및 터치 지점 반경 70px 이내 가장 가까운 기물 자동 인식)
+    // 2) 기물 탐색 (3D 투영 자석 → 타일 레이캐스트 → 2D 폴백)
     let targetInstanceId: string | undefined;
     let targetCenter = { x: px, y: py };
 
     if (this.is3DViewMode) {
-      if (hoveredBenchSnap !== undefined && hoveredBenchSnap !== null) {
+      const near3d = this.threeRenderer.findNearestUnitForItemEquip(
+        px,
+        py,
+        this.collectItemEquipCandidates(),
+        110
+      );
+      if (near3d) {
+        targetInstanceId = near3d.instanceId;
+        targetCenter = { x: near3d.screenX, y: near3d.screenY };
+      } else if (hoveredBenchSnap !== undefined && hoveredBenchSnap !== null) {
         targetInstanceId = player.bench[hoveredBenchSnap]?.instanceId;
       } else if (hoveredHexSnap && hoveredHexSnap.row >= 4) {
-        targetInstanceId = player.board[hoveredHexSnap.row - 4]?.[hoveredHexSnap.col]?.instanceId;
+        targetInstanceId =
+          player.board[hoveredHexSnap.row - 4]?.[hoveredHexSnap.col]?.instanceId;
       } else {
         const hit3D = this.threeRenderer.screenPointTo3DTarget(px, py);
         if (hit3D?.kind === 'BENCH') {
           targetInstanceId = player.bench[hit3D.index]?.instanceId;
         } else if (hit3D?.kind === 'HEX' && hit3D.row >= 4) {
-          targetInstanceId = player.board[hit3D.row - 4]?.[hit3D.col]?.instanceId;
+          targetInstanceId =
+            player.board[hit3D.row - 4]?.[hit3D.col]?.instanceId;
         }
       }
     }
@@ -1165,7 +1240,6 @@ class FantasyAutoBattlerApp {
         targetInstanceId = nearest.unit.instanceId;
         targetCenter = nearest.center;
       } else {
-        // 보조 백업: 대기석 슬롯 또는 육각형 타일 직접 판정
         const benchIdx = this.pixelRenderer.screenPointToBenchIndex(px, py);
         if (benchIdx !== null) {
           targetInstanceId = player.bench[benchIdx]?.instanceId;
@@ -1187,6 +1261,7 @@ class FantasyAutoBattlerApp {
 
     if (payload.kind === 'ITEM') {
       if (player.equipItemToUnit(payload.itemBenchIndex, targetInstanceId)) {
+        this.syncCombatCloneFromPrepUnit(targetInstanceId);
         this.pixelRenderer.spawnPixelSparks(
           targetCenter.x,
           targetCenter.y,
@@ -1499,7 +1574,8 @@ class FantasyAutoBattlerApp {
               : null,
             () => {
               this.showTapTooltip(
-                `<strong>${def.icon} ${def.name}</strong><br/>${def.description}<br/><span style="color:#7dd3fc">기물 위로 드래그하여 장착하거나, 다른 재료 아이템 위로 올려 대기석에서 즉시 합성</span>`
+                `<strong>${def.icon} ${def.name}</strong><br/>${def.description}<br/><span style="color:#7dd3fc">기물 위로 드래그하여 장착하거나, 다른 재료 아이템 위로 올려 대기석에서 즉시 합성</span>`,
+                { x: e.clientX, y: e.clientY }
               );
             }
           );
@@ -1512,6 +1588,98 @@ class FantasyAutoBattlerApp {
   /**
    * ? / ! 미스터리 보물상자(Mystery Box) 렌더링 & 터치 시 화려한 파티클 개봉 연출
    */
+  private getLootOrbScreenPercent(orb: {
+    x: number;
+    y: number;
+    hexRow?: number;
+    hexCol?: number;
+  }): { x: number; y: number } {
+    if (
+      orb.hexRow !== undefined &&
+      orb.hexCol !== undefined
+    ) {
+      if (this.is3DViewMode) {
+        return this.threeRenderer.hexToScreenPercent(orb.hexRow, orb.hexCol);
+      }
+      const center = HexGridMath.hexToScreenCenter(
+        orb.hexRow,
+        orb.hexCol,
+        this.pixelRenderer.hexMetrics
+      );
+      const w = Math.max(1, this.pixelRenderer.viewportWidth);
+      const h = Math.max(1, this.pixelRenderer.viewportHeight);
+      return {
+        x: Math.min(0.95, Math.max(0.05, center.x / w)),
+        y: Math.min(0.9, Math.max(0.08, center.y / h)),
+      };
+    }
+    return { x: 0.22 + orb.x * 0.54, y: 0.22 + orb.y * 0.36 };
+  }
+
+  /** 전투 중 아이템 장착 시 살아있는 HOME 클론에 스탯/아이템을 즉시 반영 (성급 업글은 반영하지 않음) */
+  private syncCombatCloneFromPrepUnit(prepInstanceId: string): void {
+    const inCombat =
+      this.game.phase === 'COMBAT_PHASE' ||
+      this.game.phase === 'RESOLUTION_PHASE';
+    if (!inCombat) return;
+    const prep = this.game.player
+      .getAllUnitLocations()
+      .find((l) => l.unit.instanceId === prepInstanceId)?.unit;
+    if (!prep) return;
+    const ctx = this.game.getViewedCombatContext();
+    const engine = ctx?.engine ?? this.game.playerCombatEngine;
+    if (!engine) return;
+    const clone = engine.units.find(
+      (u) =>
+        u.team === 'HOME' &&
+        (u.instanceId === prepInstanceId ||
+          u.instanceId === `HOME_${prepInstanceId}`)
+    );
+    if (!clone || clone.currentHp <= 0) return;
+    clone.items = [...prep.items];
+    const hpRatio = clone.maxHp > 0 ? clone.currentHp / clone.maxHp : 1;
+    clone.atk = prep.atk;
+    clone.def = prep.def;
+    clone.atkSpeed = prep.atkSpeed;
+    clone.spellPower = prep.spellPower;
+    clone.critChance = prep.critChance;
+    clone.critDamage = prep.critDamage;
+    clone.omnivamp = prep.omnivamp;
+    clone.maxHp = prep.maxHp;
+    clone.currentHp = Math.max(1, Math.round(prep.maxHp * hpRatio));
+  }
+
+  private openLootOrbAt(orbId: string, screenX: number, screenY: number): void {
+    const orb = this.game.playerLootOrbs.find((o) => o.id === orbId);
+    if (!orb) return;
+    soundFX.playCoin(1.4);
+    this.pixiVfx.triggerPlacementShockwave(screenX, screenY, 0xffea00);
+    this.pixelRenderer.triggerImpactShake(6, 180, 0);
+    this.pixelRenderer.spawnPixelSparks(
+      screenX,
+      screenY,
+      orb.tier === 'PRISMATIC'
+        ? '#f472b6'
+        : orb.tier === 'GOLD'
+        ? '#ffea00'
+        : '#38bdf8',
+      38
+    );
+    const rewards = this.game.openPlayerLootOrb(orb.id);
+    if (rewards.length > 0) {
+      this.pixelRenderer.spawnArcadePopupText(
+        screenX,
+        screenY - 20,
+        `🎉 ${rewards.join(' + ')}`,
+        orb.tier === 'PRISMATIC' ? '#f472b6' : '#ffea00',
+        16
+      );
+    }
+    this.renderLootOrbs();
+    this.renderLeftFloatingDock();
+    this.renderTopHud();
+  }
+
   private renderLootOrbs(): void {
     const orbLayer = document.getElementById('loot-orb-layer');
     if (!orbLayer) return;
@@ -1521,11 +1689,11 @@ class FantasyAutoBattlerApp {
 
     for (const orb of this.game.playerLootOrbs) {
       const btn = document.createElement('div');
-      btn.className = `loot-orb-btn mystery-box-chest orb-${orb.tier}`;
-      btn.style.left = `${Math.round(22 + orb.x * 54)}%`;
-      btn.style.top = `${Math.round(22 + orb.y * 36)}%`;
+      btn.className = `loot-orb-btn mystery-box-chest orb-${orb.tier} loot-pop-in`;
+      const pct = this.getLootOrbScreenPercent(orb);
+      btn.style.left = `${Math.round(pct.x * 100)}%`;
+      btn.style.top = `${Math.round(pct.y * 100)}%`;
 
-      // 프리즘/고등급 상자는 강렬한 '!' 마크, 일반/골드/블루 상자는 호기심을 자극하는 '?' 마크 표시
       const isExclaim =
         orb.tier === 'PRISMATIC' || (orb.label && orb.label.startsWith('!'));
       const mysteryMark = isExclaim ? '!' : '?';
@@ -1536,7 +1704,6 @@ class FantasyAutoBattlerApp {
           ? '🧰'
           : '📦';
 
-      // 불필요한 '미스터리', '대박상자' 텍스트 라벨 완전 삭제하고 순수한 ? / ! 도트 룬 심볼 및 보물상자만 직관적으로 표시
       btn.innerHTML = `
         <div class="mystery-badge-mark ${isExclaim ? 'mark-exclaim' : 'mark-question'}">${mysteryMark}</div>
         <div class="mystery-chest-body">
@@ -1546,14 +1713,18 @@ class FantasyAutoBattlerApp {
 
       btn.addEventListener('pointerup', (e) => {
         e.stopPropagation();
-        // 터치했을 때도 아바타가 해당 상자로 달려가서 먹도록 유도
         const orbCanvasX = Math.round(
-          this.pixelRenderer.viewportWidth * (0.22 + orb.x * 0.54)
+          this.pixelRenderer.viewportWidth * pct.x
         );
         const orbCanvasY = Math.round(
-          this.pixelRenderer.viewportHeight * (0.22 + orb.y * 0.36)
+          this.pixelRenderer.viewportHeight * pct.y
         );
-        this.pixelRenderer.movePlayerAvatarTo(orbCanvasX, orbCanvasY);
+        // 3D에서는 아바타 보행이 멈춤 → 탭 즉시 오픈. 2D는 달려가서 획득.
+        if (this.is3DViewMode) {
+          this.openLootOrbAt(orb.id, orbCanvasX, orbCanvasY);
+        } else {
+          this.pixelRenderer.movePlayerAvatarTo(orbCanvasX, orbCanvasY);
+        }
       });
 
       orbLayer.appendChild(btn);
@@ -1642,11 +1813,13 @@ class FantasyAutoBattlerApp {
     if (shopBar && toggleBar && quickBar) {
       shopBar.classList.toggle('hidden', !isExpanded);
       toggleBar.classList.toggle('hidden', !isExpanded);
-      quickBar.classList.toggle('hidden', isExpanded || inCombat);
+      // 전투 중에도 접힌 상점 빠른 열기 허용
+      quickBar.classList.toggle('hidden', isExpanded);
     }
     if (toggleBtn) {
-      toggleBtn.textContent = isExpanded ? '🛒 상점 접기 ▼' : '🛒 상점 열기 ▲';
+      toggleBtn.textContent = isExpanded ? '🛒 상점 접기 ▲' : '🛒 상점 열기 ▼';
     }
+    document.getElementById('app')?.classList.toggle('shop-dock-top-expanded', isExpanded);
     if (quickGold) {
       quickGold.textContent = `${player.gold}G`;
     }
@@ -1998,12 +2171,34 @@ class FantasyAutoBattlerApp {
     modal.classList.remove('hidden');
   }
 
-  private showTapTooltip(html: string): void {
+  private showTapTooltip(
+    html: string,
+    anchorClient?: { x: number; y: number }
+  ): void {
     const bar = document.getElementById('tap-tooltip-bar');
     const content = document.getElementById('tap-tooltip-content');
     if (!bar || !content) return;
     content.innerHTML = html;
     bar.classList.remove('hidden');
+    // 아이템 등 클릭 지점 근처로 고정 — 화면 중앙을 떠다니지 않게
+    if (anchorClient) {
+      const app = document.getElementById('app');
+      const rect = (app ?? document.body).getBoundingClientRect();
+      const localX = anchorClient.x - rect.left;
+      const localY = anchorClient.y - rect.top;
+      const maxW = Math.min(rect.width * 0.92, 540);
+      const left = Math.max(8, Math.min(rect.width - maxW - 8, localX - maxW * 0.5));
+      const top = Math.max(8, Math.min(rect.height - 80, localY + 18));
+      bar.style.left = `${left}px`;
+      bar.style.top = `${top}px`;
+      bar.style.transform = 'none';
+      bar.classList.add('tooltip-anchored');
+    } else {
+      bar.style.left = '50%';
+      bar.style.top = '36px';
+      bar.style.transform = 'translateX(-50%)';
+      bar.classList.remove('tooltip-anchored');
+    }
   }
 
   private formatTraitsLine(traits: TraitId[]): string {
@@ -2311,39 +2506,13 @@ class FantasyAutoBattlerApp {
       ) {
         const avatarPos = this.pixelRenderer.getPlayerAvatarCurrentPos();
         for (const orb of [...this.game.playerLootOrbs]) {
-          const orbX = Math.round(
-            this.pixelRenderer.viewportWidth * (0.22 + orb.x * 0.54)
-          );
-          const orbY = Math.round(
-            this.pixelRenderer.viewportHeight * (0.22 + orb.y * 0.36)
-          );
+          const pct = this.getLootOrbScreenPercent(orb);
+          const orbX = Math.round(this.pixelRenderer.viewportWidth * pct.x);
+          const orbY = Math.round(this.pixelRenderer.viewportHeight * pct.y);
           const dist = Math.hypot(avatarPos.x - orbX, avatarPos.y - orbY);
 
-          if (dist <= 40) {
-            soundFX.playCoin(1.4);
-            this.pixiVfx.triggerPlacementShockwave(orbX, orbY, 0xffea00);
-            this.pixelRenderer.triggerImpactShake(6, 180, 0);
-            this.pixelRenderer.spawnPixelSparks(
-              orbX,
-              orbY,
-              orb.tier === 'PRISMATIC'
-                ? '#f472b6'
-                : orb.tier === 'GOLD'
-                ? '#ffea00'
-                : '#38bdf8',
-              38
-            );
-            const rewards = this.game.openPlayerLootOrb(orb.id);
-            if (rewards.length > 0) {
-              this.pixelRenderer.spawnArcadePopupText(
-                orbX,
-                orbY - 20,
-                `🎉 ${rewards.join(' + ')}`,
-                orb.tier === 'PRISMATIC' ? '#f472b6' : '#ffea00',
-                16
-              );
-            }
-            this.renderLootOrbs();
+          if (dist <= 48) {
+            this.openLootOrbAt(orb.id, orbX, orbY);
           }
         }
       }

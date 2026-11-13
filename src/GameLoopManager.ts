@@ -1080,11 +1080,20 @@ export class GameLoopManager {
     // 3) 크립 라운드 종료 시: 8인 공정성 보장 법칙(Loot Equity Rule)에 따라 ?/! 미스터리 박스 및 AI 동기화 전리품 지급!
     if (roundType === 'CREEP' || roundType === 'BOSS_CREEP') {
       const aiBots = this.participants.filter((p) => p.isAI && !p.isEliminated);
+      const deathHexes: Array<{ row: number; col: number }> = [];
+      if (this.playerCombatEngine) {
+        for (const u of this.playerCombatEngine.units) {
+          if (u.team === 'AWAY' && u.currentHp <= 0) {
+            deathHexes.push({ row: u.row, col: u.col });
+          }
+        }
+      }
       const mysteryBoxes = CreepRoundManager.distributeEquityCreepLoot(
         roundLabel,
         roundType,
         this.player,
-        aiBots
+        aiBots,
+        deathHexes
       );
       if (mysteryBoxes.length > 0) {
         this.playerLootOrbs.push(...mysteryBoxes);

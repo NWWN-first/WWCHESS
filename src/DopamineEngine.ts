@@ -26,8 +26,12 @@ export interface LootOrbRewards {
 export interface LootOrb {
   id: string;
   tier: LootOrbTier;
+  /** 0~1 정규화 화면 위치 (폴백 / 고블린 금고용) */
   x: number;
   y: number;
+  /** 크립 처치 헥스 — 있으면 보드 위 몬스터 위치에서 튀어나온 것처럼 배치 */
+  hexRow?: number;
+  hexCol?: number;
   label?: string;
   rewards: LootOrbRewards;
 }

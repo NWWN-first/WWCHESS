@@ -1025,10 +1025,12 @@ export class PixelGameRenderer {
     const w = this.viewportWidth;
     const h = this.viewportHeight;
 
-    const topHudPx = 38;
-    const bottomReservedPx = isShopExpanded ? Math.min(108, Math.floor(h * 0.28)) : 16;
-    const leftDockPx = w < 680 ? 46 : 68;
-    const rightDockPx = w < 680 ? 50 : 78;
+    // 상점 상단 배치: 펼치면 top 예약, 하단은 벤치만 남겨 필드 확대
+    const shopDockPx = isShopExpanded ? Math.min(96, Math.floor(h * 0.22)) : 0;
+    const topHudPx = 34 + shopDockPx;
+    const bottomReservedPx = 14;
+    const leftDockPx = w < 680 ? 40 : 56;
+    const rightDockPx = w < 680 ? 44 : 64;
 
     const arenaLeft = leftDockPx;
     const arenaTop = topHudPx;

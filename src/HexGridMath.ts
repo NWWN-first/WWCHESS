@@ -171,11 +171,9 @@ export class HexGridMath {
     const perspectiveRatio = HexGridMath.PERSPECTIVE_RATIO; // 0.78
     const gapPx = HexGridMath.TILE_GAP_PX; // 2px
 
-    // 가로 기준 최대 반지름 (7.5열 폭 + 결투장 석판 테두리 여백)
-    const maxRByWidth = (arenaWidth * 0.88) / (7.6 * Math.sqrt(3));
-    // 세로 기준 최대 반지름:
-    // 8행 육각형 보드(12.5 * 0.78 = 9.75R) + 상단 캐릭터 머리 여백(0.75R) + 하단 대기석 단상 및 간격(2.15R) = 총 12.65R
-    const maxRByHeight = (arenaHeight * 0.94) / 12.65;
+    // 가로/세로 여백을 줄여 TFT처럼 필드가 화면을 더 크게 채우도록
+    const maxRByWidth = (arenaWidth * 0.96) / (7.6 * Math.sqrt(3));
+    const maxRByHeight = (arenaHeight * 0.98) / 12.65;
     const hexRadius = Math.max(
       9,
       Math.floor(Math.min(maxRByWidth, maxRByHeight))

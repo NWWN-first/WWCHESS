@@ -162,40 +162,41 @@ export class CombatEngine implements SkillCombatContext {
    * - 중장갑 선봉대/거대 나무 정령/마군주: 580~650ms (묵직하고 위압감 있는 중갑 행군)
    */
   private computeCharacteristicMoveIntervalMs(source: UnitInstance): number {
+    // 근접 유닛이 전장을 순식간에 가로지르지 않도록 전체적으로 ~35% 느리게 조정
     const unitCustomMap: Record<string, number> = {
-      u1_gob: 360, // 고블린 소매치기: 가장 가볍고 재빠름
-      u3_kazu: 380, // 환영 자객 카즈: 닌자 질주
-      u1_zix: 390, // 그림자 단검 카직: 날렵한 암살자
-      u2_vayne: 430, // 은화살 사냥꾼 베인: 경장 추격자
-      u2_fenrir: 440, // 광전사 펜리르: 야수 질주 (광기 발동 시 310ms로 폭주)
-      u3_drake: 450, // 화염 기병 드레이크: 비룡 기병
-      u5_michael: 460, // 대천사 미카엘: 날개 강림 비행
-      u5_ignis: 470, // 고대 화염용 이그니스: 거룡 비행
-      u1_pip: 480, // 숲의 요정 핍: 경쾌한 발걸음
-      u4_sylph: 490, // 바람의 신궁 실피: 바람 걸음
-      u1_elise: 500, // 성전사 수습생 엘리스
-      u2_boom: 500, // 폭탄광 붐
-      u2_lyra: 510, // 달빛 무녀 라이라
-      u3_malakor: 510, // 영혼 수확자 말라코르
-      u1_vex: 520, // 비전 학도 벡스
-      u5_goldtooth: 530, // 황금 고블린 왕 골드투스
-      u4_velkora: 540, // 대현자 벨코라
-      u1_garen: 580, // 신성 수호병 가렌: 중갑 보병
-      u1_bone: 600, // 해골 방패병 본즈: 중장갑 방패병
-      u3_leona: 610, // 태양의 성기사 레오나: 중갑 대방패
-      u4_astaroth: 630, // 심연의 군주 아스타로스: 거대 마군주
-      u2_thorn: 650, // 가시 덩굴 수호자 쏜: 거대 고목 정령 (가장 묵직함)
+      u1_gob: 500,
+      u3_kazu: 520,
+      u1_zix: 530,
+      u2_vayne: 580,
+      u2_fenrir: 600,
+      u3_drake: 610,
+      u5_michael: 620,
+      u5_ignis: 640,
+      u1_pip: 650,
+      u4_sylph: 660,
+      u1_elise: 680,
+      u2_boom: 680,
+      u2_lyra: 690,
+      u3_malakor: 690,
+      u1_vex: 700,
+      u5_goldtooth: 720,
+      u4_velkora: 730,
+      u1_garen: 780,
+      u1_bone: 810,
+      u3_leona: 820,
+      u4_astaroth: 850,
+      u2_thorn: 880,
     };
 
     if (unitCustomMap[source.unitId] !== undefined) {
       return unitCustomMap[source.unitId];
     }
 
-    if (source.traits.includes('SHADOW_ASSASSIN')) return 380;
-    if (source.traits.includes('BERSERKER')) return 450;
-    if (source.traits.includes('VANGUARD')) return 600;
-    if (source.traits.includes('RANGER')) return 490;
-    return 520;
+    if (source.traits.includes('SHADOW_ASSASSIN')) return 520;
+    if (source.traits.includes('BERSERKER')) return 610;
+    if (source.traits.includes('VANGUARD')) return 810;
+    if (source.traits.includes('RANGER')) return 660;
+    return 700;
   }
 
   /**
@@ -880,7 +881,7 @@ export class CombatEngine implements SkillCombatContext {
           unit.row = nextTile.row;
           unit.col = nextTile.col;
           const stepIntervalMs = unit.berserkTriggered
-            ? Math.max(260, Math.round(unit.baseMoveIntervalMs * 0.72))
+            ? Math.max(380, Math.round(unit.baseMoveIntervalMs * 0.78))
             : unit.baseMoveIntervalMs;
           unit.moveCooldownMs = stepIntervalMs;
 
