@@ -409,6 +409,121 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
   },
+
+  // -------------------------------------------------------------
+  // [4차 신규 추가 10종 (총 40/60종 - 66.7% 달성)]
+  // -------------------------------------------------------------
+  // 31. 볼더 (룬 거석병 볼더) - 2코 Arcane Tower / Vanguard (거대 비전 룬 거석병)
+  u2_boulder: {
+    modelKey: 'Barbarian',
+    scale: 1.38,
+    primaryColor: 0x64748b,
+    emissiveColor: 0x38bdf8,
+    attackAnim: '1H_Melee_Attack_Chop',
+    skillAnim: '2H_Melee_Attack_Jump_Chop',
+    stunAnim: 'Lie_Idle',
+    aura: 'ARCANE_BLUE',
+  },
+  // 32. 붐 (고블린 폭격수 붐) - 2코 Golden Goblin / Ranger (황금 고블린 폭탄마)
+  u2_boom: {
+    modelKey: 'Rogue',
+    scale: 0.95,
+    primaryColor: 0x16a34a,
+    emissiveColor: 0xf97316,
+    attackAnim: '1H_Ranged_Shoot',
+    skillAnim: '2H_Ranged_Shoot',
+    stunAnim: 'Lie_Idle',
+    aura: 'GOBLIN_GOLD',
+  },
+  // 33. 베인 (제국 석궁병 베인) - 2코 Holy Empire / Ranger (신성 제국 정예 은화살 석궁수)
+  u2_vayne: {
+    modelKey: 'Rogue',
+    scale: 1.10,
+    primaryColor: 0xe2e8f0,
+    emissiveColor: 0xfacc15,
+    attackAnim: '2H_Ranged_Shoot',
+    skillAnim: '1H_Ranged_Shoot',
+    stunAnim: 'Lie_Idle',
+    aura: 'HOLY_GOLD',
+  },
+  // 34. 파이어 (화염 비늘 전사 파이어) - 2코 Dragonkin / Berserker (용린 화염 버서커 전사)
+  u2_pyre: {
+    modelKey: 'Barbarian',
+    scale: 1.25,
+    primaryColor: 0xd97706,
+    emissiveColor: 0xef4444,
+    attackAnim: '1H_Melee_Attack_Slice_Diagonal',
+    skillAnim: '2H_Melee_Attack_Spin',
+    stunAnim: 'Lie_Idle',
+    aura: 'FIRE_RED',
+  },
+  // 35. 말리스 (심연 흑마법사 말리스) - 2코 Abyssal Demon / Archmage (칠흑 보라 심연 사령술사)
+  u2_malice: {
+    modelKey: 'Skeleton_Mage',
+    scale: 1.18,
+    primaryColor: 0x3b0764,
+    emissiveColor: 0xa855f7,
+    attackAnim: 'Spellcast_Shoot',
+    skillAnim: 'Spellcast_Long',
+    deathAnim: 'Death_C_Skeletons',
+    stunAnim: 'Skeleton_Inactive_Standing_Pose',
+    aura: 'SHADOW_PURPLE',
+  },
+  // 36. 지크 (드래곤 나이트 지크) - 3코 Dragonkin / Vanguard (용린 판금 갑주 거대 용기사)
+  u3_sieg: {
+    modelKey: 'Knight',
+    scale: 1.28,
+    primaryColor: 0x991b1b,
+    emissiveColor: 0xf59e0b,
+    attackAnim: '1H_Melee_Attack_Slice_Horizontal',
+    skillAnim: '2H_Melee_Attack_Chop',
+    stunAnim: 'Lie_Idle',
+    aura: 'FIRE_RED',
+  },
+  // 37. 실피 (엘프 바람술사 실피) - 3코 Elven Sylvan / Archmage (돌풍과 폭풍을 부리는 요정 술사)
+  u3_sylphie: {
+    modelKey: 'Mage',
+    scale: 1.12,
+    primaryColor: 0x059669,
+    emissiveColor: 0x34d399,
+    attackAnim: 'Spellcast_Shoot',
+    skillAnim: 'Spellcast_Raise',
+    stunAnim: 'Lie_Idle',
+    aura: 'POISON_GREEN',
+  },
+  // 38. 블라드 (블러드 로드 블라드) - 3코 Abyssal Demon / Arcane Tower (선혈 흡혈 군주 뱀파이어)
+  u3_vlad: {
+    modelKey: 'Rogue_Hooded',
+    scale: 1.20,
+    primaryColor: 0x450a0a,
+    emissiveColor: 0xb91c1c,
+    attackAnim: 'Dualwield_Melee_Attack_Stab',
+    skillAnim: 'Spellcast_Long',
+    stunAnim: 'Lie_Idle',
+    aura: 'FIRE_RED',
+  },
+  // 39. 드레이크 (적염의 용기병 드레이크) - 3코 Dragonkin / Berserker / Vanguard (적염의 맹렬한 용기병)
+  u3_drake: {
+    modelKey: 'Barbarian',
+    scale: 1.26,
+    primaryColor: 0xb45309,
+    emissiveColor: 0xf97316,
+    attackAnim: '1H_Melee_Attack_Chop',
+    skillAnim: '2H_Melee_Attack_Spin',
+    stunAnim: 'Lie_Idle',
+    aura: 'FIRE_RED',
+  },
+  // 40. 레오나 (태양의 성기사 레오나) - 3코 Holy Empire / Vanguard / Paladin (광채의 태양 방패 여기사)
+  u3_leona: {
+    modelKey: 'Knight',
+    scale: 1.22,
+    primaryColor: 0xfacc15,
+    emissiveColor: 0xfef08a,
+    attackAnim: '1H_Melee_Attack_Slice_Horizontal',
+    skillAnim: 'Spellcast_Raise',
+    stunAnim: 'Lie_Idle',
+    aura: 'HOLY_GOLD',
+  },
 };
 
 export interface RenderState3D {
