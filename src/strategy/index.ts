@@ -7,3 +7,4 @@ export * from './CompAnalyzer';
 export * from './PivotPlanner';
 export * from './ContestLedger';
 export * from './EconomyPlanner';
+export * from './ItemBoardPlanner';

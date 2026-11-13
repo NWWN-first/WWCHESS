@@ -10,6 +10,8 @@ import {
   AUGMENT_DEFINITIONS,
   ITEM_DEFINITIONS,
   TraitId,
+  getUnitRecommendedItems,
+  CompletedItemId,
 } from '../src/GameData';
 import { Participant } from '../src/Participant';
 import { SynergyEngine } from '../src/SynergyEngine';
@@ -188,6 +190,24 @@ const economyStats = {
   targetLevelSum: 0,
   forceBenchPressure: 0,
   sellsSum: 0,
+};
+
+/** Stage5 ItemBoardPlanner KPI */
+const itemBoardStats = {
+  samples: 0,
+  byStance: {} as Record<string, number>,
+  slamAggSum: 0,
+  holdForBis: 0,
+  slamCount: 0,
+  bisHit: 0,
+  equipAttempts: 0,
+  /** 전투 진입 시 보드에 빈 아이템 슬롯 있는데 벤치에 완성템이 남은 경우 */
+  idleCompletedAtCombat: 0,
+  combatSamples: 0,
+  /** 캐리 유닛에 장착된 완성템 중 BiS 비율 */
+  carryItemSlots: 0,
+  carryBisItems: 0,
+  openItemSlotsWithIdleComponents: 0,
 };
 
 /** Stage1 CompAnalyzer 관측 (실행 전 추천 분포) */
@@ -515,6 +535,14 @@ function runOneGame(): void {
         if (ep.forceBenchPressure) economyStats.forceBenchPressure++;
         economyStats.sellsSum += brain.economySellsThisRound ?? 0;
       }
+      const ib = brain.lastItemBoardPlan;
+      if (ib) {
+        itemBoardStats.samples++;
+        itemBoardStats.byStance[ib.positionStance] =
+          (itemBoardStats.byStance[ib.positionStance] ?? 0) + 1;
+        itemBoardStats.slamAggSum += ib.slamAggressiveness;
+        if (ib.holdForBis) itemBoardStats.holdForBis++;
+      }
     }
 
     for (const p of alive()) {
@@ -525,6 +553,41 @@ function runOneGame(): void {
         if (p.gold >= 20) flaws.benchFullAndGold20++;
       }
       if (p.gold >= 50) flaws.goldHoardOver50++;
+
+      // Stage5: 아이템 유휴 / 캐리 BiS
+      if (!p.isAI) continue;
+      itemBoardStats.combatSamples++;
+      const brain = brainOf(p);
+      let openSlots = 0;
+      const carryId = brain?.lastItemBoardPlan?.primaryCarryUnitId ?? null;
+      for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+        for (let c = 0; c < Participant.BOARD_COLS; c++) {
+          const u = p.board[r][c];
+          if (!u) continue;
+          openSlots += Math.max(0, 3 - u.items.length);
+          if (carryId && u.unitId === carryId) {
+            const bis = new Set(getUnitRecommendedItems(u.unitId));
+            for (const it of u.items) {
+              const def = ITEM_DEFINITIONS[it];
+              if (!def?.isCompleted) continue;
+              itemBoardStats.carryItemSlots++;
+              if (bis.has(it as CompletedItemId)) itemBoardStats.carryBisItems++;
+            }
+          }
+        }
+      }
+      const idleCompleted = p.itemBench.filter(
+        (id) => ITEM_DEFINITIONS[id]?.isCompleted
+      ).length;
+      const idleComponents = p.itemBench.filter(
+        (id) => ITEM_DEFINITIONS[id] && !ITEM_DEFINITIONS[id].isCompleted
+      ).length;
+      if (openSlots > 0 && idleCompleted > 0) {
+        itemBoardStats.idleCompletedAtCombat++;
+      }
+      if (openSlots > 0 && idleComponents >= 2) {
+        itemBoardStats.openItemSlotsWithIdleComponents++;
+      }
     }
 
     try {
@@ -766,6 +829,9 @@ function runOneGame(): void {
         denyStats.denyBuysTotal += brain.denyBuyCount ?? 0;
         if ((brain.denyBuyCount ?? 0) > 0) denyStats.botsWithDenyBuy++;
         denyStats.denyHoldUnitsAtEnd += brain.deniedUnitInstanceIds?.size ?? 0;
+        itemBoardStats.slamCount += brain.itemSlamCount ?? 0;
+        itemBoardStats.bisHit += brain.itemBisHitCount ?? 0;
+        itemBoardStats.equipAttempts += brain.itemEquipAttempts ?? 0;
       }
     }
   }
@@ -1112,6 +1178,38 @@ if (economyStats.samples === 0) {
   );
   console.log(
     `  벤치압박 활성: ${pct(economyStats.forceBenchPressure, n)} | 라운드당 평균 벤치매각 ${(economyStats.sellsSum / n).toFixed(2)}기`
+  );
+}
+
+console.log('\n[4-E] ItemBoardPlanner KPI (Stage5)');
+if (itemBoardStats.samples === 0) {
+  console.log('  표본 없음');
+} else {
+  const n = itemBoardStats.samples;
+  const stanceParts = Object.entries(itemBoardStats.byStance)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${k} ${v} (${pct(v, n)})`)
+    .join(' | ');
+  console.log(`  샘플 ${n} | stance: ${stanceParts}`);
+  console.log(
+    `  평균 슬램공격성 ${(itemBoardStats.slamAggSum / n).toFixed(2)} | BiS홀드 ${pct(itemBoardStats.holdForBis, n)}`
+  );
+}
+if (itemBoardStats.combatSamples > 0) {
+  console.log(
+    `  전투진입 완성템 유휴(빈슬롯+벤치완성): ${pct(itemBoardStats.idleCompletedAtCombat, itemBoardStats.combatSamples)} | 재료2+유휴: ${pct(itemBoardStats.openItemSlotsWithIdleComponents, itemBoardStats.combatSamples)}`
+  );
+}
+if (itemBoardStats.carryItemSlots > 0) {
+  console.log(
+    `  캐리 장착완성 중 BiS: ${itemBoardStats.carryBisItems}/${itemBoardStats.carryItemSlots} (${pct(itemBoardStats.carryBisItems, itemBoardStats.carryItemSlots)})`
+  );
+} else {
+  console.log('  캐리 BiS: 표본 없음');
+}
+if (itemBoardStats.equipAttempts > 0) {
+  console.log(
+    `  슬램시도 대비 BiS적중(텔레메트리): ${itemBoardStats.bisHit}/${itemBoardStats.slamCount || itemBoardStats.equipAttempts} (슬램 ${itemBoardStats.slamCount}, 시도 ${itemBoardStats.equipAttempts})`
   );
 }
 

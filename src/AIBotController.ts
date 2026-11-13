@@ -26,13 +26,17 @@ import {
   applyShopOpportunityCost,
   buildContestLedger,
   buildEconomyPlan,
+  buildItemBoardPlan,
   buildPivotPlan,
   defaultRuleBasedPlanner,
   EconomyPlan,
   EconomyTempo,
+  ItemBoardPlan,
+  itemPlanPriorityBonus,
   isDynamicStrategyExperimentEnabled,
   ObservableStateSummary,
   selectDenyTargets,
+  shouldDeferNonBisCraft,
   StrategyChangeReason,
   validateStrategicPlan,
 } from './strategy';
@@ -113,6 +117,19 @@ export interface BotBrainState {
   economyMaxSellsThisRound: number;
   economySellsThisRound: number;
   economyForceBenchPressure: boolean;
+  /** Stage5: 아이템·배치 통합 계획 스냅 */
+  lastItemBoardPlan?: {
+    primaryCarryUnitId: string | null;
+    primaryTankUnitId: string | null;
+    positionStance: string;
+    slamAggressiveness: number;
+    holdForBis: boolean;
+    reason: string;
+    preferredItemCount: number;
+  };
+  itemSlamCount: number;
+  itemBisHitCount: number;
+  itemEquipAttempts: number;
   isRolldownActive: boolean;
   nextActionDelayMs: number;
   rerollsExecutedThisRound: number;
@@ -392,6 +409,9 @@ export class AIBotController {
       economyMaxSellsThisRound: 1,
       economySellsThisRound: 0,
       economyForceBenchPressure: false,
+      itemSlamCount: 0,
+      itemBisHitCount: 0,
+      itemEquipAttempts: 0,
       isRolldownActive: false,
       nextActionDelayMs: 900,
       rerollsExecutedThisRound: 0,
@@ -2279,6 +2299,7 @@ export class AIBotController {
       bot.goblinVaultStacks < 55;
 
     // 2. 보드에 배치할 정예 기물(최대 bot.level기) 선정 (중복 unitId보다는 고유 기물 우선)
+    // Stage5: 활성 컴프 캐리/탱 보드 우선
     const scoredUnits = allUnits.map((unit) => {
       let power =
         unit.starLevel * 38 +
@@ -2286,6 +2307,8 @@ export class AIBotController {
         unit.items.length * 15;
       if (unit.traits.includes(brain.targetTrait)) power += 24;
       if (unit.traits.includes(brain.secondaryTrait)) power += 12;
+      if (brain.buyPriorityUnitIds.has(unit.unitId)) power += 18;
+      if (brain.keepUnitIds.has(unit.unitId)) power += 12;
       if (
         brain.persona === 'GOBLIN_GAMBLER' &&
         unit.traits.includes('GOLDEN_GOBLIN')
@@ -2327,30 +2350,46 @@ export class AIBotController {
       deployedUnits.push(remainingForBench.shift()!);
     }
 
-    // 3. 플레이어 주력 캐리 열 스캔 (soft skill gate — 저티어도 가끔, 고티어도 가끔 놓침)
-    let playerCarryCol = 3;
-    if (humanPlayer && this.softSkillGate(aiParams, 0.7)) {
-      let highestCarryScore = -1;
-      for (let r = 0; r < Participant.BOARD_ROWS; r++) {
-        for (let c = 0; c < Participant.BOARD_COLS; c++) {
-          const pu = humanPlayer.board[r][c];
-          if (!pu) continue;
-          const carryScore =
-            pu.items.length * 40 + pu.starLevel * 25 + pu.cost * 12 + pu.atk;
-          if (carryScore > highestCarryScore) {
-            highestCarryScore = carryScore;
-            playerCarryCol = c;
-          }
-        }
-      }
-      // Soft noise: 캐리 열을 ±1 잘못 읽기
-      if (this.softShouldSkip(aiParams, 0.22)) {
-        playerCarryCol = Math.max(
-          0,
-          Math.min(6, playerCarryCol + (Math.random() < 0.5 ? -1 : 1))
-        );
-      }
-    }
+    // 3. Stage5 ItemBoardPlanner — 위협 열·캐리/탱·배치 stance
+    const threatCol = this.findThreatCarryCol(
+      allParticipantsList,
+      bot,
+      aiParams,
+      humanPlayer
+    );
+    const stageNum = parseInt(
+      (brain.currentRoundLabel ?? '1-1').split('-')[0] || '1',
+      10
+    );
+    const itemU =
+      brain.lastNeuralResult?.urgencies?.item ??
+      brain.lastNeuralResult?.itemUrgency ??
+      0;
+    const itemPlan = buildItemBoardPlan({
+      bot,
+      deployedUnits,
+      activeCompId: brain.activeCompId,
+      stage: stageNum,
+      scout: {
+        opponentHighHpCount: scouting.opponentHighHpCount,
+        opponentHealShieldTraits: scouting.opponentHealShieldTraits,
+        opponentVanguardCount: scouting.opponentVanguardCount,
+        opponentMagicCount: scouting.opponentMagicCount,
+        threatCol,
+      },
+      itemUrgency: itemU,
+      macroAction: brain.lastNeuralResult?.macroAction ?? null,
+      economyTempo: brain.lastEconomyPlan?.tempo ?? null,
+    });
+    brain.lastItemBoardPlan = {
+      primaryCarryUnitId: itemPlan.primaryCarryUnitId,
+      primaryTankUnitId: itemPlan.primaryTankUnitId,
+      positionStance: itemPlan.positionStance,
+      slamAggressiveness: itemPlan.slamAggressiveness,
+      holdForBis: itemPlan.holdForBis,
+      reason: itemPlan.reason,
+      preferredItemCount: itemPlan.preferredCompletedItems.length,
+    };
 
     // 4. 역할군 분류: 전열 탱커/근접(Frontline), 암살자(Assassin), 후열 원거리 딜러(Backline)
     const frontlineUnits: UnitInstance[] = [];
@@ -2372,7 +2411,7 @@ export class AIBotController {
       }
     }
 
-    // 고티어 AI: CC 탱커(잔느, 엔트, 지크, 아서, 골드투스)를 플레이어 주력 캐리 맞은편 열(row 0, playerCarryCol)에 최우선 배치
+    // CC 탱 + 계획상 primary tank 우선
     const ccTankIds = new Set([
       'u2_jeanne',
       'u2_ent',
@@ -2381,22 +2420,27 @@ export class AIBotController {
       'u5_goldtooth',
     ]);
     frontlineUnits.sort((a, b) => {
-      const aCC = ccTankIds.has(a.unitId) ? 1 : 0;
-      const bCC = ccTankIds.has(b.unitId) ? 1 : 0;
-      if (aCC !== bCC) return bCC - aCC;
+      const aPri =
+        (a.unitId === itemPlan.primaryTankUnitId ? 2 : 0) +
+        (ccTankIds.has(a.unitId) ? 1 : 0);
+      const bPri =
+        (b.unitId === itemPlan.primaryTankUnitId ? 2 : 0) +
+        (ccTankIds.has(b.unitId) ? 1 : 0);
+      if (aPri !== bPri) return bPri - aPri;
       return b.maxHp - a.maxHp;
     });
 
-    const frontCols = [
-      playerCarryCol,
-      3,
-      2,
-      4,
-      1,
-      5,
-      0,
-      6,
-    ].filter((col, idx, arr) => arr.indexOf(col) === idx);
+    // Soft noise: 열 순서를 ±1 흔들기
+    let frontCols = [...itemPlan.frontColOrder];
+    let backCols = [...itemPlan.backColOrder];
+    let assassinCols = [...itemPlan.assassinColOrder];
+    if (this.softShouldSkip(aiParams, 0.18)) {
+      const jitter = Math.random() < 0.5 ? -1 : 1;
+      frontCols = frontCols.map((c) =>
+        Math.max(0, Math.min(6, c + jitter))
+      );
+      frontCols = frontCols.filter((c, i, a) => a.indexOf(c) === i);
+    }
 
     for (const tank of frontlineUnits) {
       let placed = false;
@@ -2412,8 +2456,23 @@ export class AIBotController {
       }
     }
 
-    // 후열 원거리 딜러(순찰자/대마법사): 맨 뒷열(3행) 양 구석(col 0, 6, 1, 5...)부터 안전하게 배치
-    const backCols = [0, 6, 1, 5, 2, 4, 3];
+    // 캐리는 후열 우선 배치 순서에서 앞으로
+    backlineUnits.sort((a, b) => {
+      const aPri =
+        a.unitId === itemPlan.primaryCarryUnitId
+          ? 2
+          : a.unitId === itemPlan.secondaryCarryUnitId
+            ? 1
+            : 0;
+      const bPri =
+        b.unitId === itemPlan.primaryCarryUnitId
+          ? 2
+          : b.unitId === itemPlan.secondaryCarryUnitId
+            ? 1
+            : 0;
+      return bPri - aPri;
+    });
+
     for (const ranged of backlineUnits) {
       let placed = false;
       for (const row of [3, 2, 1]) {
@@ -2427,19 +2486,6 @@ export class AIBotController {
         if (placed) break;
       }
     }
-
-    // 그림자 암살자: 적 주력 딜러 열(playerCarryCol)로 도약할 수 있도록 해당 열 우선 배치
-    const assassinCols = [
-      playerCarryCol,
-      6 - playerCarryCol,
-      0,
-      6,
-      1,
-      5,
-      2,
-      4,
-      3,
-    ].filter((col, idx, arr) => col >= 0 && col < 7 && arr.indexOf(col) === idx);
 
     for (const assassin of assassinUnits) {
       let placed = false;
@@ -2484,8 +2530,53 @@ export class AIBotController {
       brain,
       deployedUnits,
       aiParams,
-      scouting
+      scouting,
+      itemPlan
     );
+  }
+
+  /** Stage5: 상대(또는 전 테이블)에서 가장 위협적인 캐리 열 */
+  private findThreatCarryCol(
+    allParticipants: Participant[],
+    self: Participant,
+    aiParams: AISkillParameters,
+    humanPlayer: Participant | null
+  ): number {
+    let threatCol = 3;
+    if (!this.softSkillGate(aiParams, 0.55)) return threatCol;
+
+    let highest = -1;
+    const scan = (p: Participant) => {
+      for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+        for (let c = 0; c < Participant.BOARD_COLS; c++) {
+          const pu = p.board[r][c];
+          if (!pu) continue;
+          const score =
+            pu.items.length * 40 + pu.starLevel * 25 + pu.cost * 12 + pu.atk;
+          if (score > highest) {
+            highest = score;
+            threatCol = c;
+          }
+        }
+      }
+    };
+
+    if (humanPlayer && !humanPlayer.isEliminated) {
+      scan(humanPlayer);
+    } else {
+      for (const p of allParticipants) {
+        if (p.id === self.id || p.isEliminated) continue;
+        scan(p);
+      }
+    }
+
+    if (this.softShouldSkip(aiParams, 0.22)) {
+      threatCol = Math.max(
+        0,
+        Math.min(6, threatCol + (Math.random() < 0.5 ? -1 : 1))
+      );
+    }
+    return threatCol;
   }
 
   /**
@@ -2493,11 +2584,13 @@ export class AIBotController {
    * - 역할군 적합도 (ITEM_ROLE_AFFINITY)
    * - 상대방 스카우팅 메타 카운터 (거학, 모렐로, 덤불조끼 등)
    * - 유닛의 성급 (3성 / 2성) 및 캐리 비중
+   * - Stage5 ItemBoardPlanner BiS/캐리 우선
    */
   public evaluateCompletedItemForUnit(
     itemId: CompletedItemId,
     unit: UnitInstance,
-    scouting?: ScoutingContext
+    scouting?: ScoutingContext,
+    itemPlan?: ItemBoardPlan | null
   ): number {
     const role = getUnitRole(unit.unitId);
     const affinity = ITEM_ROLE_AFFINITY[itemId];
@@ -2523,6 +2616,13 @@ export class AIBotController {
     if (unit.starLevel === 3) score += 35;
     else if (unit.starLevel === 2) score += 15;
 
+    if (itemPlan) {
+      score += itemPlanPriorityBonus(itemPlan, itemId, unit);
+    } else {
+      const bis = getUnitRecommendedItems(unit.unitId);
+      if (bis.includes(itemId)) score += 18;
+    }
+
     return score;
   }
 
@@ -2538,12 +2638,16 @@ export class AIBotController {
     brain: BotBrainState,
     allBoardUnits: UnitInstance[],
     aiParams: AISkillParameters,
-    scouting?: ScoutingContext
+    scouting?: ScoutingContext,
+    itemPlan?: ItemBoardPlan | null
   ): void {
     if (bot.itemBench.length === 0 || allBoardUnits.length === 0) return;
 
-    // Soft noise: 아이템 슬램 자체를 한 템포 미룸
-    if (this.softShouldSkip(aiParams, 0.12)) return;
+    // Soft noise: 아이템 슬램 자체를 한 템포 미룸 (슬램 공격성 높으면 덜 미룸)
+    const skipBase = itemPlan ? 0.12 * (1 - itemPlan.slamAggressiveness * 0.7) : 0.12;
+    if (this.softShouldSkip(aiParams, skipBase)) return;
+
+    const slam = itemPlan?.slamAggressiveness ?? 0.35;
 
     // 1. 이미 itemBench에 있는 완성 아이템들을 먼저 최적 유닛에게 장착
     for (let i = bot.itemBench.length - 1; i >= 0; i--) {
@@ -2562,7 +2666,8 @@ export class AIBotController {
           this.evaluateCompletedItemForUnit(
             itemId as CompletedItemId,
             unit,
-            scouting
+            scouting,
+            itemPlan
           ) + this.softNoise(aiParams, 18);
         if (score > bestScore) {
           secondScore = bestScore;
@@ -2575,7 +2680,7 @@ export class AIBotController {
         }
       }
 
-      const equipThreshold = 35 + this.softNoise(aiParams, 12);
+      const equipThreshold = 35 - slam * 18 + this.softNoise(aiParams, 12);
       // Soft noise: 가끔 2등 유닛에게 슬램
       const target =
         secondUnit &&
@@ -2584,7 +2689,14 @@ export class AIBotController {
           ? secondUnit
           : bestUnit;
       if (target && bestScore >= equipThreshold) {
-        bot.equipItemToUnit(i, target.instanceId);
+        brain.itemEquipAttempts += 1;
+        if (bot.equipItemToUnit(i, target.instanceId)) {
+          brain.itemSlamCount += 1;
+          const bis = getUnitRecommendedItems(target.unitId);
+          if (bis.includes(itemId as CompletedItemId)) {
+            brain.itemBisHitCount += 1;
+          }
+        }
       }
     }
 
@@ -2592,7 +2704,7 @@ export class AIBotController {
     let canStillCraft = true;
     while (canStillCraft) {
       canStillCraft = false;
-      if (this.softShouldSkip(aiParams, 0.1)) break;
+      if (this.softShouldSkip(aiParams, 0.1 * (1 - slam * 0.5))) break;
 
       const baseIndices: number[] = [];
       for (let idx = 0; idx < bot.itemBench.length; idx++) {
@@ -2609,6 +2721,7 @@ export class AIBotController {
       let bestMatIdx1 = -1;
       let bestMatIdx2 = -1;
       let bestTargetUnit: UnitInstance | null = null;
+      let bestCraftedId: CompletedItemId | null = null;
 
       for (let a = 0; a < baseIndices.length; a++) {
         for (let b = a + 1; b < baseIndices.length; b++) {
@@ -2621,10 +2734,18 @@ export class AIBotController {
 
           for (const unit of allBoardUnits) {
             if (unit.items.length >= 3) continue;
+            if (
+              itemPlan &&
+              shouldDeferNonBisCraft(itemPlan, craftedId, unit)
+            ) {
+              continue;
+            }
+
             let score = this.evaluateCompletedItemForUnit(
               craftedId,
               unit,
-              scouting
+              scouting,
+              itemPlan
             );
 
             if (baseIndices.length >= 4) score += 30;
@@ -2649,15 +2770,17 @@ export class AIBotController {
               bestMatIdx1 = idxA;
               bestMatIdx2 = idxB;
               bestTargetUnit = unit;
+              bestCraftedId = craftedId;
             }
           }
         }
       }
 
-      // Soft noise: 합성 문턱 흔들기 (재료 많을수록 빨리, 저티어는 더 흔들림)
+      // Soft noise + Stage5 slamAggressiveness로 문턱 완화
       const baseThreshold =
         baseIndices.length >= 4 ? 40 : baseIndices.length >= 3 ? 55 : 68;
-      const threshold = baseThreshold + this.softNoise(aiParams, 14);
+      const threshold =
+        baseThreshold - slam * 22 + this.softNoise(aiParams, 14);
 
       if (
         bestTargetUnit &&
@@ -2667,13 +2790,33 @@ export class AIBotController {
       ) {
         const firstIdx = Math.max(bestMatIdx1, bestMatIdx2);
         const secondIdx = Math.min(bestMatIdx1, bestMatIdx2);
-        bot.equipItemToUnit(firstIdx, bestTargetUnit.instanceId);
-        bot.equipItemToUnit(secondIdx, bestTargetUnit.instanceId);
+        brain.itemEquipAttempts += 1;
+        const ok1 = bot.equipItemToUnit(firstIdx, bestTargetUnit.instanceId);
+        const ok2 = bot.equipItemToUnit(secondIdx, bestTargetUnit.instanceId);
+        if (ok1 || ok2) {
+          brain.itemSlamCount += 1;
+          if (
+            bestCraftedId &&
+            getUnitRecommendedItems(bestTargetUnit.unitId).includes(
+              bestCraftedId
+            )
+          ) {
+            brain.itemBisHitCount += 1;
+          }
+        }
         canStillCraft = true;
       }
     }
 
-    // 3. 남은 잉여 단일 재료 아이템들을 역할군에 맞게 분배
+    // 3. 남은 잉여 단일 재료 — 슬램 공격성 높거나 재료 과다일 때만
+    const leftoverBases = bot.itemBench.filter((id) => {
+      const d = ITEM_DEFINITIONS[id];
+      return d && !d.isCompleted;
+    }).length;
+    if (slam < 0.45 && leftoverBases < 3 && (bot.hp > 45 || leftoverBases < 2)) {
+      return;
+    }
+
     for (let i = bot.itemBench.length - 1; i >= 0; i--) {
       const itemId = bot.itemBench[i];
       const itemDef = ITEM_DEFINITIONS[itemId];
@@ -2699,18 +2842,26 @@ export class AIBotController {
           match = true;
         else if (role === 'BRUISER') match = true;
 
-        if (match) {
-          const power =
-            unit.starLevel * 30 + unit.cost * 10 + this.softNoise(aiParams, 10);
-          if (power > highestPower) {
-            highestPower = power;
-            bestUnit = unit;
-          }
+        // Stage5: 캐리/탱에게 재료 우선
+        let power =
+          unit.starLevel * 30 + unit.cost * 10 + this.softNoise(aiParams, 10);
+        if (itemPlan) {
+          if (unit.unitId === itemPlan.primaryCarryUnitId) power += 35;
+          else if (unit.unitId === itemPlan.secondaryCarryUnitId) power += 18;
+          else if (unit.unitId === itemPlan.primaryTankUnitId) power += 22;
+        }
+
+        if (match && power > highestPower) {
+          highestPower = power;
+          bestUnit = unit;
         }
       }
 
       if (bestUnit) {
-        bot.equipItemToUnit(i, bestUnit.instanceId);
+        brain.itemEquipAttempts += 1;
+        if (bot.equipItemToUnit(i, bestUnit.instanceId)) {
+          brain.itemSlamCount += 1;
+        }
       }
     }
   }
