@@ -894,6 +894,28 @@ export class ThreeJsGameRenderer {
     [];
   private bannerMeshes: THREE.Object3D[] = [];
 
+  /** 플레이어 지휘관 아바타 (전장 걸어다니며 전리품 줍기) */
+  private commanderGroup: THREE.Group | null = null;
+  private commanderPos = new THREE.Vector3(0, 0, 7.2);
+  private commanderTarget: THREE.Vector3 | null = null;
+  private commanderFacing = 0;
+  private readonly commanderMoveSpeed = 5.8;
+  private readonly _commanderGroundHit = new THREE.Vector3();
+  /** 상대 지휘관 (고정 단상) — 피니시 레이저 조준점 */
+  private awayCommanderGroup: THREE.Group | null = null;
+  private awayCommanderPos = new THREE.Vector3(0, 0, -7.2);
+  private activeFinisherFX: {
+    lifeMs: number;
+    maxLifeMs: number;
+    winnerSide: 'HOME' | 'AWAY';
+    damage: number;
+    impactTriggered: boolean;
+    beam: THREE.Mesh;
+    bolt: THREE.Mesh;
+    lastId: number;
+  } | null = null;
+  private lastTriggeredFinisherId3D: number = -1;
+
   // 활성 투사체 및 팝업 텍스트
   private activeProjectiles: Active3DProjectile[] = [];
   private activePopups: Active3DPopup[] = [];
@@ -980,9 +1002,381 @@ export class ThreeJsGameRenderer {
     this.buildMedievalStoneArena();
     this.buildMedievalStoneBench();
     this.buildColosseumSurroundingsAndTorches();
+    this.ensureCommanderAvatar();
 
     // 4. 외부 고품질 GLB 캐릭터 모델 비동기 로딩 시작
     this.loadGlbCharacterModels();
+  }
+
+  /** 홈 진영 앞쪽 지휘관 스폰 위치 */
+  private getCommanderHomeAnchor(): { x: number; z: number } {
+    const home = this.hexToWorldPos(7, 3);
+    return { x: home.x, z: home.z + 1.35 };
+  }
+
+  /** 적 진영 뒤쪽 지휘관 단상 위치 */
+  private getCommanderAwayAnchor(): { x: number; z: number } {
+    const away = this.hexToWorldPos(0, 3);
+    return { x: away.x, z: away.z - 1.35 };
+  }
+
+  private buildCommanderFigure(side: 'HOME' | 'AWAY'): THREE.Group {
+    const group = new THREE.Group();
+    const isHome = side === 'HOME';
+    const cloakMat = new THREE.MeshStandardMaterial({
+      color: isHome ? 0x1d4ed8 : 0xb91c1c,
+      roughness: 0.55,
+      metalness: 0.15,
+    });
+    const armorMat = new THREE.MeshStandardMaterial({
+      color: isHome ? 0xcbd5e1 : 0x94a3b8,
+      metalness: 0.65,
+      roughness: 0.3,
+    });
+    const goldMat = new THREE.MeshStandardMaterial({
+      color: 0xfbbf24,
+      metalness: 0.85,
+      roughness: 0.25,
+      emissive: 0xb45309,
+      emissiveIntensity: 0.25,
+    });
+    const skinMat = new THREE.MeshStandardMaterial({
+      color: 0xfcd34d,
+      roughness: 0.7,
+    });
+
+    const pad = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.55, 0.65, 0.12, 16),
+      new THREE.MeshStandardMaterial({
+        color: isHome ? 0x0e7490 : 0x991b1b,
+        transparent: true,
+        opacity: 0.55,
+        roughness: 0.6,
+      })
+    );
+    pad.position.y = 0.06;
+    group.add(pad);
+
+    const body = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.28, 0.55, 4, 8),
+      cloakMat
+    );
+    body.position.y = 0.72;
+    body.castShadow = true;
+    group.add(body);
+
+    const chest = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.35, 0.28),
+      armorMat
+    );
+    chest.position.y = 0.85;
+    chest.castShadow = true;
+    group.add(chest);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), skinMat);
+    head.position.y = 1.28;
+    head.castShadow = true;
+    group.add(head);
+
+    const helm = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.22, 0.16, 8),
+      armorMat
+    );
+    helm.position.y = 1.42;
+    group.add(helm);
+
+    const crest = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.28, 6), goldMat);
+    crest.position.y = 1.62;
+    group.add(crest);
+
+    const cape = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.55, 0.85),
+      cloakMat.clone()
+    );
+    (cape.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+    cape.position.set(0, 0.75, isHome ? 0.22 : -0.22);
+    cape.rotation.x = isHome ? 0.25 : -0.25;
+    group.add(cape);
+
+    return group;
+  }
+
+  /**
+   * 간단한 판타지 지휘관 메시 (망토 기사) — 전리품을 걸어가서 줍는 플레이어 대리인
+   */
+  private ensureCommanderAvatar(): void {
+    if (this.commanderGroup) return;
+
+    const group = this.buildCommanderFigure('HOME');
+    const anchor = this.getCommanderHomeAnchor();
+    this.commanderPos.set(anchor.x, 0, anchor.z);
+    group.position.copy(this.commanderPos);
+    this.commanderGroup = group;
+    this.scene.add(group);
+  }
+
+  private ensureAwayCommanderAvatar(): void {
+    if (this.awayCommanderGroup) return;
+    const group = this.buildCommanderFigure('AWAY');
+    const anchor = this.getCommanderAwayAnchor();
+    this.awayCommanderPos.set(anchor.x, 0, anchor.z);
+    group.position.copy(this.awayCommanderPos);
+    group.rotation.y = Math.PI;
+    this.awayCommanderGroup = group;
+    this.scene.add(group);
+  }
+
+  public setAwayCommanderVisible(visible: boolean): void {
+    if (visible) {
+      this.ensureAwayCommanderAvatar();
+    }
+    if (this.awayCommanderGroup) {
+      this.awayCommanderGroup.visible = visible;
+    }
+  }
+
+  /**
+   * 승리 지휘관 → 패배 지휘관으로 피니시 레이저 (실제 아바타 좌표 조준)
+   */
+  public triggerAvatarFinisherLaser(payload: {
+    id: number;
+    winnerSide: 'HOME' | 'AWAY';
+    damage: number;
+  } | null): void {
+    if (!payload) return;
+    if (payload.id === this.lastTriggeredFinisherId3D) return;
+    this.lastTriggeredFinisherId3D = payload.id;
+
+    this.ensureCommanderAvatar();
+    this.ensureAwayCommanderAvatar();
+    this.setAwayCommanderVisible(true);
+    this.clearFinisherFX();
+
+    const from =
+      payload.winnerSide === 'HOME'
+        ? this.commanderPos.clone()
+        : this.awayCommanderPos.clone();
+    const to =
+      payload.winnerSide === 'HOME'
+        ? this.awayCommanderPos.clone()
+        : this.commanderPos.clone();
+    from.y = 1.15;
+    to.y = 1.15;
+
+    const mid = from.clone().lerp(to, 0.5);
+    const dist = from.distanceTo(to);
+    const beamGeo = new THREE.CylinderGeometry(0.08, 0.08, Math.max(0.2, dist), 8);
+    const beamMat = new THREE.MeshStandardMaterial({
+      color: payload.winnerSide === 'HOME' ? 0x38bdf8 : 0xf43f5e,
+      emissive: payload.winnerSide === 'HOME' ? 0x22d3ee : 0xfb7185,
+      emissiveIntensity: 2.2,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const beam = new THREE.Mesh(beamGeo, beamMat);
+    beam.position.copy(mid);
+    beam.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      to.clone().sub(from).normalize()
+    );
+    beam.scale.set(1, 0.02, 1);
+    this.vfxGroup.add(beam);
+
+    const bolt = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 12, 12),
+      new THREE.MeshStandardMaterial({
+        color: 0xffea00,
+        emissive: 0xfbbf24,
+        emissiveIntensity: 2.5,
+      })
+    );
+    bolt.position.copy(from);
+    this.vfxGroup.add(bolt);
+
+    this.activeFinisherFX = {
+      lifeMs: 0,
+      maxLifeMs: 1050,
+      winnerSide: payload.winnerSide,
+      damage: payload.damage,
+      impactTriggered: false,
+      beam,
+      bolt,
+      lastId: payload.id,
+    };
+  }
+
+  private clearFinisherFX(): void {
+    if (!this.activeFinisherFX) return;
+    this.vfxGroup.remove(this.activeFinisherFX.beam);
+    this.vfxGroup.remove(this.activeFinisherFX.bolt);
+    this.activeFinisherFX.beam.geometry.dispose();
+    (this.activeFinisherFX.beam.material as THREE.Material).dispose();
+    this.activeFinisherFX.bolt.geometry.dispose();
+    (this.activeFinisherFX.bolt.material as THREE.Material).dispose();
+    this.activeFinisherFX = null;
+  }
+
+  private updateFinisherLaser(dtMs: number): void {
+    const fx = this.activeFinisherFX;
+    if (!fx) return;
+
+    fx.lifeMs += dtMs;
+    const from =
+      fx.winnerSide === 'HOME'
+        ? this.commanderPos.clone()
+        : this.awayCommanderPos.clone();
+    const to =
+      fx.winnerSide === 'HOME'
+        ? this.awayCommanderPos.clone()
+        : this.commanderPos.clone();
+    from.y = 1.15;
+    to.y = 1.15;
+
+    const prog = Math.min(1, fx.lifeMs / fx.maxLifeMs);
+    const beamReach = Math.min(1, prog / 0.38);
+    const cur = from.clone().lerp(to, beamReach);
+    fx.bolt.position.copy(cur);
+
+    const mid = from.clone().lerp(cur, 0.5);
+    const dist = Math.max(0.05, from.distanceTo(cur));
+    fx.beam.position.copy(mid);
+    fx.beam.scale.set(1, dist / Math.max(0.2, from.distanceTo(to)), 1);
+    fx.beam.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      cur.clone().sub(from).normalize()
+    );
+
+    const fade = prog > 0.72 ? 1 - (prog - 0.72) / 0.28 : 1;
+    (fx.beam.material as THREE.MeshStandardMaterial).opacity = Math.max(0, fade);
+
+    if (beamReach >= 1 && !fx.impactTriggered) {
+      fx.impactTriggered = true;
+      this.triggerImpactShake(9, 280);
+      // 명중 스파크
+      for (let i = 0; i < 18; i++) {
+        const spark = new THREE.Mesh(
+          new THREE.SphereGeometry(0.06, 6, 6),
+          new THREE.MeshStandardMaterial({
+            color: i % 2 === 0 ? 0xffea00 : fx.winnerSide === 'HOME' ? 0x38bdf8 : 0xf43f5e,
+            emissive: 0xffea00,
+            emissiveIntensity: 1.5,
+          })
+        );
+        spark.position.copy(to);
+        this.vfxGroup.add(spark);
+        const vel = new THREE.Vector3(
+          (Math.random() - 0.5) * 6,
+          2 + Math.random() * 4,
+          (Math.random() - 0.5) * 6
+        );
+        this.activeSparks.push({
+          mesh: spark,
+          vel,
+          lifeMs: 0,
+          maxLifeMs: 420 + Math.random() * 200,
+        });
+      }
+    }
+
+    if (fx.lifeMs >= fx.maxLifeMs) {
+      this.clearFinisherFX();
+    }
+  }
+
+  /** 화면 좌표 → 지면 월드 XZ (아바타 이동 목표) */
+  public screenPointToGroundWorld(
+    px: number,
+    py: number
+  ): { x: number; z: number } | null {
+    const w =
+      this.renderer.domElement.clientWidth ||
+      this.canvas.clientWidth ||
+      window.innerWidth ||
+      1;
+    const h =
+      this.renderer.domElement.clientHeight ||
+      this.canvas.clientHeight ||
+      window.innerHeight ||
+      1;
+    this.mouseVec.x = (px / w) * 2 - 1;
+    this.mouseVec.y = -(py / h) * 2 + 1;
+    this.raycaster.setFromCamera(this.mouseVec, this.camera);
+    if (this.raycaster.ray.intersectPlane(this.groundPlane, this._commanderGroundHit)) {
+      return {
+        x: this._commanderGroundHit.x,
+        z: this._commanderGroundHit.z,
+      };
+    }
+    return null;
+  }
+
+  /** 지휘관을 월드 좌표로 걷게 함 (전리품/전장 탭) */
+  public moveCommanderAvatarToWorld(x: number, z: number): void {
+    this.ensureCommanderAvatar();
+    const clampedX = Math.max(-14, Math.min(14, x));
+    const clampedZ = Math.max(-12, Math.min(this.benchZ + 0.5, z));
+    this.commanderTarget = new THREE.Vector3(clampedX, 0, clampedZ);
+  }
+
+  /** 화면 탭 위치로 지휘관 이동 */
+  public moveCommanderAvatarToScreen(px: number, py: number): boolean {
+    const ground = this.screenPointToGroundWorld(px, py);
+    if (!ground) return false;
+    this.moveCommanderAvatarToWorld(ground.x, ground.z);
+    return true;
+  }
+
+  public getCommanderWorldPos(): { x: number; y: number; z: number } {
+    this.ensureCommanderAvatar();
+    return {
+      x: this.commanderPos.x,
+      y: this.commanderPos.y,
+      z: this.commanderPos.z,
+    };
+  }
+
+  /** 헥스 위 전리품으로 지휘관 보행 */
+  public moveCommanderAvatarToHex(row: number, col: number): void {
+    const pos = this.hexToWorldPos(row, col);
+    this.moveCommanderAvatarToWorld(pos.x, pos.z);
+  }
+
+  private updateCommanderAvatar(dtMs: number): void {
+    if (!this.commanderGroup) return;
+
+    let walking = false;
+    if (this.commanderTarget) {
+      const dx = this.commanderTarget.x - this.commanderPos.x;
+      const dz = this.commanderTarget.z - this.commanderPos.z;
+      const dist = Math.hypot(dx, dz);
+      const step = (this.commanderMoveSpeed * dtMs) / 1000;
+      if (dist <= step || dist < 0.08) {
+        this.commanderPos.x = this.commanderTarget.x;
+        this.commanderPos.z = this.commanderTarget.z;
+        this.commanderTarget = null;
+      } else {
+        walking = true;
+        this.commanderPos.x += (dx / dist) * step;
+        this.commanderPos.z += (dz / dist) * step;
+        this.commanderFacing = Math.atan2(dx, dz);
+      }
+    }
+
+    const bob = walking
+      ? Math.sin(this.animClockMs * 0.028) * 0.08
+      : Math.sin(this.animClockMs * 0.006) * 0.03;
+    this.commanderGroup.position.set(
+      this.commanderPos.x,
+      this.commanderPos.y + bob,
+      this.commanderPos.z
+    );
+    // 이동 방향을 바라보되 부드럽게 회전
+    const desiredY = this.commanderFacing;
+    let cur = this.commanderGroup.rotation.y;
+    let delta = desiredY - cur;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    while (delta < -Math.PI) delta += Math.PI * 2;
+    this.commanderGroup.rotation.y = cur + delta * 0.18;
   }
 
   /**
@@ -2829,6 +3223,13 @@ export class ThreeJsGameRenderer {
       const b = this.bannerMeshes[i];
       b.rotation.z = Math.sin(this.animClockMs * 0.0035 + i * 1.2) * 0.08;
     }
+
+    // 2c. 지휘관 보행 + 피니시 레이저
+    this.updateCommanderAvatar(dtMs);
+    this.updateFinisherLaser(dtMs);
+    this.setAwayCommanderVisible(
+      !state.isCreepMatch && (state.inCombat || this.activeFinisherFX !== null)
+    );
 
     // 3. 호버링/드래그 타일 물리적 엘리베이션 리프트 (Elevation Lift) & 황금 룬 반응
     for (const [key, mesh] of this.hexTileMeshes) {

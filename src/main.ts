@@ -634,12 +634,9 @@ class FantasyAutoBattlerApp {
     const px = pt.x;
     const py = pt.y;
 
-    // 상점 열린 상태에서 필드(캔버스) 아무 곳이나 탭하면 상점 접기
-    if (this.isShopCurrentlyExpanded()) {
-      this.isShopManuallyCollapsed = true;
-      this.pixelRenderer.recomputeLayoutMetrics(false);
-      this.renderShopAndControls();
-    }
+    // 상점 접기는 빈 필드 탭(pointerup)에서만 수행.
+    // pointerdown에서 접으면 유닛 드래그 시작과 동시에 판매 드롭존(#bottom-shop-bar)이
+    // 사라져 판매가 불가능해진다.
 
     const viewed = this.game.getViewedParticipant();
     const hit3D = this.is3DViewMode
@@ -882,6 +879,12 @@ class FantasyAutoBattlerApp {
         soundFX.playPickup();
         if (this.dragPayload.kind === 'UNIT') {
           this.selectedUnitInstanceId = this.dragPayload.instanceId;
+          // 판매 드롭존이 상점 바 안에 있으므로, 접혀 있으면 잠시 펼쳐 판매 가능하게 함
+          if (!this.isShopCurrentlyExpanded()) {
+            this.isShopManuallyCollapsed = false;
+            this.pixelRenderer.recomputeLayoutMetrics(true);
+            this.renderShopAndControls();
+          }
           this.showSellDropzoneOverlay(this.dragPayload.unit);
         }
         if (!this.is3DViewMode || this.dragPayload.kind !== 'UNIT') {
@@ -949,8 +952,20 @@ class FantasyAutoBattlerApp {
 
     // 드래그가 아니었고 기물을 탭한 것도 아니라면 빈 땅 탭 이동 실행!
     if (!wasDragging && avatarTarget && this.game.viewedParticipantId === this.game.player.id) {
+      // 빈 필드 탭: 상점 접기 (유닛/아이템 드래그와 분리)
+      if (this.isShopCurrentlyExpanded()) {
+        this.isShopManuallyCollapsed = true;
+        this.pixelRenderer.recomputeLayoutMetrics(false);
+        this.renderShopAndControls();
+      }
       this.pixelRenderer.movePlayerAvatarTo(avatarTarget.px, avatarTarget.py);
       this.pixelRenderer.spawnPixelSparks(avatarTarget.px, avatarTarget.py, '#38bdf8', 12);
+      if (this.is3DViewMode) {
+        this.threeRenderer.moveCommanderAvatarToScreen(
+          avatarTarget.px,
+          avatarTarget.py
+        );
+      }
       return;
     }
 
@@ -1405,6 +1420,7 @@ class FantasyAutoBattlerApp {
       if (this.lastTriggeredLaserKey !== laserKey) {
         this.lastTriggeredLaserKey = laserKey;
         this.pixelRenderer.triggerAvatarFinisherLaser(this.game.activeFinisherLaser);
+        this.threeRenderer.triggerAvatarFinisherLaser(this.game.activeFinisherLaser);
       }
     }
 
@@ -1831,11 +1847,14 @@ class FantasyAutoBattlerApp {
         const orbCanvasY = Math.round(
           this.pixelRenderer.viewportHeight * pct.y
         );
-        // 3D에서는 아바타 보행이 멈춤 → 탭 즉시 오픈. 2D는 달려가서 획득.
+        // 탭하면 즉시 오픈하지 않고, 아바타가 상자로 걸어가 근접 획득
+        this.pixelRenderer.movePlayerAvatarTo(orbCanvasX, orbCanvasY);
         if (this.is3DViewMode) {
-          this.openLootOrbAt(orb.id, orbCanvasX, orbCanvasY);
-        } else {
-          this.pixelRenderer.movePlayerAvatarTo(orbCanvasX, orbCanvasY);
+          if (orb.hexRow !== undefined && orb.hexCol !== undefined) {
+            this.threeRenderer.moveCommanderAvatarToHex(orb.hexRow, orb.hexCol);
+          } else {
+            this.threeRenderer.moveCommanderAvatarToScreen(orbCanvasX, orbCanvasY);
+          }
         }
       });
 
@@ -2657,20 +2676,41 @@ class FantasyAutoBattlerApp {
       });
     }
 
-      // 내 아바타가 전장을 이동하다가 ? / ! 미스터리 상자와 접촉(거리 36px 이내)하면 상자 폭발 & 획득!
+      // 내 아바타가 전장을 이동하다가 ? / ! 미스터리 상자와 접촉하면 상자 폭발 & 획득
       if (
         viewed.id === this.game.player.id &&
         this.game.playerLootOrbs.length > 0
       ) {
-        const avatarPos = this.pixelRenderer.getPlayerAvatarCurrentPos();
-        for (const orb of [...this.game.playerLootOrbs]) {
-          const pct = this.getLootOrbScreenPercent(orb);
-          const orbX = Math.round(this.pixelRenderer.viewportWidth * pct.x);
-          const orbY = Math.round(this.pixelRenderer.viewportHeight * pct.y);
-          const dist = Math.hypot(avatarPos.x - orbX, avatarPos.y - orbY);
-
-          if (dist <= 48) {
-            this.openLootOrbAt(orb.id, orbX, orbY);
+        if (this.is3DViewMode) {
+          const cmd = this.threeRenderer.getCommanderWorldPos();
+          for (const orb of [...this.game.playerLootOrbs]) {
+            let ox: number;
+            let oz: number;
+            if (orb.hexRow !== undefined && orb.hexCol !== undefined) {
+              const w = this.threeRenderer.hexToWorldPos(orb.hexRow, orb.hexCol);
+              ox = w.x;
+              oz = w.z;
+            } else {
+              // 정규화 폴백 → 보드 대략 매핑
+              ox = (orb.x - 0.5) * 14;
+              oz = (orb.y - 0.5) * 12;
+            }
+            if (Math.hypot(cmd.x - ox, cmd.z - oz) <= 1.55) {
+              const pct = this.getLootOrbScreenPercent(orb);
+              const orbX = Math.round(this.pixelRenderer.viewportWidth * pct.x);
+              const orbY = Math.round(this.pixelRenderer.viewportHeight * pct.y);
+              this.openLootOrbAt(orb.id, orbX, orbY);
+            }
+          }
+        } else {
+          const avatarPos = this.pixelRenderer.getPlayerAvatarCurrentPos();
+          for (const orb of [...this.game.playerLootOrbs]) {
+            const pct = this.getLootOrbScreenPercent(orb);
+            const orbX = Math.round(this.pixelRenderer.viewportWidth * pct.x);
+            const orbY = Math.round(this.pixelRenderer.viewportHeight * pct.y);
+            if (Math.hypot(avatarPos.x - orbX, avatarPos.y - orbY) <= 48) {
+              this.openLootOrbAt(orb.id, orbX, orbY);
+            }
           }
         }
       }

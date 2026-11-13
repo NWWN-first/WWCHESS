@@ -3733,7 +3733,10 @@ export class PixelGameRenderer {
       return;
     }
 
-    const homePos = this.getHomeCommanderAnchor();
+    // 홈 지휘관은 걸어다닐 수 있으므로 실제 아바타 좌표를 조준/발사 원점으로 사용
+    const homePos = this.playerAvatarPos
+      ? { ...this.playerAvatarPos }
+      : this.getHomeCommanderAnchor();
     const awayPos = this.getAwayCommanderAnchor();
 
     const fromPos = fx.winnerSide === 'HOME' ? homePos : awayPos;

@@ -790,6 +790,54 @@ export class GameLoopManager {
   // ==========================================================================
 
   /**
+   * 대기석 왼쪽(index 0→) 기물을 보드 중앙부터 가까운 빈칸에 자동 배치한다.
+   * 라운드 시작 시 인구수(레벨/증강) 한도까지 채운다.
+   */
+  private autoFillBoardFromBenchLeftToCenter(p: Participant): void {
+    const maxSlots = p.getMaxTeamSlots();
+    const centerR = (Participant.BOARD_ROWS - 1) / 2;
+    const centerC = (Participant.BOARD_COLS - 1) / 2;
+
+    const emptySlots: { row: number; col: number; dist: number }[] = [];
+    for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+      for (let c = 0; c < Participant.BOARD_COLS; c++) {
+        if (p.board[r][c] === null) {
+          emptySlots.push({
+            row: r,
+            col: c,
+            dist: Math.hypot(r - centerR, c - centerC),
+          });
+        }
+      }
+    }
+    emptySlots.sort(
+      (a, b) => a.dist - b.dist || a.row - b.row || a.col - b.col
+    );
+
+    let slotIdx = 0;
+    while (p.getBoardUnitCount() < maxSlots && slotIdx < emptySlots.length) {
+      const benchIdx = p.bench.findIndex((u) => u !== null);
+      if (benchIdx === -1) break;
+
+      // 이미 채워진 칸은 건너뛰고 다음 중앙 우선 빈칸 사용
+      while (
+        slotIdx < emptySlots.length &&
+        p.board[emptySlots[slotIdx].row][emptySlots[slotIdx].col] !== null
+      ) {
+        slotIdx++;
+      }
+      if (slotIdx >= emptySlots.length) break;
+
+      const slot = emptySlots[slotIdx++];
+      const ok = p.moveUnit(
+        { area: 'BENCH', index: benchIdx },
+        { area: 'BOARD', row: slot.row, col: slot.col }
+      );
+      if (!ok) break;
+    }
+  }
+
+  /**
    * 정비 카운트다운 종료(0초) 또는 유저의 [즉시 전투] 단축 버튼 클릭 시 전투 페이즈로 진입한다.
    */
   public startCombatPhase(): void {
@@ -826,24 +874,8 @@ export class GameLoopManager {
       }
     }
 
-    // 전투 돌입 시 플레이어 보드에 빈자리가 있고 대기석에 기물이 있으면 자동 충원 보조
-    while (this.player.getBoardUnitCount() < this.player.level) {
-      const benchIdx = this.player.bench.findIndex((u) => u !== null);
-      if (benchIdx === -1) break;
-      let placed = false;
-      for (let r = 0; r < Participant.BOARD_ROWS && !placed; r++) {
-        for (let c = 0; c < Participant.BOARD_COLS && !placed; c++) {
-          if (this.player.board[r][c] === null) {
-            this.player.moveUnit(
-              { area: 'BENCH', index: benchIdx },
-              { area: 'BOARD', row: r, col: c }
-            );
-            placed = true;
-          }
-        }
-      }
-      if (!placed) break;
-    }
+    // 전투 돌입 직전: 빈 칸이 있으면 대기석 맨 왼쪽부터 → 필드 중앙 우선 자동 배치
+    this.autoFillBoardFromBenchLeftToCenter(this.player);
 
     this.phase = 'COMBAT_PHASE';
     this.viewedParticipantId = this.player.id;
@@ -1170,7 +1202,7 @@ export class GameLoopManager {
       if (mysteryBoxes.length > 0) {
         this.playerLootOrbs.push(...mysteryBoxes);
         this.pushBannerNotification(
-          `🎁 [${roundLabel} 크립 처치!] 전장에 ?/! 미스터리 보물상자 ${mysteryBoxes.length}개가 드랍되었습니다! 터치하여 오픈하세요!`
+          `🎁 [${roundLabel} 크립 처치!] 전장에 ?/! 미스터리 보물상자 ${mysteryBoxes.length}개가 드랍되었습니다! 지휘관을 걸어가 줍으세요!`
         );
       }
     }
@@ -1284,7 +1316,7 @@ export class GameLoopManager {
           if (!participant.isAI) {
             this.playerLootOrbs.push(...cashoutOrbs);
             this.pushBannerNotification(
-              `💥🪙 [황금 고블린 금고 대폭발!] ! 대박 미스터리 상자 ${cashoutOrbs.length}개가 보드에 쏟아졌습니다! 터치하여 오픈하세요!`
+              `💥🪙 [황금 고블린 금고 대폭발!] ! 대박 미스터리 상자 ${cashoutOrbs.length}개가 보드에 쏟아졌습니다! 지휘관을 걸어가 줍으세요!`
             );
           } else {
             // AI 봇은 캐시아웃 구슬을 즉시 오픈하여 보상 획득
