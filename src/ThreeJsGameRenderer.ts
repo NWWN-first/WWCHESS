@@ -859,6 +859,9 @@ export class ThreeJsGameRenderer {
   private unitMeshesMap: Map<string, THREE.Group> = new Map();
   private unitJuiceMap: Map<string, UnitJuice3D> = new Map();
   private unitAnimControllers: Map<string, UnitAnimController> = new Map();
+  /** 오버헤드 빌보드용 스크래치 (프레임마다 new 금지) */
+  private readonly _billboardParentQuat = new THREE.Quaternion();
+  private readonly _meshWorldPos = new THREE.Vector3();
 
   // GLB 모델 에셋 캐시 (10종 판타지 전용 모델 및 골격 애니메이션)
   private glbLoadedTemplates: Map<string, THREE.Group> = new Map();
@@ -1785,13 +1788,20 @@ export class ThreeJsGameRenderer {
 
   /**
    * 아이템 장착용: 화면 좌표에서 가장 가까운 아군(정비 보드/대기석) 기물.
-   * 전투 중에는 HOME_ 접두 클론을 원본 instanceId로 환원한다.
+   * 전투 중에는 실제 메시(또는 pos) 투영을 쓰고 HOME_ 접두를 원본 id로 환원한다.
    */
   public findNearestUnitForItemEquip(
     px: number,
     py: number,
-    candidates: Array<{ instanceId: string; row?: number; col?: number; benchIndex?: number }>,
-    maxDistPx: number = 90
+    candidates: Array<{
+      instanceId: string;
+      row?: number;
+      col?: number;
+      benchIndex?: number;
+      worldX?: number;
+      worldZ?: number;
+    }>,
+    maxDistPx: number = 150
   ): { instanceId: string; screenX: number; screenY: number } | null {
     const w =
       this.renderer.domElement.clientWidth ||
@@ -1808,15 +1818,35 @@ export class ThreeJsGameRenderer {
       null;
 
     for (const c of candidates) {
-      let world: { x: number; z: number } | null = null;
-      if (c.benchIndex !== undefined) {
-        world = this.benchIndexToWorldPos(c.benchIndex);
-      } else if (c.row !== undefined && c.col !== undefined) {
-        world = this.hexToWorldPos(c.row, c.col);
-      }
-      if (!world) continue;
+      let wx: number | null = null;
+      let wy = 1.1;
+      let wz: number | null = null;
 
-      const pct = this.worldToScreenPercent(world.x, 0.8, world.z);
+      // 1) 살아 있는 메시 월드 좌표(전투 이동 반영) 최우선
+      const mesh = this.unitMeshesMap.get(c.instanceId);
+      if (mesh) {
+        mesh.getWorldPosition(this._meshWorldPos);
+        wx = this._meshWorldPos.x;
+        wy = this._meshWorldPos.y + 1.0;
+        wz = this._meshWorldPos.z;
+      } else if (c.worldX !== undefined && c.worldZ !== undefined) {
+        wx = c.worldX;
+        wz = c.worldZ;
+        wy = 1.0;
+      } else if (c.benchIndex !== undefined) {
+        const world = this.benchIndexToWorldPos(c.benchIndex);
+        wx = world.x;
+        wz = world.z;
+        wy = 0.9;
+      } else if (c.row !== undefined && c.col !== undefined) {
+        const world = this.hexToWorldPos(c.row, c.col);
+        wx = world.x;
+        wz = world.z;
+        wy = 0.9;
+      }
+      if (wx === null || wz === null) continue;
+
+      const pct = this.worldToScreenPercent(wx, wy, wz);
       const sx = pct.x * w;
       const sy = pct.y * h;
       const dist = Math.hypot(px - sx, py - sy);
@@ -1836,6 +1866,20 @@ export class ThreeJsGameRenderer {
           screenY: best.screenY,
         }
       : null;
+  }
+
+  /** 부모(유닛) yaw와 무관하게 카메라 정면 빌보드 */
+  private billboardOverhead(overhead: THREE.Object3D): void {
+    if (!overhead.parent) {
+      overhead.quaternion.copy(this.camera.quaternion);
+      return;
+    }
+    overhead.parent.updateWorldMatrix(true, false);
+    overhead.parent.getWorldQuaternion(this._billboardParentQuat);
+    overhead.quaternion
+      .copy(this._billboardParentQuat)
+      .invert()
+      .multiply(this.camera.quaternion);
   }
 
   /**
@@ -1963,34 +2007,47 @@ export class ThreeJsGameRenderer {
 
     // -------------------------------------------------------------
     // 머리 위 실시간 3D 체력바 / 마나바 / 성급 빌보드 게이지
+    // depthTest off + DoubleSide: 전투 중 메시/회전에 가려지지 않게
     // -------------------------------------------------------------
     const overheadGroup = new THREE.Group();
     overheadGroup.name = 'OVERHEAD_BAR';
-    overheadGroup.position.set(0, 2.45, 0);
+    overheadGroup.position.set(0, 2.85, 0);
+    overheadGroup.renderOrder = 1000;
 
-    const hpBgGeo = new THREE.PlaneGeometry(1.4, 0.18);
-    const hpBgMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+    const barMatBase = {
+      depthTest: false,
+      depthWrite: false,
+      transparent: true,
+      side: THREE.DoubleSide,
+    } as const;
+
+    const hpBgGeo = new THREE.PlaneGeometry(1.5, 0.2);
+    const hpBgMat = new THREE.MeshBasicMaterial({ color: 0x0f172a, ...barMatBase, opacity: 0.92 });
     const hpBg = new THREE.Mesh(hpBgGeo, hpBgMat);
+    hpBg.renderOrder = 1001;
     overheadGroup.add(hpBg);
 
-    const hpFillGeo = new THREE.PlaneGeometry(1.36, 0.14);
-    const hpFillMat = new THREE.MeshBasicMaterial({ color: 0x22c55e });
+    const hpFillGeo = new THREE.PlaneGeometry(1.44, 0.15);
+    const hpFillMat = new THREE.MeshBasicMaterial({ color: 0x22c55e, ...barMatBase, opacity: 1 });
     const hpFill = new THREE.Mesh(hpFillGeo, hpFillMat);
     hpFill.name = 'HP_FILL';
-    hpFill.position.set(0, 0, 0.01);
+    hpFill.position.set(0, 0, 0.02);
+    hpFill.renderOrder = 1002;
     overheadGroup.add(hpFill);
 
-    const manaBgGeo = new THREE.PlaneGeometry(1.4, 0.08);
-    const manaBgMat = new THREE.MeshBasicMaterial({ color: 0x020617 });
+    const manaBgGeo = new THREE.PlaneGeometry(1.5, 0.09);
+    const manaBgMat = new THREE.MeshBasicMaterial({ color: 0x020617, ...barMatBase, opacity: 0.92 });
     const manaBg = new THREE.Mesh(manaBgGeo, manaBgMat);
-    manaBg.position.set(0, -0.12, 0);
+    manaBg.position.set(0, -0.14, 0);
+    manaBg.renderOrder = 1001;
     overheadGroup.add(manaBg);
 
-    const manaFillGeo = new THREE.PlaneGeometry(1.36, 0.06);
-    const manaFillMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    const manaFillGeo = new THREE.PlaneGeometry(1.44, 0.07);
+    const manaFillMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, ...barMatBase, opacity: 1 });
     const manaFill = new THREE.Mesh(manaFillGeo, manaFillMat);
     manaFill.name = 'MANA_FILL';
-    manaFill.position.set(0, -0.12, 0.01);
+    manaFill.position.set(0, -0.14, 0.02);
+    manaFill.renderOrder = 1002;
     overheadGroup.add(manaFill);
 
     // 성급 별 표시 (1성: 1개, 2성: 2개, 3성: 3개 황금 큐브)
@@ -2649,20 +2706,24 @@ export class ThreeJsGameRenderer {
 
         const overhead = group.getObjectByName('OVERHEAD_BAR');
         if (overhead) {
-          overhead.quaternion.copy(this.camera.quaternion);
+          this.billboardOverhead(overhead);
 
           const hpRatio = Math.max(0, Math.min(1, cu.currentHp / Math.max(1, cu.maxHp)));
           const hpFill = overhead.getObjectByName('HP_FILL') as THREE.Mesh;
           if (hpFill) {
-            hpFill.scale.x = hpRatio;
-            hpFill.position.x = -(1.36 * (1 - hpRatio) * 0.5);
+            hpFill.scale.x = Math.max(0.001, hpRatio);
+            hpFill.position.x = -(1.44 * (1 - hpRatio) * 0.5);
+            const mat = hpFill.material as THREE.MeshBasicMaterial;
+            if (mat?.color) {
+              mat.color.setHex(cu.team === 'HOME' ? 0x22c55e : 0xef4444);
+            }
           }
 
           const manaRatio = Math.max(0, Math.min(1, cu.currentMana / Math.max(1, cu.maxMana)));
           const manaFill = overhead.getObjectByName('MANA_FILL') as THREE.Mesh;
           if (manaFill) {
-            manaFill.scale.x = manaRatio;
-            manaFill.position.x = -(1.36 * (1 - manaRatio) * 0.5);
+            manaFill.scale.x = Math.max(0.001, manaRatio);
+            manaFill.position.x = -(1.44 * (1 - manaRatio) * 0.5);
           }
         }
       }
@@ -2710,7 +2771,7 @@ export class ThreeJsGameRenderer {
 
           const overhead = group.getObjectByName('OVERHEAD_BAR');
           if (overhead) {
-            overhead.quaternion.copy(this.camera.quaternion);
+            this.billboardOverhead(overhead);
           }
         }
       }
@@ -2756,7 +2817,7 @@ export class ThreeJsGameRenderer {
 
         const overhead = group.getObjectByName('OVERHEAD_BAR');
         if (overhead) {
-          overhead.quaternion.copy(this.camera.quaternion);
+          this.billboardOverhead(overhead);
         }
       }
     }

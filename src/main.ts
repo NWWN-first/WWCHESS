@@ -203,6 +203,8 @@ class FantasyAutoBattlerApp {
     row?: number;
     col?: number;
     benchIndex?: number;
+    worldX?: number;
+    worldZ?: number;
   }> {
     const player = this.game.player;
     const out: Array<{
@@ -210,6 +212,8 @@ class FantasyAutoBattlerApp {
       row?: number;
       col?: number;
       benchIndex?: number;
+      worldX?: number;
+      worldZ?: number;
     }> = [];
 
     player.bench.forEach((u, idx) => {
@@ -225,10 +229,13 @@ class FantasyAutoBattlerApp {
       if (engine) {
         for (const cu of engine.units) {
           if (cu.team !== 'HOME' || cu.currentHp <= 0) continue;
+          const world = this.threeRenderer.planeToWorldPos(cu.posX, cu.posZ);
           out.push({
             instanceId: cu.instanceId,
             row: cu.row,
             col: cu.col,
+            worldX: world.x,
+            worldZ: world.z,
           });
         }
       }
@@ -794,6 +801,15 @@ class FantasyAutoBattlerApp {
     onShortTap: () => void
   ): void {
     e.stopPropagation();
+    // 아이템/복제기: 스크롤·제스처에 뺏기지 않게 캡처
+    if (payload?.kind === 'ITEM' || payload?.kind === 'DUPLICATOR') {
+      e.preventDefault();
+      try {
+        (e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
     const pt = this.clientToCanvasPoint(e.clientX, e.clientY);
     this.activePointerId = e.pointerId;
     this.pointerDownTime = performance.now();
@@ -813,7 +829,13 @@ class FantasyAutoBattlerApp {
     const dy = pt.y - this.pointerStartY;
     const dist = Math.hypot(dx, dy);
 
-    if (!this.isDragging && dist > 8 && this.dragPayload) {
+    // 아이템은 더 작은 움직임에도 드래그 시작
+    const dragThreshold =
+      this.dragPayload?.kind === 'ITEM' || this.dragPayload?.kind === 'DUPLICATOR'
+        ? 4
+        : 8;
+
+    if (!this.isDragging && dist > dragThreshold && this.dragPayload) {
       this.pendingAvatarMove = null;
       if (this.canStartDragForPayload(this.dragPayload)) {
         this.isDragging = true;
@@ -973,7 +995,7 @@ class FantasyAutoBattlerApp {
         px,
         py,
         this.collectItemEquipCandidates(),
-        96
+        150
       );
       if (hit) {
         hoverUnit =
@@ -983,7 +1005,7 @@ class FantasyAutoBattlerApp {
       }
     } else {
       hoverUnit =
-        this.pixelRenderer.findNearestUnitInstance(px, py, this.game.player, 70)
+        this.pixelRenderer.findNearestUnitInstance(px, py, this.game.player, 100)
           ?.unit ?? null;
     }
 
@@ -1213,7 +1235,7 @@ class FantasyAutoBattlerApp {
         px,
         py,
         this.collectItemEquipCandidates(),
-        110
+        170
       );
       if (near3d) {
         targetInstanceId = near3d.instanceId;
@@ -1235,7 +1257,7 @@ class FantasyAutoBattlerApp {
     }
 
     if (!targetInstanceId) {
-      const nearest = this.pixelRenderer.findNearestUnitInstance(px, py, player, 70);
+      const nearest = this.pixelRenderer.findNearestUnitInstance(px, py, player, 100);
       if (nearest) {
         targetInstanceId = nearest.unit.instanceId;
         targetCenter = nearest.center;
@@ -1542,6 +1564,7 @@ class FantasyAutoBattlerApp {
         chip.className = 'duplicator-chip';
         chip.innerHTML = `🌟x${viewed.duplicators}`;
         chip.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
           this.startPointerInteraction(
             e,
             viewed.id === this.game.player.id ? { kind: 'DUPLICATOR' } : null,
@@ -1567,6 +1590,7 @@ class FantasyAutoBattlerApp {
         slot.dataset.slotIndex = String(idx);
         slot.textContent = def.icon;
         slot.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
           this.startPointerInteraction(
             e,
             viewed.id === this.game.player.id
