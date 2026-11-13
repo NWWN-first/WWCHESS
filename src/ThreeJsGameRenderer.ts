@@ -17,7 +17,7 @@ import {
   StarLevel,
   UNIT_TEMPLATES,
 } from './GameData';
-import { HexCoord } from './HexGridMath';
+import { HexCoord, HexGridMath } from './HexGridMath';
 import { Participant } from './Participant';
 import { UNIT_PIXEL_SPECS, WEAPON_BADGE_ICONS } from './PixelGameRenderer';
 import { CombatEvent, CombatUnit } from './SkillRegistry';
@@ -1658,11 +1658,17 @@ export class ThreeJsGameRenderer {
    * 2D HexCoord (row, col) -> 3D World Position (X, Z)
    */
   public hexToWorldPos(row: number, col: number): { x: number; z: number } {
-    const isOdd = row % 2 === 1;
-    const offsetX = isOdd ? this.hexWidth * 0.5 : 0;
-    const x = (col - 3) * this.hexWidth + offsetX;
-    const z = (row - 3.5) * this.rowStepZ;
-    return { x, z };
+    const plane = HexGridMath.offsetToPlane(row, col);
+    return this.planeToWorldPos(plane.x, plane.z);
+  }
+
+  /** 전투 자유이동 평면 좌표 → 3D 월드 */
+  public planeToWorldPos(posX: number, posZ: number): { x: number; z: number } {
+    const rowFrac = posZ / (Math.sqrt(3) / 2);
+    return {
+      x: (posX - 3) * this.hexWidth,
+      z: (rowFrac - 3.5) * this.rowStepZ,
+    };
   }
 
   /**
@@ -2513,6 +2519,12 @@ export class ThreeJsGameRenderer {
           lungeOffsetZ = juice.lungeDirZ * ratio;
         }
 
+        // 자유이동: 엔진 posX/posZ를 월드로 변환해 추적 (칸 점프 제거)
+        const planeTarget =
+          cu.posX !== undefined && cu.posZ !== undefined
+            ? this.planeToWorldPos(cu.posX, cu.posZ)
+            : targetPos;
+
         if (juice.leapProgress > 0 && juice.leapProgress < 1.0) {
           juice.leapProgress = Math.min(1.0, juice.leapProgress + dtMs * 0.0026);
           const lp = juice.leapProgress;
@@ -2521,43 +2533,35 @@ export class ThreeJsGameRenderer {
           const ly = juice.leapStartPos.y + Math.sin(lp * Math.PI) * 2.8;
           group.position.set(lx, ly, lz);
           this.playUnitAnimation(cu.instanceId, 'walk');
-        } else if (juice.isMoving) {
-          juice.moveElapsedMs += dtMs;
-          const t = Math.min(1, juice.moveElapsedMs / juice.moveDurationMs);
-          // ease-out cubic — 착지감 유지하면서 순간이동 방지
-          const ease = 1 - Math.pow(1 - t, 3);
-          const prevX = group.position.x;
-          const prevZ = group.position.z;
-          group.position.x =
-            juice.moveFrom.x + (juice.moveTo.x - juice.moveFrom.x) * ease + lungeOffsetX;
-          group.position.z =
-            juice.moveFrom.z + (juice.moveTo.z - juice.moveFrom.z) * ease + lungeOffsetZ;
-          group.position.y = 0.2 + Math.sin(this.animClockMs * 0.005 + cu.row) * 0.05;
-          if (t >= 1) juice.isMoving = false;
-
-          const isStunned = (cu.stunTimerMs ?? 0) > 0;
-          const distMoved = Math.hypot(group.position.x - prevX, group.position.z - prevZ);
-          if (isStunned) {
-            this.playUnitAnimation(cu.instanceId, 'stun');
-          } else if (distMoved > 0.01) {
-            this.playUnitAnimation(cu.instanceId, 'walk');
-          }
         } else {
           const prevX = group.position.x;
           const prevZ = group.position.z;
-          // 정착 스냅만 부드럽게 (이동 자체는 MOVE 보간으로 처리)
-          group.position.x += (targetPos.x + lungeOffsetX - group.position.x) * 0.12;
-          group.position.z += (targetPos.z + lungeOffsetZ - group.position.z) * 0.12;
-          group.position.y = 0.2 + Math.sin(this.animClockMs * 0.005 + cu.row) * 0.05;
+          const follow = Math.min(1, dtMs / 55);
+          group.position.x +=
+            (planeTarget.x + lungeOffsetX - group.position.x) * follow;
+          group.position.z +=
+            (planeTarget.z + lungeOffsetZ - group.position.z) * follow;
+          group.position.y =
+            0.2 + Math.sin(this.animClockMs * 0.005 + cu.row) * 0.05;
+          juice.isMoving = false;
 
           const isStunned = (cu.stunTimerMs ?? 0) > 0;
           const distMoved = Math.hypot(group.position.x - prevX, group.position.z - prevZ);
-          const distToTarget = Math.hypot(targetPos.x - group.position.x, targetPos.z - group.position.z);
+          const distToTarget = Math.hypot(
+            planeTarget.x - group.position.x,
+            planeTarget.z - group.position.z
+          );
 
           if (isStunned) {
             this.playUnitAnimation(cu.instanceId, 'stun');
-          } else if (distToTarget > 0.18 && distMoved > 0.02) {
+          } else if (distToTarget > 0.12 && distMoved > 0.008) {
             this.playUnitAnimation(cu.instanceId, 'walk');
+            if (Math.abs(group.position.x - prevX) > 0.002) {
+              juice.facingY = Math.atan2(
+                group.position.x - prevX,
+                group.position.z - prevZ
+              );
+            }
           } else {
             const ctrl = this.unitAnimControllers.get(cu.instanceId);
             if (ctrl && (ctrl.currentActionName === 'walk' || ctrl.currentActionName === 'stun')) {

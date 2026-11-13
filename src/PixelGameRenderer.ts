@@ -824,6 +824,9 @@ export const WEAPON_BADGE_ICONS: Record<WeaponKind, string> = {
 interface UnitVisualJuiceState {
   renderRow: number;
   renderCol: number;
+  /** 연속 평면 좌표 보간 (자유이동) */
+  renderPosX: number;
+  renderPosZ: number;
   moveFromRow: number;
   moveFromCol: number;
   moveToRow: number;
@@ -831,6 +834,10 @@ interface UnitVisualJuiceState {
   moveProgress: number;
   moveDurationMs: number;
   isLeapMove: boolean;
+  leapScreenFromX: number;
+  leapScreenFromY: number;
+  leapScreenToX: number;
+  leapScreenToY: number;
 
   lungeDirX: number;
   lungeDirY: number;
@@ -1357,6 +1364,13 @@ export class PixelGameRenderer {
             state.facingX = pTo.x >= pFrom.x ? 1 : -1;
           }
           if (ev.type === 'LEAP') {
+            state.isLeapMove = true;
+            state.moveProgress = 0;
+            state.moveDurationMs = Math.max(320, ev.durationMs ?? 420);
+            state.leapScreenFromX = pFrom.x;
+            state.leapScreenFromY = pFrom.y;
+            state.leapScreenToX = pTo.x;
+            state.leapScreenToY = pTo.y;
             this.spawnPixelSparks(pFrom.x, pFrom.y, '#9d4edd', 14);
             this.spawnPixelSparks(pTo.x, pTo.y, '#e0aaff', 18);
           }
@@ -1572,9 +1586,12 @@ export class PixelGameRenderer {
   ): UnitVisualJuiceState {
     let st = this.unitJuiceMap.get(instanceId);
     if (!st) {
+      const plane = HexGridMath.offsetToPlane(row, col);
       st = {
         renderRow: row,
         renderCol: col,
+        renderPosX: plane.x,
+        renderPosZ: plane.z,
         moveFromRow: row,
         moveFromCol: col,
         moveToRow: row,
@@ -1582,6 +1599,10 @@ export class PixelGameRenderer {
         moveProgress: 1,
         moveDurationMs: 480,
         isLeapMove: false,
+        leapScreenFromX: 0,
+        leapScreenFromY: 0,
+        leapScreenToX: 0,
+        leapScreenToY: 0,
         lungeDirX: 0,
         lungeDirY: 0,
         lungeTimerMs: 0,
@@ -2470,49 +2491,52 @@ export class PixelGameRenderer {
         st.trailHp = Math.max(cu.currentHp, st.trailHp - shrinkPerMs * dtMs);
       }
 
-      if (st.moveToRow !== cu.row || st.moveToCol !== cu.col) {
-        st.moveFromRow = st.renderRow;
-        st.moveFromCol = st.renderCol;
-        st.moveToRow = cu.row;
-        st.moveToCol = cu.col;
-        st.moveProgress = 0;
-        st.moveDurationMs = cu.baseMoveIntervalMs || 480;
-        st.isLeapMove = false;
+      // 자유이동: 엔진 posX/posZ를 부드럽게 추적 (칸 점프 제거)
+      const targetPosX = cu.posX ?? HexGridMath.offsetToPlane(cu.row, cu.col).x;
+      const targetPosZ = cu.posZ ?? HexGridMath.offsetToPlane(cu.row, cu.col).z;
+      if (st.renderPosX === undefined || Number.isNaN(st.renderPosX)) {
+        st.renderPosX = targetPosX;
+        st.renderPosZ = targetPosZ;
       }
 
       let strideArcOffsetY = 0;
-      if (st.moveProgress < 1) {
-        const animDuration = Math.max(240, (st.moveDurationMs || 480) * 0.92);
-        st.moveProgress = Math.min(1, st.moveProgress + dtMs / animDuration);
-        st.renderRow =
-          st.moveFromRow + (st.moveToRow - st.moveFromRow) * st.moveProgress;
-        st.renderCol =
-          st.moveFromCol + (st.moveToCol - st.moveFromCol) * st.moveProgress;
+      let basePos: { x: number; y: number };
 
-        if (st.isLeapMove) {
-          // 암살자 은신 도약 시 공중 포물선 점프 궤적
-          strideArcOffsetY = -Math.sin(st.moveProgress * Math.PI) * 32;
-        } else {
-          // 기물 고유 보행 리듬(중갑 탱커의 묵직한 걸음 vs 암살자/고블린의 경쾌한 스텝)
-          const isHeavyTank = cu.traits.includes('VANGUARD');
-          const hopHeight = isHeavyTank ? 2.5 : 4.5;
-          strideArcOffsetY =
-            -Math.abs(Math.sin(st.moveProgress * Math.PI * 2)) * hopHeight;
+      if (st.isLeapMove && st.moveProgress < 1) {
+        const animDuration = Math.max(280, st.moveDurationMs || 420);
+        st.moveProgress = Math.min(1, st.moveProgress + dtMs / animDuration);
+        const t = st.moveProgress;
+        basePos = {
+          x: st.leapScreenFromX + (st.leapScreenToX - st.leapScreenFromX) * t,
+          y: st.leapScreenFromY + (st.leapScreenToY - st.leapScreenFromY) * t,
+        };
+        strideArcOffsetY = -Math.sin(t * Math.PI) * 32;
+        if (t >= 1) {
+          st.isLeapMove = false;
+          st.renderPosX = targetPosX;
+          st.renderPosZ = targetPosZ;
         }
       } else {
+        const follow = Math.min(1, dtMs / 55);
+        const prevX = st.renderPosX;
+        const prevZ = st.renderPosZ;
+        st.renderPosX += (targetPosX - st.renderPosX) * follow;
+        st.renderPosZ += (targetPosZ - st.renderPosZ) * follow;
         st.renderRow = cu.row;
         st.renderCol = cu.col;
-        st.isLeapMove = false;
+        basePos = HexGridMath.planeToScreen(st.renderPosX, st.renderPosZ, m);
+        const moved = Math.hypot(st.renderPosX - prevX, st.renderPosZ - prevZ);
+        if (moved > 0.004) {
+          const isHeavyTank = cu.traits.includes('VANGUARD');
+          const hopHeight = isHeavyTank ? 1.8 : 3.2;
+          strideArcOffsetY =
+            -Math.abs(Math.sin(this.globalAnimClockMs * 0.012 + cu.row)) *
+            hopHeight;
+          if (Math.abs(st.renderPosX - prevX) > 0.002) {
+            st.facingX = st.renderPosX >= prevX ? 1 : -1;
+          }
+        }
       }
-
-      const basePos = HexGridMath.lerpHexScreenPoint(
-        st.moveFromRow,
-        st.moveFromCol,
-        st.moveToRow,
-        st.moveToCol,
-        st.moveProgress,
-        m
-      );
 
       let lungeOffsetX = 0;
       let lungeOffsetY = 0;

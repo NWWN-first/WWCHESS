@@ -66,6 +66,9 @@ export interface CombatUnit {
 
   row: number;
   col: number;
+  /** 전투 자유이동 평면 좌표 (헥스는 배치/스킬 점유용) */
+  posX: number;
+  posZ: number;
 
   maxHp: number;
   currentHp: number;

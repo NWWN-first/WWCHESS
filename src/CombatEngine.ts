@@ -215,6 +215,7 @@ export class CombatEngine implements SkillCombatContext {
     const initialMoveStaggerMs =
       100 + ((row * 37 + col * 53) % 140) + (source.traits.includes('VANGUARD') ? 60 : 0);
 
+    const plane = HexGridMath.offsetToPlane(row, col);
     const cu: CombatUnit = {
       instanceId: `${team}_${source.instanceId}`,
       unitId: source.unitId,
@@ -227,6 +228,8 @@ export class CombatEngine implements SkillCombatContext {
       items: [...source.items],
       row,
       col,
+      posX: plane.x,
+      posZ: plane.z,
       maxHp: source.maxHp,
       currentHp: source.maxHp,
       shield: 0,
@@ -554,6 +557,9 @@ export class CombatEngine implements SkillCombatContext {
           const fromCol = u.col;
           u.row = leapTile.row;
           u.col = leapTile.col;
+          const leapPlane = HexGridMath.offsetToPlane(u.row, u.col);
+          u.posX = leapPlane.x;
+          u.posZ = leapPlane.z;
           this.emitEvent({
             type: 'LEAP',
             tick: this.currentTick,
@@ -793,17 +799,9 @@ export class CombatEngine implements SkillCombatContext {
     // 1. 주기적 시너지/아이템 타이머 업데이트 (엘프 숲 2초, 태양불꽃 망토 2초, 대천사의 지팡이 4초, 선봉대 8초)
     this.processPeriodicTimers(deltaMs);
 
-    // 2. 현재 틱의 점유 타일(occupiedTiles) 및 예약 타일(reservedTiles) 초기화
-    const occupiedTiles = new Set<string>();
-    const reservedTiles = new Set<string>();
-
-    for (const u of this.units) {
-      if (u.currentHp > 0 || u.isReviving) {
-        occupiedTiles.add(`${u.row},${u.col}`);
-      }
-    }
-
-    // 3. 모든 유닛 루프 (부활 대기, 기절, 이동, 스킬 시전, 기본 공격)
+    // 2. 모든 유닛 루프 (부활 대기, 기절, 자유이동, 스킬 시전, 기본 공격)
+    const dtSec = deltaMs / 1000;
+    const UNIT_RADIUS = 0.48;
     for (const unit of this.units) {
       if (this.isFinished) break;
 
@@ -834,7 +832,6 @@ export class CombatEngine implements SkillCombatContext {
 
       if (unit.currentHp <= 0) continue;
 
-      // 마나 락, 공격 쿨타임 및 이동 쿨타임 감소
       if (unit.manaLockTimerMs > 0) {
         unit.manaLockTimerMs = Math.max(0, unit.manaLockTimerMs - deltaMs);
       }
@@ -845,72 +842,97 @@ export class CombatEngine implements SkillCombatContext {
         unit.moveCooldownMs = Math.max(0, unit.moveCooldownMs - deltaMs);
       }
 
-      // 기절(Stun) 상태 확인
       if (unit.stunTimerMs > 0) {
         unit.stunTimerMs = Math.max(0, unit.stunTimerMs - deltaMs);
         continue;
       }
 
-      // 가장 가까운 살아있는 적 타겟 탐색
       const target = this.findNearestEnemy(unit);
       if (!target) {
         break;
       }
 
-      const dist = this.chebyshevDistance(
-        unit.row,
-        unit.col,
-        target.row,
-        target.col
+      const planeDist = HexGridMath.planeDistance(
+        unit.posX,
+        unit.posZ,
+        target.posX,
+        target.posZ
       );
+      // 헥스 사거리를 평면 거리로 환산 (칸 점프 없이 사거리에서 정지)
+      const engageRadius = unit.range * 1.05 + 0.12;
 
-      // 사거리 밖에 있으면 유닛 고유 보행 주기(moveCooldownMs)가 돌아왔을 때만 1칸 이동
-      if (dist > unit.range) {
+      if (planeDist > engageRadius) {
         if (unit.moveCooldownMs > 0) {
           continue;
         }
-        const nextTile = this.findNextStepWithReservation(
-          unit,
-          target,
-          occupiedTiles,
-          reservedTiles
-        );
-        if (nextTile) {
-          const fromRow = unit.row;
-          const fromCol = unit.col;
-          unit.row = nextTile.row;
-          unit.col = nextTile.col;
-          const stepIntervalMs = unit.berserkTriggered
-            ? Math.max(380, Math.round(unit.baseMoveIntervalMs * 0.78))
-            : unit.baseMoveIntervalMs;
-          unit.moveCooldownMs = stepIntervalMs;
 
-          this.emitEvent({
-            type: 'MOVE',
-            tick: this.currentTick,
-            sourceId: unit.instanceId,
-            team: unit.team,
-            unitId: unit.unitId,
-            fromRow,
-            fromCol,
-            toRow: unit.row,
-            toCol: unit.col,
-            durationMs: stepIntervalMs,
-          });
+        const fromRow = unit.row;
+        const fromCol = unit.col;
+        const fromX = unit.posX;
+        const fromZ = unit.posZ;
+
+        // 목표 방향 조향
+        let dx = target.posX - unit.posX;
+        let dz = target.posZ - unit.posZ;
+        const len = Math.max(0.001, Math.hypot(dx, dz));
+        dx /= len;
+        dz /= len;
+
+        // 유닛 간 겹침 방지: 가까운 유닛에게서 밀어내기
+        let sepX = 0;
+        let sepZ = 0;
+        for (const other of this.units) {
+          if (other.instanceId === unit.instanceId) continue;
+          if (other.currentHp <= 0 && !other.isReviving) continue;
+          const odx = unit.posX - other.posX;
+          const odz = unit.posZ - other.posZ;
+          const od = Math.hypot(odx, odz);
+          const minDist = UNIT_RADIUS * 2;
+          if (od > 0.001 && od < minDist) {
+            const push = (minDist - od) / minDist;
+            sepX += (odx / od) * push;
+            sepZ += (odz / od) * push;
+          }
         }
+
+        const stepIntervalMs = unit.berserkTriggered
+          ? Math.max(380, Math.round(unit.baseMoveIntervalMs * 0.78))
+          : unit.baseMoveIntervalMs;
+        // 1헥스/stepInterval 속도 ≈ 초당 plane 유닛
+        const speed = 1.0 / Math.max(0.28, stepIntervalMs / 1000);
+        const steerX = dx * 1.0 + sepX * 1.35;
+        const steerZ = dz * 1.0 + sepZ * 1.35;
+        const steerLen = Math.max(0.001, Math.hypot(steerX, steerZ));
+        const nx = unit.posX + (steerX / steerLen) * speed * dtSec;
+        const nz = unit.posZ + (steerZ / steerLen) * speed * dtSec;
+        const clamped = HexGridMath.clampPlaneToBoard(nx, nz);
+        unit.posX = clamped.x;
+        unit.posZ = clamped.z;
+        this.syncUnitOccupancy(unit);
+
+        this.emitEvent({
+          type: 'MOVE',
+          tick: this.currentTick,
+          sourceId: unit.instanceId,
+          team: unit.team,
+          unitId: unit.unitId,
+          fromRow,
+          fromCol,
+          toRow: unit.row,
+          toCol: unit.col,
+          durationMs: deltaMs,
+          amount: Math.round(HexGridMath.planeDistance(fromX, fromZ, unit.posX, unit.posZ) * 1000),
+        });
         continue;
       }
 
-
-      // 사거리 내에 타겟이 있을 때:
-      // A) 마나가 가득 찼다면 즉시 스킬 시전!
+      // 사거리 내: 스킬 / 기본 공격
       if (unit.currentMana >= unit.maxMana && unit.maxMana > 0) {
         this.castUnitSkill(unit, target);
         this.checkCombatEndCondition();
         continue;
       }
 
-      // B) 공격 쿨타임이 돌아왔다면 기본 공격 실행!
       if (unit.attackCooldownMs <= 0) {
         this.performBasicAttack(unit, target);
         unit.attackCooldownMs = Math.max(
@@ -921,8 +943,57 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
+    // 틱 종료 후 잔여 겹침 한 번 더 해소
+    this.resolveUnitOverlaps(UNIT_RADIUS);
+
     this.checkCombatEndCondition();
     return [...this.currentTickEvents];
+  }
+
+  /** 평면 좌표 → 가장 가까운 헥스 occupancy (스킬 AOE용) */
+  private syncUnitOccupancy(unit: CombatUnit): void {
+    const nearest = HexGridMath.planeToNearestOffset(unit.posX, unit.posZ);
+    unit.row = nearest.row;
+    unit.col = nearest.col;
+  }
+
+  /** 유닛 원형 충돌 해소 (서로 겹치지 않게) */
+  private resolveUnitOverlaps(radius: number): void {
+    const alive = this.units.filter((u) => u.currentHp > 0 || u.isReviving);
+    for (let iter = 0; iter < 2; iter++) {
+      for (let i = 0; i < alive.length; i++) {
+        for (let j = i + 1; j < alive.length; j++) {
+          const a = alive[i];
+          const b = alive[j];
+          let dx = a.posX - b.posX;
+          let dz = a.posZ - b.posZ;
+          let dist = Math.hypot(dx, dz);
+          const minDist = radius * 2;
+          if (dist < 0.0001) {
+            dx = (Math.random() - 0.5) * 0.02;
+            dz = (Math.random() - 0.5) * 0.02;
+            dist = Math.hypot(dx, dz);
+          }
+          if (dist < minDist) {
+            const push = (minDist - dist) * 0.5;
+            const nx = dx / dist;
+            const nz = dz / dist;
+            a.posX += nx * push;
+            a.posZ += nz * push;
+            b.posX -= nx * push;
+            b.posZ -= nz * push;
+            const ca = HexGridMath.clampPlaneToBoard(a.posX, a.posZ);
+            const cb = HexGridMath.clampPlaneToBoard(b.posX, b.posZ);
+            a.posX = ca.x;
+            a.posZ = ca.z;
+            b.posX = cb.x;
+            b.posZ = cb.z;
+            this.syncUnitOccupancy(a);
+            this.syncUnitOccupancy(b);
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -1511,6 +1582,9 @@ export class CombatEngine implements SkillCombatContext {
     const fromCol = unit.col;
     unit.row = targetRow;
     unit.col = targetCol;
+    const plane = HexGridMath.offsetToPlane(targetRow, targetCol);
+    unit.posX = plane.x;
+    unit.posZ = plane.z;
     this.emitEvent({
       type: 'LEAP',
       tick: this.currentTick,
@@ -1792,31 +1866,20 @@ export class CombatEngine implements SkillCombatContext {
 
   private findNearestEnemy(unit: CombatUnit): CombatUnit | null {
     let bestTarget: CombatUnit | null = null;
-    let bestHexDist = 9999;
-    let bestEuclidDist = 9999;
+    let bestPlaneDist = 9999;
 
     for (const other of this.units) {
       if (other.team === unit.team) continue;
       if (other.currentHp <= 0 || other.isReviving) continue;
 
-      const hexDist = HexGridMath.hexDistance(
-        unit.row,
-        unit.col,
-        other.row,
-        other.col
+      const planeDist = HexGridMath.planeDistance(
+        unit.posX,
+        unit.posZ,
+        other.posX,
+        other.posZ
       );
-      const euclidDist = HexGridMath.hexEuclideanDistance(
-        unit.row,
-        unit.col,
-        other.row,
-        other.col
-      );
-      if (
-        hexDist < bestHexDist ||
-        (hexDist === bestHexDist && euclidDist < bestEuclidDist)
-      ) {
-        bestHexDist = hexDist;
-        bestEuclidDist = euclidDist;
+      if (planeDist < bestPlaneDist) {
+        bestPlaneDist = planeDist;
         bestTarget = other;
       }
     }

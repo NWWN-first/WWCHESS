@@ -122,11 +122,86 @@ export class HexGridMath {
     r2: number,
     c2: number
   ): number {
-    const x1 = c1 + (r1 % 2 === 1 ? 0.5 : 0);
-    const y1 = r1 * (Math.sqrt(3) / 2);
-    const x2 = c2 + (r2 % 2 === 1 ? 0.5 : 0);
-    const y2 = r2 * (Math.sqrt(3) / 2);
-    return Math.hypot(x2 - x1, y2 - y1);
+    const a = HexGridMath.offsetToPlane(r1, c1);
+    const b = HexGridMath.offsetToPlane(r2, c2);
+    return Math.hypot(b.x - a.x, b.z - a.z);
+  }
+
+  /** Odd-R 오프셋 → 연속 평면 좌표 (전투 자유이동용) */
+  public static offsetToPlane(row: number, col: number): { x: number; z: number } {
+    return {
+      x: col + (Math.abs(Math.round(row)) % 2 === 1 ? 0.5 : 0),
+      z: row * (Math.sqrt(3) / 2),
+    };
+  }
+
+  public static planeDistance(
+    ax: number,
+    az: number,
+    bx: number,
+    bz: number
+  ): number {
+    return Math.hypot(bx - ax, bz - az);
+  }
+
+  /** 평면 좌표 → 가장 가까운 정수 헥스 (스킬/점유용) */
+  public static planeToNearestOffset(
+    x: number,
+    z: number,
+    maxRows: number = HexGridMath.ROWS,
+    maxCols: number = HexGridMath.COLS
+  ): HexCoord {
+    const approxRow = z / (Math.sqrt(3) / 2);
+    let best: HexCoord = {
+      row: Math.max(0, Math.min(maxRows - 1, Math.round(approxRow))),
+      col: Math.max(0, Math.min(maxCols - 1, Math.round(x))),
+    };
+    let bestDist = Infinity;
+    const r0 = Math.max(0, Math.floor(approxRow) - 1);
+    const r1 = Math.min(maxRows - 1, Math.ceil(approxRow) + 1);
+    for (let r = r0; r <= r1; r++) {
+      for (let c = 0; c < maxCols; c++) {
+        const p = HexGridMath.offsetToPlane(r, c);
+        const d = Math.hypot(p.x - x, p.z - z);
+        if (d < bestDist) {
+          bestDist = d;
+          best = { row: r, col: c };
+        }
+      }
+    }
+    return best;
+  }
+
+  public static clampPlaneToBoard(
+    x: number,
+    z: number,
+    maxRows: number = HexGridMath.ROWS,
+    maxCols: number = HexGridMath.COLS
+  ): { x: number; z: number } {
+    const minP = HexGridMath.offsetToPlane(0, 0);
+    const maxP = HexGridMath.offsetToPlane(maxRows - 1, maxCols - 1);
+    // 홀수 행 오프셋까지 포함해 살짝 여유
+    const minX = Math.min(minP.x, HexGridMath.offsetToPlane(1, 0).x) - 0.15;
+    const maxX = Math.max(maxP.x, HexGridMath.offsetToPlane(1, maxCols - 1).x) + 0.15;
+    const minZ = minP.z - 0.1;
+    const maxZ = maxP.z + 0.1;
+    return {
+      x: Math.min(maxX, Math.max(minX, x)),
+      z: Math.min(maxZ, Math.max(minZ, z)),
+    };
+  }
+
+  /** 평면 좌표 → 2D 화면 픽셀 (자유이동 렌더용) */
+  public static planeToScreen(
+    posX: number,
+    posZ: number,
+    metrics: HexBoardViewportMetrics
+  ): ScreenPoint {
+    const rowFrac = posZ / (Math.sqrt(3) / 2);
+    return {
+      x: metrics.originX + posX * metrics.hexWidth,
+      y: metrics.originY + rowFrac * metrics.rowStepY,
+    };
   }
 
   /**
