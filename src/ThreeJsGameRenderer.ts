@@ -2695,31 +2695,7 @@ export class ThreeJsGameRenderer {
       }
     });
 
-    // 모델별 구도 & 카메라 최적화
-    if (cfg.modelKey === 'Dragon') {
-      cloned.position.set(0, 0.15, 0);
-      this.portraitCamera!.position.set(0, 1.25, 3.8);
-      this.portraitCamera!.lookAt(0, 0.9, 0);
-      cloned.rotation.y = -0.45;
-    } else if (cfg.modelKey === 'Wolf') {
-      cloned.position.set(0, 0.15, 0);
-      this.portraitCamera!.position.set(0, 0.95, 2.7);
-      this.portraitCamera!.lookAt(0, 0.72, 0);
-      cloned.rotation.y = -0.4;
-    } else if (cfg.modelKey === 'Imp') {
-      cloned.position.set(0, 0.2, 0);
-      this.portraitCamera!.position.set(0, 1.15, 2.5);
-      this.portraitCamera!.lookAt(0, 0.85, 0);
-      cloned.rotation.y = -0.3;
-    } else {
-      // 인간형 (Knight, Mage, Rogue, Barbarian, Skeleton 등)
-      cloned.position.set(0, 0.15, 0);
-      this.portraitCamera!.position.set(0, 1.35, 2.75);
-      this.portraitCamera!.lookAt(0, 1.05, 0);
-      cloned.rotation.y = -0.32;
-    }
-
-    // 아이들 애니메이션 적용
+    // 1) 아이들 애니메이션 적용 (자연스러운 포즈로 셋업)
     const animList = this.glbAnimations.get(cfg.modelKey);
     if (animList && animList.length > 0) {
       const idleClip = animList.find(
@@ -2735,6 +2711,40 @@ export class ThreeJsGameRenderer {
         mixer.update(0.35);
       }
     }
+
+    // 2) 챔피언 모델별 자연스러운 3/4 얼짱 각도 회전
+    cloned.position.set(0, 0, 0);
+    cloned.rotation.y = -0.32;
+    if (cfg.modelKey === 'Dragon') cloned.rotation.y = -0.42;
+    else if (cfg.modelKey === 'Wolf') cloned.rotation.y = -0.46;
+    else if (cfg.modelKey === 'Imp') cloned.rotation.y = -0.28;
+
+    // 3) Three.js Box3로 모델의 실제 3D 크기 및 중심점을 완벽하게 측정
+    cloned.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(cloned);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    // 4) 가로/세로/대각선 어느 방향으로도 잘리지 않도록 넉넉한 여백(패딩)을 두고 카메라 거리 자동 계산
+    const aspect = 192 / 148;
+    const fov = 34;
+    this.portraitCamera!.fov = fov;
+    this.portraitCamera!.aspect = aspect;
+    this.portraitCamera!.updateProjectionMatrix();
+
+    const fovRad = (fov * Math.PI) / 180;
+    // 패딩 비율 1.45: 상하좌우에 넉넉한 여백을 두어 거대 무기, 날개, 투구 뿔, 발끝까지 온전히 다 보이도록 함
+    const padding = 1.45;
+    const distH = (Math.max(1.2, size.y) * 0.5 * padding) / Math.tan(fovRad / 2);
+    const distW = (Math.max(1.0, size.x) * 0.5 * padding) / (Math.tan(fovRad / 2) * aspect);
+    const camDist = Math.max(distH, distW, size.z * 1.35, 3.8);
+
+    // 카메라 시선: 캐릭터의 중심점을 정면에서 약간 위로 자연스럽게 바라봄
+    const lookTargetY = center.y > 0 ? center.y : 0.9;
+    this.portraitCamera!.position.set(0, lookTargetY + camDist * 0.12, camDist);
+    this.portraitCamera!.lookAt(0, lookTargetY, 0);
 
     this.portraitScene!.add(cloned);
     this.portraitRenderer.render(this.portraitScene!, this.portraitCamera!);
