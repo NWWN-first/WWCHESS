@@ -192,7 +192,20 @@ const economyStats = {
   sellsSum: 0,
 };
 
-/** Stage5 ItemBoardPlanner KPI */
+/** Stage5(원안) PersonaBias + Stage6 NeuralCorrection KPI */
+const personaNeuralStats = {
+  samples: 0,
+  neuralApplied: 0,
+  goldFloorDeltaAbsSum: 0,
+  maxRerollsDeltaAbsSum: 0,
+  tempoHintSet: 0,
+  byPersona: new Map<
+    string,
+    { n: number; avgFloor: number; avgRerolls: number; avgLevel: number }
+  >(),
+};
+
+/** Stage5(부가) ItemBoardPlanner KPI — 아이템·배치는 원안 5 옆 인프라 */
 const itemBoardStats = {
   samples: 0,
   byStance: {} as Record<string, number>,
@@ -542,6 +555,34 @@ function runOneGame(): void {
           (itemBoardStats.byStance[ib.positionStance] ?? 0) + 1;
         itemBoardStats.slamAggSum += ib.slamAggressiveness;
         if (ib.holdForBis) itemBoardStats.holdForBis++;
+      }
+      const nc = brain.lastNeuralCorrection;
+      if (ep || nc) {
+        personaNeuralStats.samples++;
+        if (nc?.applied) {
+          personaNeuralStats.neuralApplied++;
+          personaNeuralStats.goldFloorDeltaAbsSum += Math.abs(
+            nc.goldFloorDelta ?? 0
+          );
+          personaNeuralStats.maxRerollsDeltaAbsSum += Math.abs(
+            nc.maxRerollsDelta ?? 0
+          );
+          if (nc.tempoHint) personaNeuralStats.tempoHintSet++;
+        }
+        if (ep) {
+          const key = brain.persona ?? 'NONE';
+          const row = personaNeuralStats.byPersona.get(key) ?? {
+            n: 0,
+            avgFloor: 0,
+            avgRerolls: 0,
+            avgLevel: 0,
+          };
+          row.n++;
+          row.avgFloor += ep.goldFloor;
+          row.avgRerolls += ep.maxRerolls;
+          row.avgLevel += ep.targetLevel;
+          personaNeuralStats.byPersona.set(key, row);
+        }
       }
     }
 
@@ -1181,7 +1222,30 @@ if (economyStats.samples === 0) {
   );
 }
 
-console.log('\n[4-E] ItemBoardPlanner KPI (Stage5)');
+console.log('\n[4-E] PersonaBias + NeuralCorrection KPI (Stage5·6 원안)');
+if (personaNeuralStats.samples === 0) {
+  console.log('  표본 없음');
+} else {
+  const n = personaNeuralStats.samples;
+  console.log(
+    `  샘플 ${n} | 신경망 보정 적용 ${personaNeuralStats.neuralApplied} (${pct(personaNeuralStats.neuralApplied, n)}) | tempoHint ${personaNeuralStats.tempoHintSet} (${pct(personaNeuralStats.tempoHintSet, n)})`
+  );
+  if (personaNeuralStats.neuralApplied > 0) {
+    console.log(
+      `  보정 |Δ골드하한| 평균 ${(personaNeuralStats.goldFloorDeltaAbsSum / personaNeuralStats.neuralApplied).toFixed(1)} | |Δ리롤상한| 평균 ${(personaNeuralStats.maxRerollsDeltaAbsSum / personaNeuralStats.neuralApplied).toFixed(2)}`
+    );
+  }
+  console.log('  페르소나별 평균 계획(편향 반영 후):');
+  for (const [persona, row] of [...personaNeuralStats.byPersona.entries()].sort(
+    (a, b) => b[1].n - a[1].n
+  )) {
+    console.log(
+      `    ${persona.padEnd(22)} n=${row.n} 하한 ${(row.avgFloor / row.n).toFixed(1)} 리롤 ${(row.avgRerolls / row.n).toFixed(1)} 레벨목표 ${(row.avgLevel / row.n).toFixed(1)}`
+    );
+  }
+}
+
+console.log('\n[4-E2] ItemBoardPlanner KPI (부가 인프라)');
 if (itemBoardStats.samples === 0) {
   console.log('  표본 없음');
 } else {
@@ -1206,11 +1270,6 @@ if (itemBoardStats.carryItemSlots > 0) {
   );
 } else {
   console.log('  캐리 BiS: 표본 없음');
-}
-if (itemBoardStats.equipAttempts > 0) {
-  console.log(
-    `  슬램시도 대비 BiS적중(텔레메트리): ${itemBoardStats.bisHit}/${itemBoardStats.slamCount || itemBoardStats.equipAttempts} (슬램 ${itemBoardStats.slamCount}, 시도 ${itemBoardStats.equipAttempts})`
-  );
 }
 
 console.log('\n[4-C] CompAnalyzer 추천 분포 (Stage1/2 — Planner 반영 후)');

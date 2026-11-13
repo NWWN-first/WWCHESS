@@ -23,6 +23,7 @@ import { SynergyEngine } from './SynergyEngine';
 import { NeuralBotEngine, NeuralInferenceResult } from './NeuralBotEngine';
 import {
   analyzeComps,
+  applyNeuralCorrection,
   applyShopOpportunityCost,
   buildContestLedger,
   buildEconomyPlan,
@@ -31,9 +32,11 @@ import {
   defaultRuleBasedPlanner,
   EconomyPlan,
   EconomyTempo,
+  getPersonaBias,
   ItemBoardPlan,
   itemPlanPriorityBonus,
   isDynamicStrategyExperimentEnabled,
+  mergeEconomyWithCorrection,
   ObservableStateSummary,
   selectDenyTargets,
   shouldDeferNonBisCraft,
@@ -130,6 +133,17 @@ export interface BotBrainState {
   itemSlamCount: number;
   itemBisHitCount: number;
   itemEquipAttempts: number;
+  /** Stage6: 신경망 보정 스냅 */
+  lastNeuralCorrection?: {
+    applied: boolean;
+    reason: string;
+    goldFloorDelta: number;
+    maxRerollsDelta: number;
+    tempoHint: string | null;
+    slamAggressivenessDelta: number;
+  };
+  neuralSlamDelta: number;
+  neuralCorrectionAppliedCount: number;
   isRolldownActive: boolean;
   nextActionDelayMs: number;
   rerollsExecutedThisRound: number;
@@ -412,6 +426,8 @@ export class AIBotController {
       itemSlamCount: 0,
       itemBisHitCount: 0,
       itemEquipAttempts: 0,
+      neuralSlamDelta: 0,
+      neuralCorrectionAppliedCount: 0,
       isRolldownActive: false,
       nextActionDelayMs: 900,
       rerollsExecutedThisRound: 0,
@@ -785,15 +801,17 @@ export class AIBotController {
 
     const persona = brain.persona;
     const isEmergencySurvival = bot.hp <= 30;
+    // 고블린 금고 메커니즘(시너지 스택) — 페르소나 하드분기가 아니라 금고 상태
     const isGoblinCashoutTurn =
-      persona === 'GOBLIN_GAMBLER' &&
+      bot.goblinVaultStacks >= 12 &&
       (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
 
-    // Stage4: EconomyPlanner — 골드하한·리롤·레벨·벤치압박 통합
-    const economyPlan = buildEconomyPlan({
+    // Stage4: EconomyPlanner (Stage5: 페르소나는 bias delta만)
+    let economyPlan = buildEconomyPlan({
       bot,
       persona,
       stage: stageNum,
+      // Stage6: 매크로는 보정층에서 처리 — 플래너에는 힌트만 약하게 전달
       macroAction: neuralResult.macroAction,
       levelHint: brain.activeCompLevelHint ?? null,
       pivotDecision: (brain.lastCompDecision?.decision as
@@ -808,6 +826,30 @@ export class AIBotController {
       isGoblinCashoutTurn,
       skillLevel: aiParams.skillLevel,
     });
+
+    // Stage6: 신경망 보정층 — 플래너 출력에 delta
+    const neuralCorr = applyNeuralCorrection({
+      economy: economyPlan,
+      neural: neuralResult,
+      skillLevel: aiParams.skillLevel,
+      isEmergency: isEmergencySurvival || isGoblinCashoutTurn,
+    });
+    brain.lastNeuralCorrection = {
+      applied: neuralCorr.applied,
+      reason: neuralCorr.reason,
+      goldFloorDelta: neuralCorr.goldFloorDelta,
+      maxRerollsDelta: neuralCorr.maxRerollsDelta,
+      tempoHint: neuralCorr.tempoHint,
+      slamAggressivenessDelta: neuralCorr.slamAggressivenessDelta,
+    };
+    brain.neuralSlamDelta = neuralCorr.applied
+      ? neuralCorr.slamAggressivenessDelta
+      : 0;
+    if (neuralCorr.applied) {
+      brain.neuralCorrectionAppliedCount += 1;
+      economyPlan = mergeEconomyWithCorrection(economyPlan, neuralCorr);
+    }
+
     this.applyEconomyPlanToBrain(brain, economyPlan, aiParams, isEmergencySurvival, isGoblinCashoutTurn);
 
     // 2. 현재 열린 첫 상점에서 유효 기물 즉시 구매 및 기본 배치 수행
@@ -893,7 +935,7 @@ export class AIBotController {
     const aiParams = this.rankManager.getAISkillParameters();
     const isEmergencySurvival = bot.hp <= 30;
     const isGoblinCashoutTurn =
-      brain.persona === 'GOBLIN_GAMBLER' &&
+      bot.goblinVaultStacks >= 12 &&
       (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
 
     // Stage4: 라운드 계획의 preferRolldown 유지, 위기만 동적 승격
@@ -972,28 +1014,25 @@ export class AIBotController {
     // Soft noise: XP 살 타이밍인데 한 템포 미룸
     if (this.softShouldSkip(aiParams, 0.14)) return;
 
-    // Stage4: EconomyPlanner targetLevel (+ soft jitter)
+    // Stage4/5: EconomyPlanner targetLevel + PersonaBias (하드 페르소나 게이트 없음)
+    const bias = getPersonaBias(brain.persona);
     const levelJitter = Math.round(this.softNoise(aiParams, 1.0));
-    const desiredLevel = Math.min(
+    let levelCap = Math.min(
       10,
       Math.max(1, (brain.economyTargetLevel || 7) + levelJitter)
     );
 
-    // 리롤 페르소나는 다성 완성 전엔 목표 상한 유지
-    const persona = brain.persona;
-    let levelCap = desiredLevel;
-    if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
+    // 롤 선호가 높고 다성 부족하면 목표를 조금 낮춤 (하드 return 대신)
+    if (bias.rollAppetite >= 0.65) {
       const threeStarCount = this.countTotalThreeStarUnits(bot);
-      if (threeStarCount < 2 && bot.level >= Math.max(5, desiredLevel)) {
-        return;
+      if (threeStarCount < 2 && bot.level >= 5) {
+        levelCap = Math.min(levelCap, Math.max(5, brain.economyTargetLevel));
       }
-      levelCap = Math.min(levelCap, 9);
     }
 
     while (bot.gold - 4 >= targetGoldFloor && bot.level < levelCap) {
       if (this.softShouldSkip(aiParams, 0.08)) break;
       if (!bot.buyXp()) break;
-      // spike 템포가 아니면 한 틱에 1회 XP만 (이자 보호)
       if (brain.lastEconomyPlan?.tempo !== 'spike') break;
     }
     void currentRound;
@@ -1419,7 +1458,8 @@ export class AIBotController {
       }
     }
 
-    // 4. 페르소나 및 덱 상황별 가치평가
+    // 4. Stage5: 페르소나 소프트 편향으로 증강 가중 (하드 분기 제거)
+    const bias = getPersonaBias(brain.persona);
     const isRerollAug =
       aug.effectKey === 'GOLDEN_TICKET' ||
       aug.effectKey === 'CLEARANCE_SALE' ||
@@ -1434,76 +1474,57 @@ export class AIBotController {
       aug.effectKey === 'MAXED_OUT' ||
       (aug.freeRerollsGranted ?? 0) >= 5;
 
-    if (brain.persona === 'HYPER_ROLLER' || brain.persona === 'LOW_COST_REROLLER') {
-      if (threeStarCount >= 2) {
-        if (aug.category === 'COMBAT') score += 50;
-        if (isItemAug) score += 40;
-        if (aug.category === 'ECONOMY') score += 20;
-      } else {
-        if (isRerollAug) score += 70;
-        if (
-          aug.effectKey === 'BUILD_A_BUDDY' ||
-          aug.effectKey === 'FORGE_A_FRIEND' ||
-          aug.effectKey === 'CHAMP_DELIVERY' ||
-          aug.effectKey === 'COLD_START' ||
-          aug.effectKey === 'ONE_TWO_THREE'
-        ) {
-          score += 45;
-        }
-        if (aug.category === 'COMBAT') score += 15;
-      }
-    } else if (
-      brain.persona === 'FAST_NINE_GREEDY' ||
-      brain.persona === 'FAST_NINE_ECONOMIST'
-    ) {
-      if (bot.level < 8) {
-        if (
-          aug.category === 'ECONOMY' ||
-          aug.effectKey === 'LEVEL_UP' ||
-          aug.effectKey === 'SILVER_SPOON' ||
-          aug.effectKey === 'HEDGE_FUND' ||
-          aug.effectKey === 'EXPLOSIVE_GROWTH' ||
-          aug.effectKey === 'EXPLOSIVE_GROWTH_PLUS' ||
-          aug.effectKey === 'NEW_ERA' ||
-          aug.effectKey === 'LATER_GROWTH'
-        ) {
-          score += 70;
-        }
-        // 저코 리롤 올인은 패스트9과 충돌
-        if (aug.effectKey === 'BUILD_A_BUDDY' || aug.effectKey === 'FORGE_A_FRIEND') {
-          score -= 25;
-        }
-      } else {
-        if (aug.category === 'COMBAT') score += 60;
-        if (
-          aug.effectKey === 'BINARY_AERODROME' ||
-          aug.effectKey === 'BOOSTER_PACK_PLUSPLUS' ||
-          aug.effectKey === 'GARGANTUAN_RESOLVE'
-        ) {
-          score += 40;
-        }
-      }
-    } else if (brain.persona === 'GOBLIN_GAMBLER') {
+    const isLevelEconomyAug =
+      aug.effectKey === 'LEVEL_UP' ||
+      aug.effectKey === 'SILVER_SPOON' ||
+      aug.effectKey === 'HEDGE_FUND' ||
+      aug.effectKey === 'EXPLOSIVE_GROWTH' ||
+      aug.effectKey === 'EXPLOSIVE_GROWTH_PLUS' ||
+      aug.effectKey === 'NEW_ERA' ||
+      aug.effectKey === 'LATER_GROWTH';
+
+    if (aug.category === 'COMBAT') score += bias.augmentCombatBias;
+    if (aug.category === 'ECONOMY' || isLevelEconomyAug) {
+      score += bias.augmentEconomyBias;
+    }
+    if (isRerollAug) score += bias.augmentRerollBias;
+    if (isItemAug) score += 20 + bias.augmentCombatBias * 0.3;
+
+    // 롤 선호 + 아직 다성 적으면 리롤/배달 가산
+    if (bias.rollAppetite >= 0.6 && threeStarCount < 2) {
       if (
-        aug.effectKey === 'GOBLIN_CROWN' ||
-        aug.effectKey === 'DIABOLIC_FINANCE' ||
-        aug.effectKey === 'CALCULATED_LOSS' ||
-        aug.effectKey === 'TACTICAL_RETREAT' ||
-        aug.effectKey === 'KINGSLAYER' ||
-        aug.category === 'ECONOMY'
+        aug.effectKey === 'BUILD_A_BUDDY' ||
+        aug.effectKey === 'FORGE_A_FRIEND' ||
+        aug.effectKey === 'CHAMP_DELIVERY' ||
+        aug.effectKey === 'COLD_START' ||
+        aug.effectKey === 'ONE_TWO_THREE'
       ) {
-        score += 80;
+        score += 40;
       }
-      // 고블린은 전투력 보강도 필요 (시뮬 약세 반영)
-      if (aug.category === 'COMBAT' || isItemAug) score += 35;
-      if (aug.heroUnitId && UNIT_TEMPLATES[aug.heroUnitId]?.traits.includes('GOLDEN_GOBLIN')) {
-        score += 50;
+    }
+    // 레벨 선호 + 저레벨이면 리롤 올인 증강 억제
+    if (bias.levelAppetite >= 0.7 && bot.level < 8) {
+      if (aug.effectKey === 'BUILD_A_BUDDY' || aug.effectKey === 'FORGE_A_FRIEND') {
+        score -= 22;
       }
-    } else {
-      // FLEX_MASTER
-      if (aug.category === 'COMBAT') score += 40;
-      if (isItemAug) score += 35;
-      if (aug.grantRandomAugmentTier) score += 20; // 운명 계열은 유연성에 맞음
+    }
+    // 고레벨이면 전투 가산
+    if (bot.level >= 8 && aug.category === 'COMBAT') score += 25;
+    if (aug.grantRandomAugmentTier) score += 15;
+    if (
+      aug.heroUnitId &&
+      UNIT_TEMPLATES[aug.heroUnitId]?.traits.includes('GOLDEN_GOBLIN')
+    ) {
+      score += bias.goblinUnitBias;
+    }
+    if (
+      aug.effectKey === 'GOBLIN_CROWN' ||
+      aug.effectKey === 'DIABOLIC_FINANCE' ||
+      aug.effectKey === 'CALCULATED_LOSS' ||
+      aug.effectKey === 'TACTICAL_RETREAT' ||
+      aug.effectKey === 'KINGSLAYER'
+    ) {
+      score += Math.round(bias.augmentEconomyBias * 0.5);
     }
 
     // 5. 아이템 보유량 연계
@@ -1651,12 +1672,12 @@ export class AIBotController {
     const persona = brain.persona;
     const isEmergencySurvival = bot.hp <= 30;
     const isGoblinCashoutTurn =
-      persona === 'GOBLIN_GAMBLER' &&
+      bot.goblinVaultStacks >= 12 &&
       (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
     const stageNum = parseInt(currentRound.split('-')[0] || '2', 10);
 
-    // Stage4: 즉시전투 경로에서도 통합 계획 재적용
-    const economyPlan = buildEconomyPlan({
+    // Stage4/5/6: 즉시전투 경로 — 경제 계획 + 신경망 보정
+    let economyPlan = buildEconomyPlan({
       bot,
       persona,
       stage: stageNum,
@@ -1674,6 +1695,27 @@ export class AIBotController {
       isGoblinCashoutTurn,
       skillLevel: aiParams.skillLevel,
     });
+    const neuralCorr = applyNeuralCorrection({
+      economy: economyPlan,
+      neural: brain.lastNeuralResult,
+      skillLevel: aiParams.skillLevel,
+      isEmergency: isEmergencySurvival || isGoblinCashoutTurn,
+    });
+    brain.lastNeuralCorrection = {
+      applied: neuralCorr.applied,
+      reason: neuralCorr.reason,
+      goldFloorDelta: neuralCorr.goldFloorDelta,
+      maxRerollsDelta: neuralCorr.maxRerollsDelta,
+      tempoHint: neuralCorr.tempoHint,
+      slamAggressivenessDelta: neuralCorr.slamAggressivenessDelta,
+    };
+    brain.neuralSlamDelta = neuralCorr.applied
+      ? neuralCorr.slamAggressivenessDelta
+      : 0;
+    if (neuralCorr.applied) {
+      brain.neuralCorrectionAppliedCount += 1;
+      economyPlan = mergeEconomyWithCorrection(economyPlan, neuralCorr);
+    }
     this.applyEconomyPlanToBrain(
       brain,
       economyPlan,
@@ -1974,30 +2016,34 @@ export class AIBotController {
       score += 25; // 주력 딜러가 절실한 상황
     }
 
-    // 6. 페르소나별 코스트 선호도
-    if (brain.persona === 'HYPER_ROLLER' || brain.persona === 'LOW_COST_REROLLER') {
-      if (template.cost <= 2) score += 26;
-      if (template.cost >= 4 && bot.level <= 6) score -= 20;
-    } else if (
-      brain.persona === 'FAST_NINE_GREEDY' ||
-      brain.persona === 'FAST_NINE_ECONOMIST'
-    ) {
-      if (template.cost >= 4) score += 36;
-      if (template.cost === 5) score += 22;
-      if (template.cost === 1 && bot.level >= 7 && ownedCopies === 0) score -= 25;
-    } else if (brain.persona === 'GOBLIN_GAMBLER') {
+    // 6. Stage5: 페르소나 소프트 편향 (하드 if 분기 대신)
+    {
+      const bias = getPersonaBias(brain.persona);
+      if (template.cost <= 2) score += bias.lowCostShopBias;
+      if (template.cost >= 4) score += bias.highCostShopBias;
+      if (template.cost === 5 && bias.highCostShopBias > 0) score += 8;
+      if (
+        template.cost === 1 &&
+        bot.level >= 7 &&
+        ownedCopies === 0 &&
+        bias.highCostShopBias > 15
+      ) {
+        score -= 18;
+      }
       if (template.traits.includes('GOLDEN_GOBLIN')) {
-        score += 55; // 황금 고블린 기물 최우선 수집
+        score += bias.goblinUnitBias;
       }
       if (
+        bot.goblinVaultStacks >= 12 &&
         (bot.hp <= 35 || bot.goblinVaultStacks >= 55) &&
         template.cost >= 4
       ) {
-        score += 34; // 캐시아웃 턴에는 4~5코 고밸류 기물 대량 매수
+        score += 28;
       }
-    } else {
-      // FLEX_MASTER
-      score += template.cost * 5;
+      // FLEX류 기본 코스트 가산은 highCostShopBias가 낮을 때 약하게
+      if (Math.abs(bias.lowCostShopBias) < 5 && Math.abs(bias.highCostShopBias) <= 10) {
+        score += template.cost * 4;
+      }
     }
 
     // Stage2: 활성 컴프 구매 우선순위
@@ -2110,11 +2156,8 @@ export class AIBotController {
       let keepScore = unit.cost * 6 + copies * 12;
       if (unit.starLevel >= 2) keepScore += 50;
       if (unit.traits.includes(brain.targetTrait)) keepScore += 30;
-      if (
-        unit.traits.includes('GOLDEN_GOBLIN') &&
-        brain.persona === 'GOBLIN_GAMBLER'
-      ) {
-        keepScore += 45;
+      if (unit.traits.includes('GOLDEN_GOBLIN')) {
+        keepScore += getPersonaBias(brain.persona).goblinUnitBias;
       }
       if (isKeep) keepScore += 40;
       else if (brain.keepUnitIds.size > 0) keepScore -= 25;
@@ -2182,8 +2225,8 @@ export class AIBotController {
       if (brain.deniedUnitInstanceIds?.has(unit.instanceId)) continue; // 견제 기물 보호
 
       let keepScore = unit.cost * 6 + bot.getOwnedUnitCopiesCount(unit.unitId) * 12;
-      if (unit.traits.includes('GOLDEN_GOBLIN') && brain.persona === 'GOBLIN_GAMBLER') {
-        keepScore += 45;
+      if (unit.traits.includes('GOLDEN_GOBLIN')) {
+        keepScore += getPersonaBias(brain.persona).goblinUnitBias;
       }
       candidates.push({ unit, score: keepScore });
     }
@@ -2294,8 +2337,9 @@ export class AIBotController {
     if (allUnits.length === 0 && deniedUnits.length === 0) return;
 
     const isGoblinSandbagging =
-      brain.persona === 'GOBLIN_GAMBLER' &&
+      getPersonaBias(brain.persona).allowGoblinSandbag &&
       bot.hp > 35 &&
+      bot.goblinVaultStacks >= 1 &&
       bot.goblinVaultStacks < 55;
 
     // 2. 보드에 배치할 정예 기물(최대 bot.level기) 선정 (중복 unitId보다는 고유 기물 우선)
@@ -2309,11 +2353,11 @@ export class AIBotController {
       if (unit.traits.includes(brain.secondaryTrait)) power += 12;
       if (brain.buyPriorityUnitIds.has(unit.unitId)) power += 18;
       if (brain.keepUnitIds.has(unit.unitId)) power += 12;
-      if (
-        brain.persona === 'GOBLIN_GAMBLER' &&
-        unit.traits.includes('GOLDEN_GOBLIN')
-      ) {
-        power += 70; // 황금 고블린 시너지 유지 최우선
+      if (unit.traits.includes('GOLDEN_GOBLIN')) {
+        power += Math.max(
+          20,
+          getPersonaBias(brain.persona).goblinUnitBias + 15
+        );
       }
       return { unit, power };
     });
@@ -2647,7 +2691,13 @@ export class AIBotController {
     const skipBase = itemPlan ? 0.12 * (1 - itemPlan.slamAggressiveness * 0.7) : 0.12;
     if (this.softShouldSkip(aiParams, skipBase)) return;
 
-    const slam = itemPlan?.slamAggressiveness ?? 0.35;
+    const slam = Math.max(
+      0,
+      Math.min(
+        1,
+        (itemPlan?.slamAggressiveness ?? 0.35) + (brain.neuralSlamDelta ?? 0)
+      )
+    );
 
     // 1. 이미 itemBench에 있는 완성 아이템들을 먼저 최적 유닛에게 장착
     for (let i = bot.itemBench.length - 1; i >= 0; i--) {
