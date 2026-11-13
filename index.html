@@ -18,8 +18,8 @@
       rel="stylesheet"
     />
     <title>WWCHESS - 헥사곤 도트 판타지 오토배틀러</title>
-    <script type="module" crossorigin src="./assets/index-CbrQYVsx.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BE50issS.css">
+    <script type="module" crossorigin src="./assets/index-B7zTU4Dy.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BuIi-6uK.css">
   </head>
   <body>
     <div id="app" class="app-root">
@@ -250,24 +250,20 @@
         </div>
       </div>
 
-      <!-- 우하단: [리롤] / [작은즉시시작 | 상점]  (상점 아래, 리롤은 상점 위) -->
+      <!-- 우하단: 리롤 위 / [작은즉시시작 | 골드(상점토글)] 아래 -->
       <div id="Collapsed-quick-bar" class="collapsed-quick-bar">
         <div id="reroll-btn" class="quick-action-gem reroll-gem" role="button" tabindex="0">
           <span class="btn-main-label">🎲리롤</span>
           <span class="btn-sub-cost">2G</span>
-        </div>
-        <div class="tft-gold-chip" aria-live="polite">
-          <span id="player-gold-text">🪙10</span>
-          <span id="player-interest-text" class="tft-interest-mini">+1</span>
         </div>
         <div class="tft-shop-row">
           <div id="quick-start-combat-btn" class="tft-mini-combat" role="button" tabindex="0" title="즉시 출격">
             ⚔️
           </div>
           <div id="start-combat-btn" class="hidden" aria-hidden="true"></div>
-          <div id="toggle-shop-btn" class="quick-action-gem gold-gem tft-shop-btn" role="button" tabindex="0" title="상점 열기/접기">
-            <span class="tft-shop-ico">🛒</span>
-            <span>상점</span>
+          <div id="toggle-shop-btn" class="quick-action-gem gold-gem tft-shop-btn" role="button" tabindex="0" title="상점 열기/접기" aria-live="polite">
+            <span id="player-gold-text" class="tft-shop-gold">🪙10</span>
+            <span id="player-interest-text" class="tft-interest-mini">+1</span>
           </div>
         </div>
       </div>
