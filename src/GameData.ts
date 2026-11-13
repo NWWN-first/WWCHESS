@@ -72,7 +72,7 @@ export const POOL_SIZE_BY_COST: Record<CostTier, number> = {
   2: 25, // 2코스트: 기물당 25개 (3성 2명 가능)
   3: 18, // 3코스트: 기물당 18개 (경합 시 3성 어려움)
   4: 10, // 4코스트: 기물당 10개 (상대가 2장만 쥐고 있어도 3성 불가!)
-  5: 9,  // 5코스트: 기물당 9개 (누군가 1장이라도 사가면 복제기 없이 3성 절대 불가!)
+  5: 8,  // 5코스트: 기물당 8개 (경합↑, 순방 과강 완화)
 };
 
 /**
@@ -138,8 +138,8 @@ export const STAR_STAT_MULTIPLIER: Record<
   },
   5: {
     1: { hpMult: 1.0, atkMult: 1.0, skillMult: 1.0 },
-    2: { hpMult: 1.75, atkMult: 1.75, skillMult: 1.0 }, // 5코 2성 미세 완만화
-    3: { hpMult: 4.0, atkMult: 3.5, skillMult: 20.0 }, // 5코 3성은 여전히 전장 즉사급
+    2: { hpMult: 1.5, atkMult: 1.48, skillMult: 0.9 }, // 2성 캐리력 추가 하향
+    3: { hpMult: 3.1, atkMult: 2.85, skillMult: 4.0 }, // 3성도 보드 즉사 제거 방향
   },
 };
 
@@ -147,16 +147,16 @@ export const STAR_STAT_MULTIPLIER: Record<
  * 코스트별 전투력 보정 (플레이 피드백: 저코스트가 지나치게 약함).
  * Participant 스탯 재계산 및 SkillRegistry 스킬 피해에 공통 적용.
  */
-/** 코스트 밴드 전투 배율 — 500판 시뮬(post-augment) 기준 5코 순방 88% 과강 / 3코·고블린 약세 보정 */
+/** 코스트 밴드 전투 배율 — 5코 전투승~62%/순방~80%까지 내려왔으나 목표(승~55%/순방~65%) 미달 → 추가 너프 */
 export const COST_COMBAT_BALANCE: Record<
   CostTier,
   { hp: number; atk: number; skill: number }
 > = {
-  1: { hp: 1.24, atk: 1.22, skill: 1.26 },
-  2: { hp: 1.16, atk: 1.14, skill: 1.18 },
-  3: { hp: 1.1, atk: 1.1, skill: 1.12 },
-  4: { hp: 1.02, atk: 1.02, skill: 1.02 },
-  5: { hp: 0.86, atk: 0.84, skill: 0.86 },
+  1: { hp: 1.3, atk: 1.28, skill: 1.32 },
+  2: { hp: 1.22, atk: 1.2, skill: 1.24 },
+  3: { hp: 1.18, atk: 1.18, skill: 1.2 },
+  4: { hp: 1.14, atk: 1.14, skill: 1.16 },
+  5: { hp: 0.58, atk: 0.54, skill: 0.5 },
 };
 
 // ============================================================================
@@ -1748,9 +1748,9 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     traits: ['DRAGONKIN', 'ABYSSAL_DEMON', 'BERSERKER'],
     icon: '🔥',
     stats: {
-      hp: 1450,
-      atk: 105,
-      def: 75,
+      hp: 1300,
+      atk: 94,
+      def: 68,
       atkSpeed: 0.8,
       range: 3,
       startMana: 50,
@@ -1761,7 +1761,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
       description:
         '공중으로 날아올라 적 보드 전체(8x7)에 지옥불 브레스를 퍼부어 모든 적에게 궤멸적인 피해와 2초 기절을 선사합니다. (3성 달성 시: 99,999 피해로 적 전체 즉사!)',
       skillType: 'APOCALYPSE_BREATH',
-      baseValueByStar: [550, 980, 99999],
+      baseValueByStar: [320, 560, 1400],
       manaLockMs: 1200,
     },
   },
@@ -1772,9 +1772,9 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     traits: ['GOLDEN_GOBLIN', 'PALADIN', 'VANGUARD'],
     icon: '👑',
     stats: {
-      hp: 1380,
-      atk: 98,
-      def: 70,
+      hp: 1240,
+      atk: 88,
+      def: 64,
       atkSpeed: 0.82,
       range: 2,
       startMana: 45,
@@ -1785,8 +1785,8 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
       description:
         '하늘에서 거대한 황금 금고 폭격을 내려 적 전체를 기절시키고, 전투마다 골드와 보물을 생성합니다. (3성 달성 시: 전투 시작과 동시에 적 전체 99,999 피해 및 매 라운드 50골드 지급!)',
       skillType: 'GOLDEN_VAULT_BOMBARD',
-      baseValueByStar: [480, 880, 99999],
-      secondaryValueByStar: [3, 6, 50],
+      baseValueByStar: [240, 420, 900],
+      secondaryValueByStar: [1, 2, 4],
       manaLockMs: 1100,
     },
   },
@@ -1797,9 +1797,9 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     traits: ['HOLY_EMPIRE', 'UNDEAD_SCOURGE', 'RANGER'],
     icon: '👼',
     stats: {
-      hp: 1200,
-      atk: 115,
-      def: 50,
+      hp: 1080,
+      atk: 103,
+      def: 46,
       atkSpeed: 0.92,
       range: 4,
       startMana: 40,
@@ -1810,7 +1810,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
       description:
         '빛과 어둠의 쌍권총으로 전장의 모든 적에게 동시에 심판의 탄환을 난사합니다. (3성 달성 시: 타겟당 50,000 피해로 전장 즉각 정화!)',
       skillType: 'JUDGMENT_BARRAGE',
-      baseValueByStar: [460, 840, 50000],
+      baseValueByStar: [270, 480, 1100],
       manaLockMs: 950,
     },
   },
@@ -1821,9 +1821,9 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     traits: ['HOLY_EMPIRE', 'PALADIN', 'VANGUARD'],
     icon: '⚔️',
     stats: {
-      hp: 1520,
-      atk: 108,
-      def: 85,
+      hp: 1360,
+      atk: 97,
+      def: 78,
       atkSpeed: 0.85,
       range: 1,
       startMana: 30,
@@ -1834,7 +1834,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
       description:
         '천상의 빛으로 적 전체를 심판하고 아군 전체에게 불멸의 성광 보호막을 내립니다. (3성 달성 시: 99,999 신성 피해로 전장 정화!)',
       skillType: 'APOCALYPSE_BREATH',
-      baseValueByStar: [420, 750, 99999],
+      baseValueByStar: [250, 440, 1050],
       manaLockMs: 1100,
     },
   },
@@ -1845,9 +1845,9 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     traits: ['DRAGONKIN', 'ARCANE_TOWER', 'ARCHMAGE'],
     icon: '🌌',
     stats: {
-      hp: 1420,
-      atk: 100,
-      def: 72,
+      hp: 1270,
+      atk: 90,
+      def: 66,
       atkSpeed: 0.84,
       range: 4,
       startMana: 45,
@@ -1858,7 +1858,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
       description:
         '우주의 에너지를 응축한 창세의 브레스로 적 진영 전체를 초토화합니다. (3성 달성 시: 99,999 피해로 적 전체 소멸!)',
       skillType: 'APOCALYPSE_BREATH',
-      baseValueByStar: [560, 990, 99999],
+      baseValueByStar: [330, 580, 1450],
       manaLockMs: 1150,
     },
   },
@@ -1869,9 +1869,9 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     traits: ['ARCANE_TOWER', 'ARCHMAGE', 'UNDEAD_SCOURGE'],
     icon: '⏳',
     stats: {
-      hp: 1260,
-      atk: 96,
-      def: 55,
+      hp: 1130,
+      atk: 86,
+      def: 50,
       atkSpeed: 0.88,
       range: 4,
       startMana: 40,
@@ -1882,7 +1882,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
       description:
         '시간의 톱니바퀴를 역전시켜 전장의 모든 적에게 시공간 붕괴 마법 탄환을 퍼붓습니다. (3성 달성 시: 50,000 고정+물리 피해!)',
       skillType: 'JUDGMENT_BARRAGE',
-      baseValueByStar: [490, 890, 50000],
+      baseValueByStar: [290, 520, 1250],
       manaLockMs: 950,
     },
   },
@@ -1893,9 +1893,9 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     traits: ['ABYSSAL_DEMON', 'SHADOW_ASSASSIN', 'BERSERKER'],
     icon: '🩸',
     stats: {
-      hp: 1350,
-      atk: 125,
-      def: 60,
+      hp: 1210,
+      atk: 112,
+      def: 55,
       atkSpeed: 0.95,
       range: 1,
       startMana: 30,
@@ -1906,7 +1906,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
       description:
         '가장 약한 적을 처형하고 주변에 40% 스플래시 피해를 입히며, 처치 시 즉시 마나를 100% 회복하여 적 전체를 연쇄 학살합니다. (3성 달성 시: 99,999 피해로 연쇄 즉사!)',
       skillType: 'EXECUTE_RESET',
-      baseValueByStar: [720, 1280, 99999],
+      baseValueByStar: [420, 740, 1600],
       manaLockMs: 500,
     },
   },
@@ -1917,9 +1917,9 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
     traits: ['ELVEN_SYLVAN', 'VANGUARD', 'PALADIN'],
     icon: '🌳',
     stats: {
-      hp: 1650,
-      atk: 102,
-      def: 90,
+      hp: 1480,
+      atk: 92,
+      def: 82,
       atkSpeed: 0.78,
       range: 2,
       startMana: 45,
@@ -1930,8 +1930,8 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
       description:
         '세계수의 생명으로 아군 전체에 거대한 보호막을 두르고 적 전체를 뿌리 폭풍으로 짓뭉갭니다. (3성 달성 시: 99,999 피해!)',
       skillType: 'EXCALIBUR_TEAM_SHIELD',
-      baseValueByStar: [580, 1020, 99999],
-      secondaryValueByStar: [420, 750, 9999],
+      baseValueByStar: [340, 600, 1400],
+      secondaryValueByStar: [260, 450, 900],
       manaLockMs: 1100,
     },
   },

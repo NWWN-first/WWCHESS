@@ -236,7 +236,7 @@ export class CreepRoundManager {
         roundStr,
         baseItemCount: 1,
         completedItemCount: 0,
-        targetGoldValue: 4,
+        targetGoldValue: 3,
         grantsDuplicator: false,
       };
     }
@@ -245,7 +245,7 @@ export class CreepRoundManager {
         roundStr,
         baseItemCount: 1,
         completedItemCount: 0,
-        targetGoldValue: 6,
+        targetGoldValue: 4,
         grantsDuplicator: false,
       };
     }
@@ -254,7 +254,7 @@ export class CreepRoundManager {
         roundStr,
         baseItemCount: 2,
         completedItemCount: 0,
-        targetGoldValue: 7,
+        targetGoldValue: 5,
         grantsDuplicator: false,
       };
     }
@@ -263,7 +263,7 @@ export class CreepRoundManager {
         roundStr,
         baseItemCount: 2,
         completedItemCount: 0,
-        targetGoldValue: 10,
+        targetGoldValue: 7,
         grantsDuplicator: true,
       };
     }
@@ -272,7 +272,7 @@ export class CreepRoundManager {
         roundStr,
         baseItemCount: 2,
         completedItemCount: 1,
-        targetGoldValue: 12,
+        targetGoldValue: 8,
         grantsDuplicator: false,
       };
     }
@@ -281,7 +281,7 @@ export class CreepRoundManager {
         roundStr,
         baseItemCount: 1,
         completedItemCount: 2,
-        targetGoldValue: 16,
+        targetGoldValue: 11,
         grantsDuplicator: true,
       };
     }
@@ -289,7 +289,7 @@ export class CreepRoundManager {
       roundStr,
       baseItemCount: 1,
       completedItemCount: 0,
-      targetGoldValue: 6,
+      targetGoldValue: 4,
       grantsDuplicator: false,
     };
   }

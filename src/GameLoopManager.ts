@@ -1248,16 +1248,26 @@ export class GameLoopManager {
    * 라운드 기본 골드(5G) + 이자 골드(최대 5G / 사악한 금융 7G) + 연승/연패 골드 지급 및 +2 XP, 상점 자동 새로고침
    */
   private distributeRoundIncomeAndRefreshShops(): void {
+    // 스테이지 1~2는 TFT보다 타이트하게 (골드 과속 체감 완화)
     const baseGold =
-      this.stage === 1 ? (this.roundInStage === 1 ? 3 : 4) : 5;
+      this.stage === 1
+        ? this.roundInStage === 1
+          ? 2
+          : 3
+        : this.stage === 2
+          ? 3
+          : this.stage === 3
+            ? 4
+            : 5;
 
     for (const p of this.participants) {
       if (p.isEliminated) continue;
 
       const interestGold = p.calculateInterestGold();
       const maxStreak = Math.max(p.winStreak, p.loseStreak);
+      // TFT에 가깝게: 2연은 0, 3연=1, 4연=2, 5연+=3 (기존 2연부터 +1이라 골드가 빨리 쌓임)
       let streakGold =
-        maxStreak >= 5 ? 3 : maxStreak >= 4 ? 2 : maxStreak >= 2 ? 1 : 0;
+        maxStreak >= 5 ? 3 : maxStreak >= 4 ? 2 : maxStreak >= 3 ? 1 : 0;
       // 전술적 후퇴: 연패 골드 1.5배
       if (p.augments.includes('AUG_TACTICAL_RETREAT') && p.loseStreak >= 2) {
         streakGold = Math.floor(streakGold * 1.5);
