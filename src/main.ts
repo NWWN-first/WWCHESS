@@ -2045,15 +2045,27 @@ class FantasyAutoBattlerApp {
       }
 
       const traitIconsHtml = template.traits
-        .map(
-          (t: TraitId) =>
-            `<span class="shop-trait-pill">${TRAIT_DEFINITIONS[t].icon}${TRAIT_DEFINITIONS[t].name.slice(0, 2)}</span>`
-        )
+        .map((t: TraitId) => {
+          const def = TRAIT_DEFINITIONS[t];
+          const isOrigin = def.type === 'ORIGIN';
+          const style = isOrigin
+            ? `border-color:${def.color};background:${def.color}55;color:#fff`
+            : '';
+          return `<span class="shop-trait-pill ${
+            isOrigin ? 'origin-pill' : 'class-pill'
+          }" style="${style}">${def.icon}${def.name.slice(0, 2)}</span>`;
+        })
         .join('');
 
       const nameTokens = template.name.trim().split(' ');
       const coreName = nameTokens[nameTokens.length - 1];
       const prefix = nameTokens.length > 1 ? nameTokens.slice(0, -1).join(' ') : '';
+      const originTrait = template.traits.find(
+        (t: TraitId) => TRAIT_DEFINITIONS[t].type === 'ORIGIN'
+      );
+      const originBgStyle = originTrait
+        ? `--origin-color:${TRAIT_DEFINITIONS[originTrait].color}`
+        : '';
 
       card.innerHTML = `
         <div class="shop-card-top cost-header-${template.cost}">
@@ -2064,7 +2076,9 @@ class FantasyAutoBattlerApp {
           <span class="shop-cost-pill cost-tag-${template.cost}">🪙${template.cost}G</span>
         </div>
         ${mergeHintBadge}
-        <div class="shop-portrait-stage">
+        <div class="shop-portrait-stage ${
+          originTrait ? `origin-stage origin-${originTrait}` : ''
+        }" style="${originBgStyle}">
           <canvas class="shop-pixel-portrait"></canvas>
           <div class="shop-trait-Overlay-strip">
             <div>${traitIconsHtml}</div>

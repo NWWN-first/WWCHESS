@@ -18,6 +18,9 @@ import {
   ItemId,
   StarLevel,
   UNIT_TEMPLATES,
+  getOriginThemeColor,
+  originColorToHexNumber,
+  originColorToRgba,
 } from './GameData';
 import { HexCoord, HexGridMath } from './HexGridMath';
 import { Participant } from './Participant';
@@ -2819,6 +2822,38 @@ export class ThreeJsGameRenderer {
 
     // 머리 위 체력/아이템 HUD는 화면고정 DOM (#unit-overhead-layer)
 
+    // TFT식 메인 시너지(Origin) 발밑 컬러 패드 — Class(선봉 등)는 제외
+    const originHex = getOriginThemeColor(UNIT_TEMPLATES[unitId]?.traits || []);
+    if (originHex) {
+      const originNum = originColorToHexNumber(originHex);
+      const padGeo = new THREE.CircleGeometry(0.95, 20);
+      const padMat = new THREE.MeshBasicMaterial({
+        color: originNum,
+        transparent: true,
+        opacity: 0.42,
+        depthWrite: false,
+      });
+      const pad = new THREE.Mesh(padGeo, padMat);
+      pad.rotation.x = -Math.PI / 2;
+      pad.position.y = 0.02;
+      pad.name = 'ORIGIN_PAD';
+      group.add(pad);
+
+      const rimGeo = new THREE.RingGeometry(0.82, 1.05, 20);
+      const rimMat = new THREE.MeshBasicMaterial({
+        color: originNum,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.7,
+        depthWrite: false,
+      });
+      const rim = new THREE.Mesh(rimGeo, rimMat);
+      rim.rotation.x = Math.PI / 2;
+      rim.position.y = 0.03;
+      rim.name = 'ORIGIN_RIM';
+      group.add(rim);
+    }
+
     // 3성 전용 바닥 황금 룬 마법진
     if (starLevel === 3) {
       const circleGeo = new THREE.RingGeometry(1.0, 1.25, 6);
@@ -3813,38 +3848,36 @@ export class ThreeJsGameRenderer {
     pCtx.imageSmoothingEnabled = true;
 
     const spec = UNIT_PIXEL_SPECS[unitId] ?? UNIT_PIXEL_SPECS.u1_garen;
+    const originHex =
+      getOriginThemeColor(UNIT_TEMPLATES[unitId]?.traits || []) || '#64748b';
 
-    // 1) 3D 전용 프리미엄 다크 메탈릭 그라데이션 배경
-    const costThemes: Record<number, { bgTop: string; bgBottom: string; ringColor: string }> = {
-      1: { bgTop: '#1e293b', bgBottom: '#090d16', ringColor: '#94a3b8' },
-      2: { bgTop: '#14532d', bgBottom: '#052e16', ringColor: '#22c55e' },
-      3: { bgTop: '#0369a1', bgBottom: '#082f49', ringColor: '#38bdf8' },
-      4: { bgTop: '#581c87', bgBottom: '#2e1065', ringColor: '#c084fc' },
-      5: { bgTop: '#78350f', bgBottom: '#451a03', ringColor: '#facc15' },
-    };
-    const theme = costThemes[cost] || costThemes[1];
-
+    // 1) TFT식 메인 시너지(Origin) 테마 배경 (코스트 틴트 대신)
     const bgGrad = pCtx.createRadialGradient(
       logicalW * 0.5,
       logicalH * 0.55,
-      8,
+      6,
       logicalW * 0.5,
       logicalH * 0.52,
       logicalW * 0.72
     );
-    bgGrad.addColorStop(0, theme.bgTop);
-    bgGrad.addColorStop(0.65, theme.bgBottom);
+    bgGrad.addColorStop(0, originColorToRgba(originHex, 0.88));
+    bgGrad.addColorStop(0.42, originColorToRgba(originHex, 0.4));
+    bgGrad.addColorStop(0.75, '#0c1220');
     bgGrad.addColorStop(1, '#05070c');
     pCtx.fillStyle = bgGrad;
     pCtx.fillRect(0, 0, logicalW, logicalH);
 
-    // 2) 바닥 3D 룬 서클 패드 (Subtle 3D Halo)
-    pCtx.strokeStyle = theme.ringColor;
-    pCtx.lineWidth = 1.2;
-    pCtx.globalAlpha = 0.45;
+    // 2) Origin 바닥 할로 링
+    pCtx.strokeStyle = originHex;
+    pCtx.lineWidth = 1.4;
+    pCtx.globalAlpha = 0.55;
     pCtx.beginPath();
     pCtx.ellipse(logicalW * 0.5, logicalH * 0.88, 28, 7, 0, 0, Math.PI * 2);
     pCtx.stroke();
+    pCtx.fillStyle = originColorToRgba(originHex, 0.28);
+    pCtx.beginPath();
+    pCtx.ellipse(logicalW * 0.5, logicalH * 0.88, 26, 6, 0, 0, Math.PI * 2);
+    pCtx.fill();
     pCtx.globalAlpha = 1.0;
 
     // 3) 2성/3성 합성 가능 시 골드 후광 링

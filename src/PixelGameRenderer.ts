@@ -9,6 +9,8 @@ import {
   TRAIT_DEFINITIONS,
   TraitId,
   UNIT_TEMPLATES,
+  getOriginThemeColor,
+  originColorToRgba,
 } from './GameData';
 import { AvatarFinisherLaserPayload } from './GameLoopManager';
 import { HexBoardViewportMetrics, HexCoord, HexGridMath } from './HexGridMath';
@@ -1260,21 +1262,31 @@ export class PixelGameRenderer {
 
     const spec = UNIT_PIXEL_SPECS[unitId] ?? UNIT_PIXEL_SPECS.u1_garen;
     const borderColor = COST_BORDER_COLORS[cost];
+    const originHex =
+      getOriginThemeColor(UNIT_TEMPLATES[unitId]?.traits || []) ||
+      spec.primaryArmor;
 
-    // 1) 시너지/코스트 테마 배경 라디얼 그라데이션
+    // 1) TFT식 메인 시너지(Origin) 테마 배경
     const bgGrad = pCtx.createRadialGradient(
       logicalW * 0.5,
       logicalH * 0.58,
-      6,
+      4,
       logicalW * 0.5,
       logicalH * 0.55,
-      logicalW * 0.65
+      logicalW * 0.7
     );
-    bgGrad.addColorStop(0, spec.primaryArmor);
-    bgGrad.addColorStop(0.55, '#131b2e');
-    bgGrad.addColorStop(1, '#080b14');
+    bgGrad.addColorStop(0, originColorToRgba(originHex, 0.92));
+    bgGrad.addColorStop(0.45, originColorToRgba(originHex, 0.45));
+    bgGrad.addColorStop(0.78, '#101827');
+    bgGrad.addColorStop(1, '#070a12');
     pCtx.fillStyle = bgGrad;
     pCtx.fillRect(0, 0, logicalW, logicalH);
+
+    // Origin 하단 글로우 패드
+    pCtx.fillStyle = originColorToRgba(originHex, 0.35);
+    pCtx.beginPath();
+    pCtx.ellipse(logicalW * 0.5, logicalH - 6, 30, 8, 0, 0, Math.PI * 2);
+    pCtx.fill();
 
     // 2) 2성/3성 합성 가능 시 부드러운 골드 후광 링
     if (isCanUpgrade) {
@@ -2668,6 +2680,47 @@ export class PixelGameRenderer {
 
     ctx.save();
 
+    // 0) TFT식 메인 시너지(Origin) 발밑/벤치 배경 패드 — 선봉 등 Class는 제외
+    const originHex = getOriginThemeColor(
+      UNIT_TEMPLATES[u.unitId]?.traits || []
+    );
+    const shadowRx = Math.max(12, spriteDrawW * 0.34);
+    const shadowRy = Math.max(5, shadowRx * 0.38);
+    if (originHex) {
+      const padRx = u.compactBenchMode
+        ? Math.max(14, (u.benchSlotWidth ?? 36) * 0.42)
+        : Math.max(shadowRx * 1.55, m.hexWidth * 0.38);
+      const padRy = u.compactBenchMode ? padRx * 0.42 : padRx * 0.48;
+      const padGrad = ctx.createRadialGradient(
+        feetAnchorX,
+        feetAnchorY,
+        2,
+        feetAnchorX,
+        feetAnchorY,
+        padRx
+      );
+      padGrad.addColorStop(0, originColorToRgba(originHex, 0.55));
+      padGrad.addColorStop(0.55, originColorToRgba(originHex, 0.28));
+      padGrad.addColorStop(1, originColorToRgba(originHex, 0));
+      ctx.beginPath();
+      ctx.ellipse(feetAnchorX, feetAnchorY, padRx, padRy, 0, 0, Math.PI * 2);
+      ctx.fillStyle = padGrad;
+      ctx.fill();
+      ctx.strokeStyle = originColorToRgba(originHex, 0.55);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(
+        feetAnchorX,
+        feetAnchorY,
+        padRx * 0.92,
+        padRy * 0.92,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.stroke();
+    }
+
     // 1) 3성 기물 전용: 발밑 육각형 타일에 회전하는 도트 황금 마법진과 상승하는 빛 입자 상시 출력
     if (u.starLevel === 3 && !u.compactBenchMode) {
       this.drawThreeStarMagicCircle(
@@ -2679,8 +2732,6 @@ export class PixelGameRenderer {
     }
 
     // 2) 발바닥 기준점(feetAnchorX, feetAnchorY)에 타원형 반투명 그림자(Drop Shadow)
-    const shadowRx = Math.max(12, spriteDrawW * 0.34);
-    const shadowRy = Math.max(5, shadowRx * 0.38);
     ctx.beginPath();
     ctx.ellipse(feetAnchorX, feetAnchorY, shadowRx, shadowRy, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.56)';

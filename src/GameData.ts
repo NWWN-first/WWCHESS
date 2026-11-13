@@ -456,6 +456,44 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
   },
 };
 
+/** 메인 시너지(계열/Origin) — 선봉·광전사 같은 직업(Class)이 아님 */
+export function getPrimaryOriginTrait(traits: TraitId[]): TraitId | null {
+  for (const t of traits) {
+    if (TRAIT_DEFINITIONS[t]?.type === 'ORIGIN') return t;
+  }
+  return null;
+}
+
+export function getOriginThemeColor(traits: TraitId[]): string | null {
+  const origin = getPrimaryOriginTrait(traits);
+  return origin ? TRAIT_DEFINITIONS[origin].color : null;
+}
+
+export function hexColorToRgb(
+  hex: string
+): { r: number; g: number; b: number } | null {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+  if (!m) return null;
+  return {
+    r: parseInt(m[1], 16),
+    g: parseInt(m[2], 16),
+    b: parseInt(m[3], 16),
+  };
+}
+
+export function originColorToRgba(hex: string, alpha: number): string {
+  const rgb = hexColorToRgb(hex);
+  if (!rgb) return `rgba(148, 163, 184, ${alpha})`;
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
+/** Three.js / 비트 컬러용 0xRRGGBB */
+export function originColorToHexNumber(hex: string): number {
+  const rgb = hexColorToRgb(hex);
+  if (!rgb) return 0x94a3b8;
+  return (rgb.r << 16) | (rgb.g << 8) | rgb.b;
+}
+
 // ============================================================================
 // C. 20종 판타지 챔피언 정의 (UNIT_TEMPLATES)
 // ============================================================================

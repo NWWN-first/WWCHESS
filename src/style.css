@@ -1690,13 +1690,41 @@ img {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  background: #0b1020;
+}
+
+/* TFT식: 메인 시너지(Origin) 초상화 배경 틴트 — Class(선봉 등)는 적용 안 함 */
+.shop-portrait-stage.origin-stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 80% 70% at 50% 62%,
+      color-mix(in srgb, var(--origin-color, #64748b) 55%, transparent) 0%,
+      color-mix(in srgb, var(--origin-color, #64748b) 18%, transparent) 48%,
+      rgba(8, 12, 22, 0.15) 100%
+    );
 }
 
 .shop-pixel-portrait {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   object-fit: contain;
   display: block;
+}
+
+.shop-trait-pill.origin-pill {
+  font-weight: 700;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.65);
+}
+
+.shop-trait-pill.class-pill {
+  opacity: 0.85;
 }
 
 .shop-trait-Overlay-strip {
