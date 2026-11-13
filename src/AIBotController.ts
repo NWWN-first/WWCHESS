@@ -23,6 +23,7 @@ import { SynergyEngine } from './SynergyEngine';
 import { NeuralBotEngine, NeuralInferenceResult } from './NeuralBotEngine';
 import {
   analyzeComps,
+  buildPivotPlan,
   defaultRuleBasedPlanner,
   isDynamicStrategyExperimentEnabled,
   ObservableStateSummary,
@@ -48,11 +49,11 @@ export interface PivotTelemetryEvent {
 }
 
 export interface PivotTelemetry {
-  /** soft-gate/스카우트 확률을 통과해 피벗을 '검토'한 횟수 */
+  /** CompAnalyzer가 stay가 아닌 추천을 낸 횟수 (Stage2) */
   attempts: number;
-  /** 경합/풀비율 게이트에서 탈락 */
+  /** 안전 게이트로 hard가 soft/stay로 강등 */
   contestGateFail: number;
-  /** 대체 시너지를 찾지 못함 */
+  /** soft-flex 적용 횟수 */
   noAlternative: number;
   /** targetTrait 실제 변경 횟수 (= pivotedCount 증가분) */
   executed: number;
@@ -70,7 +71,7 @@ export interface BotBrainState {
   deniedUnitInstanceIds: Set<string>;
   pivotedCount: number;
   pivotTelemetry: PivotTelemetry;
-  /** Stage1 CompAnalyzer 최근 추천 (실행은 Stage2) */
+  /** Stage1/2 CompAnalyzer + PivotPlanner 최근 상태 */
   lastCompDecision?: {
     decision: string;
     compId: string;
@@ -78,7 +79,15 @@ export interface BotBrainState {
     total: number;
     margin: number;
     reason: string;
+    blockedReason?: string;
   };
+  activeCompId?: string;
+  buyPriorityUnitIds: Set<string>;
+  keepUnitIds: Set<string>;
+  /** Stage2 PivotPlanner 템포 힌트 */
+  pivotGoldFloorHint: number | null;
+  pivotMaxRerollsHint: number | null;
+  pivotPreferRolldown: boolean;
   isRolldownActive: boolean;
   nextActionDelayMs: number;
   rerollsExecutedThisRound: number;
@@ -345,6 +354,11 @@ export class AIBotController {
         executed: 0,
         events: [],
       },
+      buyPriorityUnitIds: new Set<string>(),
+      keepUnitIds: new Set<string>(),
+      pivotGoldFloorHint: null,
+      pivotMaxRerollsHint: null,
+      pivotPreferRolldown: false,
       isRolldownActive: false,
       nextActionDelayMs: 900,
       rerollsExecutedThisRound: 0,
@@ -608,7 +622,7 @@ export class AIBotController {
     const neuralResult = NeuralBotEngine.getInstance().predictSync(stateTensor.features);
     brain.lastNeuralResult = neuralResult;
 
-    // 1. 라운드 시작 정찰(Scouting) 및 덱 전환(Pivot)
+    // 1. 정찰/견제 (trait 피벗은 Stage2 Planner가 담당)
     brain.unitsToDenyCache = this.performScoutingAndPivot(
       bot,
       brain,
@@ -617,31 +631,81 @@ export class AIBotController {
       aiParams
     );
 
-    // Stage1: CompAnalyzer 추천 기록 (실행/피벗 강제 변경은 Stage2)
+    // Stage2: CompAnalyzer → PivotPlanner 실행
+    const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
     try {
-      const stageNumForComp = parseInt(currentRound.split('-')[0] || '1', 10);
       const analysis = analyzeComps({
         bot,
         allParticipants,
         sharedPool,
         currentTrait: brain.targetTrait,
-        stage: stageNumForComp,
+        stage: stageNum,
         roundLabel: currentRound,
       });
+      const plan = buildPivotPlan({
+        bot,
+        persona: brain.persona,
+        currentTrait: brain.targetTrait,
+        pivotedCount: brain.pivotedCount,
+        analysis,
+        stage: stageNum,
+      });
+
+      if (plan.decision !== 'stay') {
+        brain.pivotTelemetry.attempts += 1;
+      }
+      if (plan.blockedReason) {
+        brain.pivotTelemetry.contestGateFail += 1;
+      }
+      if (plan.decision === 'soft-flex' && plan.applyBuyBias) {
+        brain.pivotTelemetry.noAlternative += 1;
+      }
+
+      if (plan.applyTraitChange && plan.targetTrait !== brain.targetTrait) {
+        const fromTrait = brain.targetTrait;
+        brain.targetTrait = plan.targetTrait;
+        brain.secondaryTrait = plan.secondaryTrait;
+        brain.pivotedCount += 1;
+        brain.pivotTelemetry.executed += 1;
+        brain.pivotTelemetry.events.push({
+          round: currentRound,
+          from: fromTrait,
+          to: plan.targetTrait,
+          contested: 0,
+          poolRatio: analysis.recommended.breakdown.contestEase / 100,
+        });
+      } else if (plan.applyBuyBias) {
+        brain.secondaryTrait = plan.secondaryTrait;
+      }
+
+      if (plan.applyBuyBias) {
+        brain.activeCompId = plan.activeComp.id;
+        brain.buyPriorityUnitIds = new Set(plan.buyPriorityUnitIds);
+        brain.keepUnitIds = new Set(plan.keepUnitIds);
+      }
+      brain.pivotGoldFloorHint = plan.goldFloorHint;
+      brain.pivotMaxRerollsHint = plan.maxRerollsHint;
+      brain.pivotPreferRolldown = plan.preferRolldown;
+
       brain.lastCompDecision = {
-        decision: analysis.decision,
-        compId: analysis.recommended.comp.id,
-        compName: analysis.recommended.comp.name,
+        decision: plan.decision,
+        compId: plan.activeComp.id,
+        compName: plan.activeComp.name,
         total: analysis.recommended.total,
         margin: analysis.margin,
-        reason: analysis.primaryReason,
+        reason: plan.reason,
+        blockedReason: plan.blockedReason,
       };
+
+      // hard/soft 전환 직후 벤치 정리로 슬롯 확보
+      if (plan.decision === 'hard-pivot' || plan.decision === 'soft-flex') {
+        this.cleanupBenchIfFull(bot, brain, sharedPool);
+      }
     } catch {
-      // 분석 실패해도 봇 루프는 계속
+      // 분석/플래너 실패해도 봇 루프는 계속
     }
 
     const persona = brain.persona;
-    const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
     const isEmergencySurvival = bot.hp <= 30;
     const isGoblinCashoutTurn =
       persona === 'GOBLIN_GAMBLER' &&
@@ -654,6 +718,7 @@ export class AIBotController {
       isEmergencySurvival ||
       isGoblinCashoutTurn ||
       isHighStageAllIn ||
+      brain.pivotPreferRolldown ||
       macro === 'ROLLDOWN' ||
       macro === 'STABILIZE_REROLL';
     brain.rerollsExecutedThisRound = 0;
@@ -683,6 +748,13 @@ export class AIBotController {
     } else if (macro === 'SLAM_ITEMS') {
       brain.targetGoldFloorThisRound = Math.min(brain.targetGoldFloorThisRound, 20);
     }
+    // Stage2: 컴프 levelHint 템포 힌트 반영
+    if (brain.pivotGoldFloorHint !== null && !isEmergencySurvival) {
+      brain.targetGoldFloorThisRound = Math.min(
+        brain.targetGoldFloorThisRound,
+        brain.pivotGoldFloorHint
+      );
+    }
     // Soft noise: 이자 하한선을 사람처럼 흔들기 (위기 올인 제외)
     if (!isEmergencySurvival && !isGoblinCashoutTurn) {
       brain.targetGoldFloorThisRound = this.softJitterGoldFloor(
@@ -693,6 +765,10 @@ export class AIBotController {
 
     if (isEmergencySurvival || isGoblinCashoutTurn) {
       brain.maxRerollsAllowedThisRound = 20;
+    } else if (brain.pivotMaxRerollsHint !== null) {
+      brain.maxRerollsAllowedThisRound = brain.isRolldownActive
+        ? Math.max(14, brain.pivotMaxRerollsHint)
+        : brain.pivotMaxRerollsHint;
     } else if (brain.isRolldownActive) {
       brain.maxRerollsAllowedThisRound = 14;
     } else if (
@@ -1491,65 +1567,12 @@ export class AIBotController {
       }
     }
 
-    // Soft skill gate + neural pivot urgency + scoutingChance
-    const pivotUrge = brain.lastNeuralResult?.urgencies.pivot ?? 0.2;
-    const neuralWantsPivot =
-      brain.lastNeuralResult?.macroAction === 'PIVOT_BOARD' || pivotUrge > 0.62;
-    const shouldAttemptPivot =
-      (this.softSkillGate(aiParams, neuralWantsPivot ? 0.45 : 0.65) || neuralWantsPivot) &&
-      Math.random() <
-        Math.max(0.08, aiParams.scoutingChance) * (neuralWantsPivot ? 1.55 : 1) &&
-      brain.pivotedCount < 2 &&
-      !(brain.persona === 'GOBLIN_GAMBLER' && bot.goblinVaultStacks >= 12);
-
-    if (shouldAttemptPivot) {
-      brain.pivotTelemetry.attempts += 1;
-      const currentContested = traitContestedMap.get(brain.targetTrait) ?? 0;
-
-      // 목표 시너지 기물들의 공유 풀 잔여 비율 계산
-      const traitUnits = Object.values(UNIT_TEMPLATES).filter((u) =>
-        u.traits.includes(brain.targetTrait)
-      );
-      let remainingSum = 0;
-      let maxSum = 0;
-      for (const u of traitUnits) {
-        remainingSum += sharedPool.getRemainingCount(u.id);
-        maxSum += sharedPool.getMaxCount(u.id);
-      }
-      const poolRatio = maxSum > 0 ? remainingSum / maxSum : 1;
-
-      if (currentContested >= 2 && poolRatio < 0.68) {
-        // 가장 덜 겹치는 시너지 탐색
-        let bestAlternative: TraitId = brain.targetTrait;
-        let lowestContested = currentContested;
-
-        for (const candidateTrait of STANDARD_ORIGIN_TRAITS) {
-          const contestedCount = traitContestedMap.get(candidateTrait) ?? 0;
-          if (contestedCount < lowestContested) {
-            lowestContested = contestedCount;
-            bestAlternative = candidateTrait;
-          }
-        }
-
-        if (bestAlternative !== brain.targetTrait) {
-          const fromTrait = brain.targetTrait;
-          brain.targetTrait = bestAlternative;
-          brain.pivotedCount += 1;
-          brain.pivotTelemetry.executed += 1;
-          brain.pivotTelemetry.events.push({
-            round: brain.currentRoundLabel ?? '?',
-            from: fromTrait,
-            to: bestAlternative,
-            contested: currentContested,
-            poolRatio,
-          });
-        } else {
-          brain.pivotTelemetry.noAlternative += 1;
-        }
-      } else {
-        brain.pivotTelemetry.contestGateFail += 1;
-      }
-    }
+    // Stage2: 구식 "덜 경합 origin 고르기" 피벗은 비활성.
+    // trait 전환은 prepareBotForRealTimePrep의 CompAnalyzer+PivotPlanner가 수행.
+    void traitContestedMap;
+    void sharedPool;
+    void aiParams;
+    void bot;
 
     return unitsToDenyFromPlayer;
   }
@@ -1927,6 +1950,18 @@ export class AIBotController {
       score += template.cost * 5;
     }
 
+    // Stage2: 활성 컴프 구매 우선순위
+    if (brain.buyPriorityUnitIds.has(template.id)) {
+      score += 42;
+    } else if (
+      brain.keepUnitIds.size > 0 &&
+      !brain.keepUnitIds.has(template.id) &&
+      ownedCopies === 0 &&
+      template.cost >= 3
+    ) {
+      score -= 18; // 컴프 밖 고코스트 신규 수집 억제
+    }
+
     // 7. 인간적 오차(Temperature Noise) 적용
     const noise = (Math.random() - 0.5) * aiParams.temperature * 38;
     return score + noise;
@@ -1957,6 +1992,10 @@ export class AIBotController {
       if (unit.traits.includes('GOLDEN_GOBLIN') && brain.persona === 'GOBLIN_GAMBLER') {
         keepScore += 45;
       }
+      // Stage2: 활성 컴프 keep 목록 우선 보존 / 밖이면 매각 후보
+      if (brain.keepUnitIds.has(unit.unitId)) keepScore += 40;
+      else if (brain.keepUnitIds.size > 0) keepScore -= 25;
+      if (brain.buyPriorityUnitIds.has(unit.unitId)) keepScore += 20;
 
       if (keepScore < worstValue) {
         worstValue = keepScore;

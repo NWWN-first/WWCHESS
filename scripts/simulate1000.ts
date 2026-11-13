@@ -1019,9 +1019,9 @@ console.log(
   `  봇 1판당 덱 갈아엎기(pivot 실행) 평균: ${(flaws.botGames ? flaws.pivotsTotal / flaws.botGames : 0).toFixed(2)}회/봇`
 );
 
-console.log('\n[4-B] 피벗 퍼널 KPI (Stage0)');
+console.log('\n[4-B] 피벗 퍼널 KPI (Stage2 Planner)');
 console.log(
-  `  검토(attempts): ${pivotFunnel.attempts} | 경합게이트탈락: ${pivotFunnel.contestGateFail} (${pct(pivotFunnel.contestGateFail, pivotFunnel.attempts)}) | 대체없음: ${pivotFunnel.noAlternative} (${pct(pivotFunnel.noAlternative, pivotFunnel.attempts)}) | 실행: ${pivotFunnel.executed} (${pct(pivotFunnel.executed, pivotFunnel.attempts)})`
+  `  비-stay 검토(attempts): ${pivotFunnel.attempts} | 안전게이트 강등: ${pivotFunnel.contestGateFail} (${pct(pivotFunnel.contestGateFail, pivotFunnel.attempts)}) | soft-flex 적용: ${pivotFunnel.noAlternative} (${pct(pivotFunnel.noAlternative, pivotFunnel.attempts)}) | hard trait 실행: ${pivotFunnel.executed} (${pct(pivotFunnel.executed, pivotFunnel.attempts)})`
 );
 console.log(
   `  실행 후 최종보드에 새 targetTrait 활성(완성 근사): ${pivotFunnel.completedOnFinalBoard}/${pivotFunnel.pivotedBots} (${pct(pivotFunnel.completedOnFinalBoard, pivotFunnel.pivotedBots)})`
