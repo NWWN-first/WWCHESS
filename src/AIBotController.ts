@@ -151,6 +151,12 @@ const BOT_PRESETS: Array<{ name: string; persona: AIPersona; initialTrait: Trait
   { name: '봇7 [유연한 카이]', persona: 'FLEX_MASTER', initialTrait: 'ABYSSAL_DEMON' },
 ];
 
+const BOT_NEUTRAL_NAMES = [
+  '아서', '실비아', '카이', '엘레나', '빅토르', '루시안', '세레나',
+  '펠릭스', '모르간', '오리온', '다리우스', '제피르', '트리스탄', '발레리아',
+  '클라우드', '레오나르도', '베아트리스', '아델', '로버트', '카스텔', '잭', '볼트'
+];
+
 const DEFENSIVE_ITEM_IDS = new Set<ItemId>([
   'ARMOR',
   'BRAMBLE_VEST',
@@ -177,7 +183,39 @@ export class AIBotController {
    */
   public createSevenAIBots(): Participant[] {
     this.botBrains.clear();
-    // 매 게임마다 프리셋 순서를 약간 섞어 다양한 봇 매치업 유도
+
+    // [Step 6] RANDOM_PERSONA=1일 때: 7명 각자 독립 랜덤 페르소나, 중복 없는 중립 이름 풀, 랜덤 시작 시너지
+    if (typeof process !== 'undefined' && process.env?.RANDOM_PERSONA === '1') {
+      const availablePersonas: AIPersona[] = [
+        'HYPER_ROLLER',
+        'FAST_NINE_GREEDY',
+        'GOBLIN_GAMBLER',
+        'FLEX_MASTER',
+      ];
+
+      // Fisher-Yates shuffle for neutral name pool
+      const shuffledNames = [...BOT_NEUTRAL_NAMES];
+      for (let i = shuffledNames.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledNames[i], shuffledNames[j]] = [shuffledNames[j], shuffledNames[i]];
+      }
+
+      return Array.from({ length: 7 }, (_, idx) => {
+        const botId = `ai_bot_${idx + 1}`;
+        const persona = availablePersonas[Math.floor(Math.random() * availablePersonas.length)];
+        const name = `봇${idx + 1} [${shuffledNames[idx]}]`;
+        const initialTrait: TraitId =
+          persona === 'GOBLIN_GAMBLER'
+            ? 'GOLDEN_GOBLIN'
+            : STANDARD_ORIGIN_TRAITS[Math.floor(Math.random() * STANDARD_ORIGIN_TRAITS.length)];
+
+        const bot = new Participant(botId, name, true, persona);
+        this.initializeBotBrain(bot, persona, initialTrait);
+        return bot;
+      });
+    }
+
+    // 기본 동작 (RANDOM_PERSONA=0): 기존 BOT_PRESETS 셔플 동작 유지
     const shuffledPresets = [...BOT_PRESETS].sort(() => Math.random() - 0.5);
 
     return shuffledPresets.map((preset, idx) => {
