@@ -111,6 +111,9 @@ class FantasyAutoBattlerApp {
     this.pixelRenderer = new PixelGameRenderer(this.fxCanvas);
     this.pixiVfx = new PixiVfxEngine(this.pixiCanvas);
     this.threeRenderer = new ThreeJsGameRenderer(this.threeCanvas);
+    this.threeRenderer.setOverheadLayer(
+      document.getElementById('unit-overhead-layer')
+    );
     this.threeRenderer.onModelsLoaded = () => {
       if (this.is3DViewMode) {
         this.renderShopAndControls();
@@ -124,11 +127,13 @@ class FantasyAutoBattlerApp {
       this.threeCanvas.style.display = 'block';
       this.fxCanvas.classList.add('hidden');
       this.fxCanvas.style.display = 'none';
+      this.threeRenderer.setOverheadLayerVisible(true);
     } else {
       this.threeCanvas.classList.add('hidden');
       this.threeCanvas.style.display = 'none';
       this.fxCanvas.classList.remove('hidden');
       this.fxCanvas.style.display = 'block';
+      this.threeRenderer.setOverheadLayerVisible(false);
     }
 
     // 로비 화면 대기 상태로 초기화 (autoStart = false)
@@ -278,11 +283,13 @@ class FantasyAutoBattlerApp {
           this.threeCanvas.style.display = 'block';
           this.fxCanvas.classList.add('hidden');
           this.fxCanvas.style.display = 'none';
+          this.threeRenderer.setOverheadLayerVisible(true);
         } else {
           this.threeCanvas.classList.add('hidden');
           this.threeCanvas.style.display = 'none';
           this.fxCanvas.classList.remove('hidden');
           this.fxCanvas.style.display = 'block';
+          this.threeRenderer.setOverheadLayerVisible(false);
         }
         // 2D/3D 전환 시 상점 카드 초상화 즉시 동기화
         this.renderShopAndControls();
@@ -925,10 +932,9 @@ class FantasyAutoBattlerApp {
     }
   }
 
-  /** #app 회전(세로폰 강제 가로) 시에도 커서에 붙도록 앱 로컬 좌표 사용 */
-  private setDragGhostPos(ghostEl: HTMLElement, px: number, py: number): void {
-    ghostEl.style.left = `${px}px`;
-    ghostEl.style.top = `${py}px`;
+  /** 뷰포트 커서에 고정 (body 밖 fixed — #app 회전과 무관) */
+  private setDragGhostPos(ghostEl: HTMLElement, clientX: number, clientY: number): void {
+    ghostEl.style.transform = `translate3d(${clientX}px, ${clientY}px, 0) translate(-50%, -120%)`;
   }
 
   private showDragGhost(clientX: number, clientY: number): void {
@@ -945,8 +951,9 @@ class FantasyAutoBattlerApp {
       ghostEl.innerHTML = `🌟 챔피언 복제기`;
     }
 
-    const pt = this.clientToCanvasPoint(clientX, clientY);
-    this.setDragGhostPos(ghostEl, pt.x, pt.y);
+    ghostEl.style.left = '0';
+    ghostEl.style.top = '0';
+    this.setDragGhostPos(ghostEl, clientX, clientY);
     ghostEl.classList.remove('hidden');
   }
 
@@ -958,8 +965,8 @@ class FantasyAutoBattlerApp {
   ): void {
     const ghostEl = document.getElementById('drag-ghost');
     if (!ghostEl) return;
-    // clientX/Y가 아니라 앱/캔버스 로컬 좌표로 추적 (force-landscape 회전 대응)
-    this.setDragGhostPos(ghostEl, px, py);
+    // 항상 실제 손가락/마우스 화면좌표를 추적
+    this.setDragGhostPos(ghostEl, clientX, clientY);
 
     if (!this.dragPayload || this.dragPayload.kind !== 'ITEM') return;
 

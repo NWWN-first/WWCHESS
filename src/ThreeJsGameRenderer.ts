@@ -847,10 +847,10 @@ export class ThreeJsGameRenderer {
   private boardGroup: THREE.Group = new THREE.Group();
   private benchGroup: THREE.Group = new THREE.Group();
   private unitsGroup: THREE.Group = new THREE.Group();
-  /** 유닛 회전/기울기와 무관한 머리 위 HUD (체력·마나·장착아이템) */
-  private overheadRoot: THREE.Group = new THREE.Group();
-  private overheadMap: Map<string, THREE.Group> = new Map();
-  private itemIconTextureCache: Map<string, THREE.CanvasTexture> = new Map();
+  /** 화면고정 DOM HUD (체력·마나·장착아이템) — 3D 회전에 절대 묶이지 않음 */
+  private overheadLayer: HTMLElement | null = null;
+  private overheadDomMap: Map<string, HTMLElement> = new Map();
+  private overheadActiveIds: Set<string> = new Set();
   private environmentGroup: THREE.Group = new THREE.Group();
   private projectilesGroup: THREE.Group = new THREE.Group();
   private popupsGroup: THREE.Group = new THREE.Group();
@@ -866,6 +866,7 @@ export class ThreeJsGameRenderer {
   private unitJuiceMap: Map<string, UnitJuice3D> = new Map();
   private unitAnimControllers: Map<string, UnitAnimController> = new Map();
   private readonly _meshWorldPos = new THREE.Vector3();
+  private readonly _projectVec = new THREE.Vector3();
 
   // GLB 모델 에셋 캐시 (10종 판타지 전용 모델 및 골격 애니메이션)
   private glbLoadedTemplates: Map<string, THREE.Group> = new Map();
@@ -961,7 +962,6 @@ export class ThreeJsGameRenderer {
     this.scene.add(this.boardGroup);
     this.scene.add(this.benchGroup);
     this.scene.add(this.unitsGroup);
-    this.scene.add(this.overheadRoot);
     this.scene.add(this.environmentGroup);
     this.scene.add(this.projectilesGroup);
     this.scene.add(this.popupsGroup);
@@ -1873,121 +1873,41 @@ export class ThreeJsGameRenderer {
       : null;
   }
 
-  private getItemIconTexture(icon: string): THREE.CanvasTexture {
-    const cached = this.itemIconTextureCache.get(icon);
-    if (cached) return cached;
-    const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 64;
-    const ctx = canvas.getContext('2d')!;
-    ctx.clearRect(0, 0, 64, 64);
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
-    ctx.beginPath();
-    ctx.roundRect(2, 2, 60, 60, 10);
-    ctx.fill();
-    ctx.strokeStyle = '#facc15';
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.font = '36px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(icon, 32, 34);
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    this.itemIconTextureCache.set(icon, tex);
-    return tex;
+  public setOverheadLayer(layer: HTMLElement | null): void {
+    this.overheadLayer = layer;
   }
 
-  /** 월드 공간 머리 위 HUD — 유닛 자식이 아니라 카메라만 바라봄 */
-  private createOverheadHud(): THREE.Group {
-    const overheadGroup = new THREE.Group();
-    overheadGroup.name = 'OVERHEAD_HUD';
-    overheadGroup.renderOrder = 1000;
-
-    const barMatBase = {
-      depthTest: false,
-      depthWrite: false,
-      transparent: true,
-      side: THREE.DoubleSide,
-    } as const;
-
-    const hpBg = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.55, 0.22),
-      new THREE.MeshBasicMaterial({ color: 0x0f172a, ...barMatBase, opacity: 0.94 })
-    );
-    hpBg.renderOrder = 1001;
-    overheadGroup.add(hpBg);
-
-    const hpFill = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.48, 0.16),
-      new THREE.MeshBasicMaterial({ color: 0x22c55e, ...barMatBase, opacity: 1 })
-    );
-    hpFill.name = 'HP_FILL';
-    hpFill.position.set(0, 0, 0.02);
-    hpFill.renderOrder = 1002;
-    overheadGroup.add(hpFill);
-
-    const manaBg = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.55, 0.1),
-      new THREE.MeshBasicMaterial({ color: 0x020617, ...barMatBase, opacity: 0.94 })
-    );
-    manaBg.position.set(0, -0.16, 0);
-    manaBg.renderOrder = 1001;
-    overheadGroup.add(manaBg);
-
-    const manaFill = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.48, 0.075),
-      new THREE.MeshBasicMaterial({ color: 0x38bdf8, ...barMatBase, opacity: 1 })
-    );
-    manaFill.name = 'MANA_FILL';
-    manaFill.position.set(0, -0.16, 0.02);
-    manaFill.renderOrder = 1002;
-    overheadGroup.add(manaFill);
-
-    const itemsRow = new THREE.Group();
-    itemsRow.name = 'ITEMS_ROW';
-    itemsRow.position.set(0, 0.38, 0.03);
-    overheadGroup.add(itemsRow);
-
-    return overheadGroup;
+  public setOverheadLayerVisible(visible: boolean): void {
+    if (!this.overheadLayer) return;
+    this.overheadLayer.classList.toggle('hidden', !visible);
+    if (!visible) this.clearAllOverheadHuds();
   }
 
-  private syncOverheadItems(hud: THREE.Group, items: ItemId[]): void {
-    const row = hud.getObjectByName('ITEMS_ROW') as THREE.Group | undefined;
-    if (!row) return;
-    const key = items.slice(0, 3).join('|');
-    if (row.userData.itemsKey === key) return;
-    row.userData.itemsKey = key;
+  public beginOverheadHudPass(): void {
+    this.overheadActiveIds.clear();
+  }
 
-    while (row.children.length > 0) {
-      const child = row.children[0] as THREE.Mesh;
-      row.remove(child);
-      if (child.material && !Array.isArray(child.material)) {
-        // map is cached — only dispose material wrapper
-        child.material.dispose();
-      }
+  public endOverheadHudPass(): void {
+    for (const id of [...this.overheadDomMap.keys()]) {
+      if (!this.overheadActiveIds.has(id)) this.disposeOverheadHud(id);
     }
+  }
 
-    const equipped = items.slice(0, 3);
-    if (equipped.length === 0) return;
-    const gap = 0.44;
-    const startX = -((equipped.length - 1) * gap) * 0.5;
-    const geo = new THREE.PlaneGeometry(0.4, 0.4);
-    equipped.forEach((itemId, idx) => {
-      const def = ITEM_DEFINITIONS[itemId];
-      if (!def) return;
-      const mat = new THREE.MeshBasicMaterial({
-        map: this.getItemIconTexture(def.icon),
-        depthTest: false,
-        depthWrite: false,
-        transparent: true,
-        side: THREE.DoubleSide,
-      });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(startX + idx * gap, 0, 0.02);
-      mesh.renderOrder = 1003;
-      row.add(mesh);
-    });
+  public clearAllOverheadHuds(): void {
+    for (const id of [...this.overheadDomMap.keys()]) {
+      this.disposeOverheadHud(id);
+    }
+  }
+
+  private createOverheadHudEl(): HTMLElement {
+    const el = document.createElement('div');
+    el.className = 'unit-overhead-hud';
+    el.innerHTML = `
+      <div class="uoh-items"></div>
+      <div class="uoh-hp-track"><div class="uoh-hp-fill"></div></div>
+      <div class="uoh-mana-track"><div class="uoh-mana-fill"></div></div>
+    `;
+    return el;
   }
 
   private syncOverheadHud(
@@ -2003,42 +1923,64 @@ export class ThreeJsGameRenderer {
       starLevel: number;
     }
   ): void {
-    let hud = this.overheadMap.get(instanceId);
-    if (!hud) {
-      hud = this.createOverheadHud();
-      this.overheadMap.set(instanceId, hud);
-      this.overheadRoot.add(hud);
+    if (!this.overheadLayer) return;
+    this.overheadActiveIds.add(instanceId);
+
+    let el = this.overheadDomMap.get(instanceId);
+    if (!el) {
+      el = this.createOverheadHudEl();
+      this.overheadDomMap.set(instanceId, el);
+      this.overheadLayer.appendChild(el);
     }
 
-    const lift = 2.7 + (opts.starLevel >= 3 ? 0.4 : opts.starLevel >= 2 ? 0.2 : 0);
-    hud.position.set(worldX, worldY + lift, worldZ);
-    // 월드 공간에서 카메라만 정면 — 유닛 yaw/pitch 영향 0
-    hud.quaternion.copy(this.camera.quaternion);
+    const lift = 2.55 + (opts.starLevel >= 3 ? 0.45 : opts.starLevel >= 2 ? 0.2 : 0);
+    this._projectVec.set(worldX, worldY + lift, worldZ).project(this.camera);
+    // 카메라 뒤로 가면 숨김
+    if (this._projectVec.z > 1) {
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = 'flex';
+    const sx = ((this._projectVec.x + 1) * 0.5) * 100;
+    const sy = ((1 - this._projectVec.y) * 0.5) * 100;
+    el.style.left = `${sx}%`;
+    el.style.top = `${sy}%`;
 
     const hpRatio = Math.max(0, Math.min(1, opts.hpRatio));
-    const hpFill = hud.getObjectByName('HP_FILL') as THREE.Mesh | undefined;
-    if (hpFill) {
-      hpFill.scale.x = Math.max(0.001, hpRatio);
-      hpFill.position.x = -(1.48 * (1 - hpRatio) * 0.5);
-      const mat = hpFill.material as THREE.MeshBasicMaterial;
-      if (mat?.color) mat.color.setHex(opts.hpColor);
-    }
-
     const manaRatio = Math.max(0, Math.min(1, opts.manaRatio));
-    const manaFill = hud.getObjectByName('MANA_FILL') as THREE.Mesh | undefined;
+    const hpFill = el.querySelector('.uoh-hp-fill') as HTMLElement | null;
+    const manaFill = el.querySelector('.uoh-mana-fill') as HTMLElement | null;
+    if (hpFill) {
+      hpFill.style.transform = `scaleX(${Math.max(0.001, hpRatio)})`;
+      hpFill.classList.toggle('is-enemy', opts.hpColor === 0xef4444);
+    }
     if (manaFill) {
-      manaFill.scale.x = Math.max(0.001, manaRatio);
-      manaFill.position.x = -(1.48 * (1 - manaRatio) * 0.5);
+      manaFill.style.transform = `scaleX(${Math.max(0.001, manaRatio)})`;
     }
 
-    this.syncOverheadItems(hud, opts.items);
+    const itemsRow = el.querySelector('.uoh-items') as HTMLElement | null;
+    if (itemsRow) {
+      const key = opts.items.slice(0, 3).join('|');
+      if (itemsRow.dataset.itemsKey !== key) {
+        itemsRow.dataset.itemsKey = key;
+        itemsRow.innerHTML = '';
+        for (const itemId of opts.items.slice(0, 3)) {
+          const def = ITEM_DEFINITIONS[itemId];
+          if (!def) continue;
+          const chip = document.createElement('div');
+          chip.className = 'uoh-item';
+          chip.textContent = def.icon;
+          itemsRow.appendChild(chip);
+        }
+      }
+    }
   }
 
   private disposeOverheadHud(instanceId: string): void {
-    const hud = this.overheadMap.get(instanceId);
-    if (!hud) return;
-    this.overheadRoot.remove(hud);
-    this.overheadMap.delete(instanceId);
+    const el = this.overheadDomMap.get(instanceId);
+    if (!el) return;
+    el.remove();
+    this.overheadDomMap.delete(instanceId);
   }
 
   /**
@@ -2164,7 +2106,7 @@ export class ThreeJsGameRenderer {
       group.add(fallbackRoot);
     }
 
-    // 머리 위 체력/아이템 HUD는 overheadRoot에 월드 고정 (유닛 회전에 묶지 않음)
+    // 머리 위 체력/아이템 HUD는 화면고정 DOM (#unit-overhead-layer)
 
     // 3성 전용 바닥 황금 룬 마법진
     if (starLevel === 3) {
@@ -2673,6 +2615,7 @@ export class ThreeJsGameRenderer {
    */
   private syncUnits3D(dtMs: number, state: RenderState3D): void {
     const activeIds = new Set<string>();
+    this.beginOverheadHudPass();
 
     if (state.inCombat) {
       for (const cu of state.combatUnits) {
@@ -2937,7 +2880,6 @@ export class ThreeJsGameRenderer {
         this.unitsGroup.remove(group);
         this.unitMeshesMap.delete(id);
         this.unitJuiceMap.delete(id);
-        this.disposeOverheadHud(id);
         const ctrl = this.unitAnimControllers.get(id);
         if (ctrl) {
           ctrl.mixer.stopAllAction();
@@ -2945,9 +2887,7 @@ export class ThreeJsGameRenderer {
         }
       }
     }
-    for (const id of this.overheadMap.keys()) {
-      if (!activeIds.has(id)) this.disposeOverheadHud(id);
-    }
+    this.endOverheadHudPass();
   }
 
   // -------------------------------------------------------------

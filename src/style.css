@@ -111,6 +111,88 @@ img {
   display: none !important;
 }
 
+/* 화면 고정 유닛 HUD — 3D 메시/회전과 완전 분리 */
+.unit-overhead-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.unit-overhead-layer.hidden {
+  display: none !important;
+}
+
+.unit-overhead-hud {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -115%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 56px;
+  will-change: left, top;
+}
+
+.uoh-items {
+  display: flex;
+  gap: 2px;
+  justify-content: center;
+  min-height: 0;
+}
+
+.uoh-item {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid #facc15;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.uoh-hp-track,
+.uoh-mana-track {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid #020617;
+  border-radius: 2px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.uoh-hp-track {
+  height: 8px;
+}
+
+.uoh-mana-track {
+  height: 4px;
+}
+
+.uoh-hp-fill {
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  background: #22c55e;
+}
+
+.uoh-hp-fill.is-enemy {
+  background: #ef4444;
+}
+
+.uoh-mana-fill {
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  background: #38bdf8;
+}
+
 .game-viewport-canvas {
   position: absolute;
   inset: 0;
@@ -1701,13 +1783,13 @@ img {
   line-height: 1.5;
 }
 
-/* 드래그 고스트 — #app 로컬 absolute (세로폰 강제회전 시 client 좌표 어긋남 방지) */
+/* 드래그 고스트 — body 직속 fixed, 항상 뷰포트 커서(clientX/Y)에 붙음 */
 .drag-ghost {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   transform: translate(-50%, -120%);
-  z-index: 80;
+  z-index: 9999;
   pointer-events: none;
   padding: 8px 14px;
   background: rgba(15, 23, 42, 0.95);
@@ -1723,7 +1805,7 @@ img {
   min-width: 140px;
   max-width: 220px;
   text-align: center;
-  will-change: left, top;
+  will-change: transform;
 }
 
 .ghost-item-title {

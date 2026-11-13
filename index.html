@@ -81,6 +81,8 @@
       <canvas id="fx-canvas" class="game-viewport-canvas"></canvas>
       <!-- Pixi.js v8 WebGL 하드웨어 가속 발광 파티클 & 육각형 배치 충격파 캔버스 -->
       <canvas id="pixi-canvas" class="pixi-viewport-canvas"></canvas>
+      <!-- 화면고정 유닛 체력/아이템 HUD (3D 회전에 절대 영향받지 않음) -->
+      <div id="unit-overhead-layer" class="unit-overhead-layer" aria-hidden="true"></div>
 
       <!-- 정비 시간 5초 이하 긴박 붉은 맥동 비네팅 오버레이 -->
       <div id="urgent-vignette-overlay" class="urgent-vignette-overlay hidden"></div>
@@ -406,9 +408,10 @@
         </div>
       </div>
 
-      <!-- 모바일 터치 드래그 고스트 아바타 -->
-      <div id="drag-ghost" class="drag-ghost hidden"></div>
     </div>
+
+    <!-- 드래그 고스트: #app 밖에 두어 force-landscape 회전과 무관하게 clientX/Y로 커서 추종 -->
+    <div id="drag-ghost" class="drag-ghost hidden"></div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
