@@ -925,6 +925,12 @@ class FantasyAutoBattlerApp {
     }
   }
 
+  /** #app 회전(세로폰 강제 가로) 시에도 커서에 붙도록 앱 로컬 좌표 사용 */
+  private setDragGhostPos(ghostEl: HTMLElement, px: number, py: number): void {
+    ghostEl.style.left = `${px}px`;
+    ghostEl.style.top = `${py}px`;
+  }
+
   private showDragGhost(clientX: number, clientY: number): void {
     const ghostEl = document.getElementById('drag-ghost');
     if (!ghostEl || !this.dragPayload) return;
@@ -939,8 +945,8 @@ class FantasyAutoBattlerApp {
       ghostEl.innerHTML = `🌟 챔피언 복제기`;
     }
 
-    ghostEl.style.left = `${clientX}px`;
-    ghostEl.style.top = `${clientY}px`;
+    const pt = this.clientToCanvasPoint(clientX, clientY);
+    this.setDragGhostPos(ghostEl, pt.x, pt.y);
     ghostEl.classList.remove('hidden');
   }
 
@@ -952,8 +958,8 @@ class FantasyAutoBattlerApp {
   ): void {
     const ghostEl = document.getElementById('drag-ghost');
     if (!ghostEl) return;
-    ghostEl.style.left = `${clientX}px`;
-    ghostEl.style.top = `${clientY}px`;
+    // clientX/Y가 아니라 앱/캔버스 로컬 좌표로 추적 (force-landscape 회전 대응)
+    this.setDragGhostPos(ghostEl, px, py);
 
     if (!this.dragPayload || this.dragPayload.kind !== 'ITEM') return;
 

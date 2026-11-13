@@ -1701,13 +1701,13 @@ img {
   line-height: 1.5;
 }
 
-/* 드래그 고스트 */
+/* 드래그 고스트 — #app 로컬 absolute (세로폰 강제회전 시 client 좌표 어긋남 방지) */
 .drag-ghost {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
-  transform: translate(-50%, -110%);
-  z-index: 60;
+  transform: translate(-50%, -120%);
+  z-index: 80;
   pointer-events: none;
   padding: 8px 14px;
   background: rgba(15, 23, 42, 0.95);
@@ -1723,6 +1723,7 @@ img {
   min-width: 140px;
   max-width: 220px;
   text-align: center;
+  will-change: left, top;
 }
 
 .ghost-item-title {
