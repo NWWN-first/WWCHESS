@@ -145,25 +145,26 @@ img {
 }
 
 .uoh-item {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(15, 23, 42, 0.92);
+  background: rgba(15, 23, 42, 0.95);
   border: 1.5px solid #facc15;
-  border-radius: 4px;
-  font-size: 13px;
+  border-radius: 5px;
+  font-size: 14px;
   line-height: 1;
   pointer-events: auto;
   cursor: pointer;
   touch-action: manipulation;
   user-select: none;
+  z-index: 2;
 }
 
 .uoh-item:active {
   border-color: #38bdf8;
-  transform: scale(1.12);
+  transform: scale(1.14);
 }
 
 .uoh-hp-track,
@@ -1011,6 +1012,29 @@ img {
 
 .tooltip-body {
   overflow: hidden;
+}
+
+.tooltip-item-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 2px 3px 2px 0;
+  padding: 3px 7px;
+  border-radius: 6px;
+  border: 1px solid #facc15;
+  background: rgba(15, 23, 42, 0.95);
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  touch-action: manipulation;
+  pointer-events: auto;
+}
+
+.tooltip-item-chip:active {
+  border-color: #38bdf8;
+  background: rgba(30, 41, 59, 0.98);
 }
 
 .tooltip-traits {
