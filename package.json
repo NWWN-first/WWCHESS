@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
-    "simulate": "esbuild scripts/simulate1000.ts --bundle --platform=node --format=esm --outfile=/tmp/sim1000.mjs --log-level=warning && node /tmp/sim1000.mjs"
+    "simulate": "esbuild scripts/simulate1000.ts --bundle --platform=node --format=esm --outfile=/tmp/sim1000.mjs --log-level=warning && node /tmp/sim1000.mjs",
+    "collect-train": "esbuild scripts/collect_training_data.ts --bundle --platform=node --format=esm --outfile=/tmp/collect_train.mjs --log-level=warning && node /tmp/collect_train.mjs",
+    "train-bot": "python3 scripts/train_bot_network.py"
   },
   "dependencies": {
     "@capacitor/android": "^6.0.0",
@@ -21,6 +23,7 @@
   "devDependencies": {
     "@capacitor/cli": "^6.0.0",
     "@types/three": "^0.187.0",
+    "esbuild": "^0.28.2",
     "gh-pages": "^6.3.0",
     "typescript": "^5.4.5",
     "vite": "^5.2.11"

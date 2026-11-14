@@ -3,7 +3,7 @@
 import { createCreepMonsterInstance } from './CreepMonsterData';
 import { LootOrb, LootOrbTier } from './DopamineEngine';
 import {
-  BASE_ITEM_IDS,
+  STANDARD_BASE_ITEM_IDS,
   CompletedItemId,
   ITEM_DEFINITIONS,
   ItemId,
@@ -12,7 +12,7 @@ import { RoundType } from './GameLoopManager';
 import { Participant } from './Participant';
 
 const COMPLETED_ITEM_IDS: CompletedItemId[] = Object.values(ITEM_DEFINITIONS)
-  .filter((item) => item.isCompleted)
+  .filter((item) => item.isCompleted && !item.grantsTrait)
   .map((item) => item.id as CompletedItemId);
 
 export interface CreepEquityQuota {
@@ -236,7 +236,7 @@ export class CreepRoundManager {
         roundStr,
         baseItemCount: 1,
         completedItemCount: 0,
-        targetGoldValue: 4,
+        targetGoldValue: 3,
         grantsDuplicator: false,
       };
     }
@@ -245,7 +245,7 @@ export class CreepRoundManager {
         roundStr,
         baseItemCount: 1,
         completedItemCount: 0,
-        targetGoldValue: 6,
+        targetGoldValue: 4,
         grantsDuplicator: false,
       };
     }
@@ -254,7 +254,7 @@ export class CreepRoundManager {
         roundStr,
         baseItemCount: 2,
         completedItemCount: 0,
-        targetGoldValue: 7,
+        targetGoldValue: 5,
         grantsDuplicator: false,
       };
     }
@@ -263,7 +263,7 @@ export class CreepRoundManager {
         roundStr,
         baseItemCount: 2,
         completedItemCount: 0,
-        targetGoldValue: 10,
+        targetGoldValue: 7,
         grantsDuplicator: true,
       };
     }
@@ -272,7 +272,7 @@ export class CreepRoundManager {
         roundStr,
         baseItemCount: 2,
         completedItemCount: 1,
-        targetGoldValue: 12,
+        targetGoldValue: 8,
         grantsDuplicator: false,
       };
     }
@@ -281,7 +281,7 @@ export class CreepRoundManager {
         roundStr,
         baseItemCount: 1,
         completedItemCount: 2,
-        targetGoldValue: 16,
+        targetGoldValue: 11,
         grantsDuplicator: true,
       };
     }
@@ -289,7 +289,7 @@ export class CreepRoundManager {
       roundStr,
       baseItemCount: 1,
       completedItemCount: 0,
-      targetGoldValue: 6,
+      targetGoldValue: 4,
       grantsDuplicator: false,
     };
   }
@@ -302,7 +302,8 @@ export class CreepRoundManager {
     roundStr: string,
     roundType: RoundType,
     player: Participant,
-    aiBots: Participant[]
+    aiBots: Participant[],
+    deathHexes: Array<{ row: number; col: number }> = []
   ): LootOrb[] {
     const quota = this.getRoundEquityQuota(roundStr, roundType);
 
@@ -315,7 +316,7 @@ export class CreepRoundManager {
       bot.gold += botGoldReward;
 
       for (let i = 0; i < quota.baseItemCount; i++) {
-        bot.addItemToBench(this.pickRandomItem(BASE_ITEM_IDS));
+        bot.addItemToBench(this.pickRandomItem(STANDARD_BASE_ITEM_IDS));
       }
       for (let i = 0; i < quota.completedItemCount; i++) {
         bot.addItemToBench(this.pickRandomItem(COMPLETED_ITEM_IDS));
@@ -325,9 +326,10 @@ export class CreepRoundManager {
       }
     }
 
-    // 2. 플레이어용 `?` (일반/황금 미스터리 상자) 및 `!` (대박 보라/프리즘 미스터리 상자) 생성
+    // 2. 플레이어용 `?` / `!` 상자 — 죽은 몬스터 헥스에서 튀어나오듯 산란
     if (player.isEliminated) return [];
 
+    const spawnSites = this.buildLootSpawnSites(deathHexes);
     const playerOrbs: LootOrb[] = [];
     const totalGold = Math.max(
       2,
@@ -336,10 +338,9 @@ export class CreepRoundManager {
     const firstBoxGold = Math.ceil(totalGold * 0.55);
     const secondBoxGold = Math.max(1, totalGold - firstBoxGold);
 
-    // 상자 1: `?` 황금/푸른 미스터리 보물상자 (기본 아이템 + 골드)
     const box1Items: ItemId[] = [];
     if (quota.baseItemCount >= 1) {
-      box1Items.push(this.pickRandomItem(BASE_ITEM_IDS));
+      box1Items.push(this.pickRandomItem(STANDARD_BASE_ITEM_IDS));
     }
     playerOrbs.push(
       this.createMysteryBoxOrb(
@@ -348,15 +349,13 @@ export class CreepRoundManager {
         firstBoxGold,
         box1Items,
         0,
-        0.26,
-        0.34
+        spawnSites[0]
       )
     );
 
-    // 상자 2: `?` 황금 미스터리 보물상자 (추가 기본 아이템 + 골드)
     const box2Items: ItemId[] = [];
     for (let i = 1; i < quota.baseItemCount; i++) {
-      box2Items.push(this.pickRandomItem(BASE_ITEM_IDS));
+      box2Items.push(this.pickRandomItem(STANDARD_BASE_ITEM_IDS));
     }
     playerOrbs.push(
       this.createMysteryBoxOrb(
@@ -365,12 +364,10 @@ export class CreepRoundManager {
         secondBoxGold,
         box2Items,
         0,
-        0.64,
-        0.38
+        spawnSites[1] ?? spawnSites[0]
       )
     );
 
-    // 상자 3 (완성 아이템 또는 챔피언 복제기가 포함된 경우): `!` 프리즘/보라 대박 미스터리 상자!
     if (quota.completedItemCount > 0 || quota.grantsDuplicator) {
       const highTierItems: ItemId[] = [];
       for (let i = 0; i < quota.completedItemCount; i++) {
@@ -383,13 +380,35 @@ export class CreepRoundManager {
           0,
           highTierItems,
           quota.grantsDuplicator ? 1 : 0,
-          0.46,
-          0.26
+          spawnSites[2] ?? spawnSites[0]
         )
       );
     }
 
     return playerOrbs;
+  }
+
+  /** 죽은 몬스터 위치 우선, 부족하면 적진(0~3행) 랜덤 헥스 */
+  private static buildLootSpawnSites(
+    deathHexes: Array<{ row: number; col: number }>
+  ): Array<{ row: number; col: number }> {
+    const sites = deathHexes
+      .filter((h) => h.row >= 0 && h.row < 8 && h.col >= 0 && h.col < 7)
+      .map((h) => ({ row: h.row, col: h.col }));
+
+    // 셔플
+    for (let i = sites.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [sites[i], sites[j]] = [sites[j], sites[i]];
+    }
+
+    while (sites.length < 3) {
+      sites.push({
+        row: Math.floor(Math.random() * 4),
+        col: Math.floor(Math.random() * 7),
+      });
+    }
+    return sites;
   }
 
   private static createMysteryBoxOrb(
@@ -398,14 +417,26 @@ export class CreepRoundManager {
     gold: number,
     items: ItemId[],
     duplicators: number,
-    x: number,
-    y: number
+    site: { row: number; col: number }
   ): LootOrb {
+    // 헥스 중심 기준 ±이웃 칸 산란 (고정 좌표 탈피)
+    const scatterRow = Math.max(
+      0,
+      Math.min(7, site.row + Math.round((Math.random() - 0.5) * 2))
+    );
+    const scatterCol = Math.max(
+      0,
+      Math.min(6, site.col + Math.round((Math.random() - 0.5) * 2))
+    );
+    const x = (scatterCol + 0.5 + (Math.random() - 0.5) * 0.35) / 7;
+    const y = (scatterRow + 0.5 + (Math.random() - 0.5) * 0.35) / 8;
     return {
       id: `mystery_box_${Date.now()}_${this.orbCounter++}`,
       tier,
-      x: Math.min(0.82, Math.max(0.18, x + (Math.random() - 0.5) * 0.08)),
-      y: Math.min(0.68, Math.max(0.22, y + (Math.random() - 0.5) * 0.06)),
+      x: Math.min(0.88, Math.max(0.12, x)),
+      y: Math.min(0.72, Math.max(0.08, y)),
+      hexRow: scatterRow,
+      hexCol: scatterCol,
       label,
       rewards: {
         gold,

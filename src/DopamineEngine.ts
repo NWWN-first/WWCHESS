@@ -4,7 +4,7 @@ import {
   AUGMENT_DEFINITIONS,
   AugmentDefinition,
   AugmentTier,
-  BASE_ITEM_IDS,
+  STANDARD_BASE_ITEM_IDS,
   CompletedItemId,
   CostTier,
   ITEM_DEFINITIONS,
@@ -26,14 +26,18 @@ export interface LootOrbRewards {
 export interface LootOrb {
   id: string;
   tier: LootOrbTier;
+  /** 0~1 정규화 화면 위치 (폴백 / 고블린 금고용) */
   x: number;
   y: number;
+  /** 크립 처치 헥스 — 있으면 보드 위 몬스터 위치에서 튀어나온 것처럼 배치 */
+  hexRow?: number;
+  hexCol?: number;
   label?: string;
   rewards: LootOrbRewards;
 }
 
 const COMPLETED_ITEM_IDS: CompletedItemId[] = Object.values(ITEM_DEFINITIONS)
-  .filter((item) => item.isCompleted)
+  .filter((item) => item.isCompleted && !item.grantsTrait)
   .map((item) => item.id as CompletedItemId);
 
 let globalOrbCounter = 1;
@@ -201,7 +205,6 @@ export class DopamineEngine {
         const starLevel = currentUnit.starLevel;
         const preservedItems = [...currentUnit.items];
 
-        // 공유 풀에 기존 기물(1성=1, 2성=3, 3성=9)을 반환하고 같은 코스트의 다른 기물 ID를 추첨
         const newUnitId = sharedPool.transformUnitInPool(
           participant,
           currentUnit.unitId,
@@ -220,10 +223,46 @@ export class DopamineEngine {
             `🎲 [판도라의 대기석] ${oldName}(${starLevel}성) ➔ ${transformedUnit.name}(${starLevel}성) 변신!`
           );
 
-          // 변신 직후 보드/대기석의 동일 기물과 2성/3성 합성이 가능한지 즉시 체크
           participant.tryMergeUnits(newUnitId, sharedPool);
         }
       }
+    }
+
+    // 판도라의 아이템: 대기석 아이템을 같은 티어(조합/완성) 내에서 랜덤 변환
+    if (
+      participant.augments.includes('AUG_PANDORA_ITEMS') ||
+      participant.augments.includes('AUG_PANDORA_ITEMS_2')
+    ) {
+      for (let i = 0; i < participant.itemBench.length; i++) {
+        const id = participant.itemBench[i];
+        const def = ITEM_DEFINITIONS[id];
+        if (!def) continue;
+        if (def.isCompleted) {
+          participant.itemBench[i] = DopamineEngine.randomCompletedItem();
+        } else {
+          participant.itemBench[i] = DopamineEngine.randomBaseItem();
+        }
+      }
+      transformLogs.push('🔮 [판도라의 아이템] 대기석 아이템이 변환되었습니다!');
+    }
+
+    // 거래 중심지 / 교환의 장: 라운드마다 무료 리롤
+    if (participant.augments.includes('AUG_TRADE_SECTOR')) {
+      participant.freeRerolls += 2;
+      transformLogs.push('🏛️ [거래 중심지] 무료 새로고침 +2');
+    }
+    if (participant.augments.includes('AUG_TRADE_SECTOR_PLUS')) {
+      participant.freeRerolls += 1;
+    }
+
+    // 수완가: 이자 대신 매 라운드 3골드
+    if (participant.augments.includes('AUG_HYPER_ROLL')) {
+      participant.gold += 3;
+    }
+
+    // 돈 폭풍: 매 라운드 추가 4골드 (즉시분은 apply 시 지급)
+    if (participant.augments.includes('AUG_MONEY_STORM')) {
+      participant.gold += 4;
     }
 
     if (transformLogs.length > 0) {
@@ -343,20 +382,34 @@ export class DopamineEngine {
   }
 
   /**
-   * 라운드별(2-1: SILVER, 3-2: GOLD, 4-2: PRISMATIC) 증강체 선택 카드 3장을 중복 없이 추첨한다.
+   * 증강체 카드 추첨.
+   * - excludeIds: 이미 소유했거나 이번 페이즈에 한 번이라도 제시된 ID (리롤 시 재출현 방지)
+   * - stage: 2-1 / 3-2 / 4-2 — offeredStages에 없는 증강은 제외
    */
   public static rollAugmentChoices(
     participant: Participant,
     tier: AugmentTier,
-    excludeIds: string[] = []
+    excludeIds: string[] = [],
+    stage?: '2-1' | '3-2' | '4-2',
+    count: number = 3
   ): AugmentDefinition[] {
     const ownedSet = new Set([...participant.augments, ...excludeIds]);
-    const pool = AUGMENT_DEFINITIONS.filter(
-      (aug) => aug.tier === tier && !ownedSet.has(aug.id)
-    );
+    const pool = AUGMENT_DEFINITIONS.filter((aug) => {
+      if (aug.tier !== tier) return false;
+      if (ownedSet.has(aug.id)) return false;
+      if (
+        stage &&
+        aug.offeredStages &&
+        aug.offeredStages.length > 0 &&
+        !aug.offeredStages.includes(stage)
+      ) {
+        return false;
+      }
+      return true;
+    });
 
     const shuffled = [...pool].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, 3);
+    return shuffled.slice(0, Math.max(0, count));
   }
 
   // ==========================================================================
@@ -381,8 +434,8 @@ export class DopamineEngine {
   }
 
   private static randomBaseItem(): ItemId {
-    const idx = Math.floor(Math.random() * BASE_ITEM_IDS.length);
-    return BASE_ITEM_IDS[idx];
+    const idx = Math.floor(Math.random() * STANDARD_BASE_ITEM_IDS.length);
+    return STANDARD_BASE_ITEM_IDS[idx];
   }
 
   private static randomCompletedItem(): CompletedItemId {

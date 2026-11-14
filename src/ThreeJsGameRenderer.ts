@@ -14,10 +14,15 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import {
   CostTier,
+  ITEM_DEFINITIONS,
+  ItemId,
   StarLevel,
   UNIT_TEMPLATES,
+  getOriginThemeColor,
+  originColorToHexNumber,
+  originColorToRgba,
 } from './GameData';
-import { HexCoord } from './HexGridMath';
+import { HexCoord, HexGridMath } from './HexGridMath';
 import { Participant } from './Participant';
 import { UNIT_PIXEL_SPECS, WEAPON_BADGE_ICONS } from './PixelGameRenderer';
 import { CombatEvent, CombatUnit } from './SkillRegistry';
@@ -31,7 +36,48 @@ export type ChampionArchetype =
   | 'BEAST_GOLEM'; // 용족, 몬스터, PVE 크립 (Dragon.glb)
 
 export interface Champion3DVisualConfig {
-  modelKey: 'Knight' | 'Mage' | 'Rogue' | 'Rogue_Hooded' | 'Barbarian' | 'Skeleton_Warrior' | 'Skeleton_Mage' | 'Skeleton_Rogue' | 'Wolf' | 'Dragon' | 'Imp';
+  modelKey:
+    | 'Barbarian'
+    | 'BlueSoldier_Female'
+    | 'BlueSoldier_Male'
+    | 'Cleric'
+    | 'Dragon'
+    | 'Elf'
+    | 'Goblin_Female'
+    | 'Goblin_Male'
+    | 'Imp'
+    | 'Kimono_Female'
+    | 'Knight'
+    | 'Knight_Golden_Female'
+    | 'Knight_Golden_Male'
+    | 'Knight_Male'
+    | 'Mage'
+    | 'Monk'
+    | 'Ninja_Female'
+    | 'Ninja_Male'
+    | 'Ninja_Male_Hair'
+    | 'Ninja_Sand'
+    | 'Pirate_Female'
+    | 'Pirate_Male'
+    | 'RPG_Rogue'
+    | 'RPG_Wizard'
+    | 'Ranger'
+    | 'Rogue'
+    | 'Rogue_Hooded'
+    | 'Skeleton_Mage'
+    | 'Skeleton_Rogue'
+    | 'Skeleton_Warrior'
+    | 'Soldier_Female'
+    | 'Soldier_Male'
+    | 'Viking_Female'
+    | 'Viking_Male'
+    | 'Warrior'
+    | 'Witch'
+    | 'Wizard'
+    | 'Wolf'
+    | 'Worker_Male'
+    | 'Zombie_Female'
+    | 'Zombie_Male';
   scale: number;
   offsetY?: number;
   primaryColor?: number;
@@ -66,7 +112,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 2. 핍 (고블린 소매치기 핍) - 1코 Golden Goblin / Shadow Assassin (날렵한 녹색/황금 단검 암살자)
   u1_pip: {
-    modelKey: 'Rogue',
+    modelKey: 'Goblin_Male',
     scale: 0.95,
     primaryColor: 0x16a34a,
     emissiveColor: 0xca8a04,
@@ -74,6 +120,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Melee_Attack_Stab',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 3. 스켈 (해골 전사 스켈) - 1코 Undead Scourge / Berserker (언데드 녹슨 장검 & 도골 해골병)
   u1_skel: {
@@ -88,7 +136,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 4. 루미 (견습 마법사 루미) - 1코 Arcane Tower / Archmage (사파이어 로브 & 비전 지팡이)
   u1_lumi: {
-    modelKey: 'Mage',
+    modelKey: 'Wizard',
     scale: 1.05,
     primaryColor: 0x38bdf8,
     emissiveColor: 0x0284c7,
@@ -96,10 +144,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'ARCANE_BLUE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 5. 데스나이트 (망자 기병 데스나이트) - 2코 Undead Scourge / Vanguard / Berserker (흑철 갑주 해골 챔피언)
-  u2_boneknight: {
-    modelKey: 'Skeleton_Warrior',
+  u4_bone: {
+    modelKey: 'Warrior',
     scale: 1.25,
     primaryColor: 0x1e293b,
     emissiveColor: 0x06b6d4,
@@ -108,6 +158,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     deathAnim: 'Death_B',
     stunAnim: 'Lie_Idle',
     aura: 'FROST_CYAN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 6. 펜리르 (서리송곳니 광전사 펜리르) - 3코 Undead Scourge / Berserker (서리 늑대 맹수)
   u3_fenrir: {
@@ -136,8 +188,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     aura: 'HOLY_GOLD',
   },
   // 8. 타나토스 (칠흑의 사신 타나토스) - 4코 Undead Scourge / Shadow Assassin (칠흑 후드 망토 & 영혼 수확도)
-  u4_thanatos: {
-    modelKey: 'Rogue_Hooded',
+  u5_kairos: {
+    modelKey: 'Rogue',
     scale: 1.22,
     primaryColor: 0x1e1b4b,
     emissiveColor: 0x8b5cf6,
@@ -148,7 +200,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 9. 멀린 (대마도사 멀린) - 4코 Arcane Tower / Archmage (신비의 대마도사 & 유성 낙하 주술)
   u4_merlin: {
-    modelKey: 'Mage',
+    modelKey: 'Wizard',
     scale: 1.25,
     primaryColor: 0x6366f1,
     emissiveColor: 0xa855f7,
@@ -156,6 +208,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Long',
     stunAnim: 'Lie_Idle',
     aura: 'ARCANE_BLUE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 10. 이그니스 (고대 종말룡 이그니스) - 5코 Dragonkin / Abyssal Demon / Berserker (거대 고대 화염룡)
   u5_ignis: {
@@ -178,7 +232,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   // -------------------------------------------------------------
   // 11. 아리아 (엘프 궁수 아리아) - 1코 Elven Sylvan / Ranger (초록빛 숲의 정찰 궁수 & 연속사격)
   u1_aria: {
-    modelKey: 'Rogue',
+    modelKey: 'Ranger',
     scale: 1.08,
     primaryColor: 0x15803d,
     emissiveColor: 0x22c55e,
@@ -186,10 +240,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 12. 발렌 (성당 수련기사 발렌) - 1코 Holy Empire / Paladin (순백의 수련기사 & 성스러운 축복 방패)
   u1_valen: {
-    modelKey: 'Knight',
+    modelKey: 'Knight_Male',
     scale: 1.12,
     primaryColor: 0xe2e8f0,
     emissiveColor: 0xfacc15,
@@ -197,6 +253,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 13. 렉스 (심연 화염임프 렉스) - 1코 Abyssal Demon / Archmage (귀여운 전용 화염 도깨비 임프)
   u1_imp: {
@@ -230,7 +288,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 15. 구울 (무덤 도굴꾼 구울) - 1코 Undead Scourge / Shadow Assassin (쌍단검 해골 자객 도굴꾼)
   u1_ghoul: {
-    modelKey: 'Skeleton_Rogue',
+    modelKey: 'Zombie_Male',
     scale: 1.08,
     primaryColor: 0x475569,
     emissiveColor: 0xa855f7,
@@ -239,10 +297,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     deathAnim: 'Death_C_Skeletons',
     stunAnim: 'Skeleton_Inactive_Standing_Pose',
     aura: 'SHADOW_PURPLE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 16. 잔느 (성전사 잔느) - 2코 Holy Empire / Paladin / Vanguard (백은 갑주 성처녀 여기사)
   u2_jeanne: {
-    modelKey: 'Knight',
+    modelKey: 'Knight_Golden_Female',
     scale: 1.18,
     primaryColor: 0xf1f5f9,
     emissiveColor: 0x3b82f6,
@@ -250,10 +310,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 17. 제드 (그림자 칼날 제드) - 2코 Undead Scourge / Shadow Assassin (칠흑 후드 닌자 자객)
   u2_zed: {
-    modelKey: 'Rogue_Hooded',
+    modelKey: 'Ninja_Male',
     scale: 1.18,
     primaryColor: 0x0f172a,
     emissiveColor: 0x06b6d4,
@@ -261,6 +323,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Dualwield_Melee_Attack_Stab',
     stunAnim: 'Lie_Idle',
     aura: 'SHADOW_PURPLE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 18. 그롬 (고블린 용병대장 그롬) - 3코 Golden Goblin / Berserker (거구의 초록 고블린 족장 버서커)
   u3_grom: {
@@ -275,7 +339,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 19. 실바나 (신궁 여왕 실바나) - 4코 Elven Sylvan / Ranger (세계수의 은빛 활 여왕 & 화살비)
   u4_sylph: {
-    modelKey: 'Rogue_Hooded',
+    modelKey: 'Ranger',
     scale: 1.25,
     primaryColor: 0x047857,
     emissiveColor: 0xfacc15,
@@ -283,10 +347,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 20. 미카엘 (천군 총사령관 미카엘) - 5코 Holy Empire / Paladin / Vanguard (신성 대천사 군단장)
   u5_michael: {
-    modelKey: 'Knight',
+    modelKey: 'Knight_Male',
     scale: 1.40,
     primaryColor: 0xfffbeb,
     emissiveColor: 0xfacc15,
@@ -294,6 +360,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
 
   // -------------------------------------------------------------
@@ -301,7 +369,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   // -------------------------------------------------------------
   // 21. 쏜 (가시덩굴 파수꾼 쏜) - 1코 Elven Sylvan / Vanguard (엘프 고목 덩굴 전사)
   u1_thorn: {
-    modelKey: 'Barbarian',
+    modelKey: 'Worker_Male',
     scale: 1.18,
     primaryColor: 0x166534,
     emissiveColor: 0x4ade80,
@@ -309,10 +377,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Chop',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 22. 크로나 (마탑 파수병 크로나) - 1코 Arcane Tower / Vanguard (비전 룬 마법 판금병)
-  u1_chrona: {
-    modelKey: 'Knight',
+  u4_chrona: {
+    modelKey: 'BlueSoldier_Male',
     scale: 1.16,
     primaryColor: 0x1e3a8a,
     emissiveColor: 0x38bdf8,
@@ -320,10 +390,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'ARCANE_BLUE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 23. 스내치 (고블린 투창병 스내치) - 1코 Golden Goblin / Ranger (황금 고블린 투창 저격병)
-  u1_snatch: {
-    modelKey: 'Rogue',
+  u4_snatch: {
+    modelKey: 'Goblin_Female',
     scale: 0.95,
     primaryColor: 0x15803d,
     emissiveColor: 0xeab308,
@@ -331,10 +403,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 24. 프레이 (황혼의 도끼병 프레이) - 1코 Holy Empire / Berserker / Vanguard (황혼 발키리 전사)
-  u1_shieldmaiden: {
-    modelKey: 'Barbarian',
+  u1_tusk: {
+    modelKey: 'Viking_Female',
     scale: 1.12,
     primaryColor: 0xb91c1c,
     emissiveColor: 0xf59e0b,
@@ -342,10 +416,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Melee_Attack_Jump_Chop',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 25. 모르그 (심연 방패병 모르그) - 1코 Abyssal Demon / Vanguard / Undead Scourge (용암 해골 방패병)
   u1_ember: {
-    modelKey: 'Skeleton_Warrior',
+    modelKey: 'Skeleton_Rogue',
     scale: 1.20,
     primaryColor: 0x7f1d1d,
     emissiveColor: 0xf97316,
@@ -357,7 +433,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 26. 팅크 (고블린 연금술사 팅크) - 2코 Golden Goblin / Arcane Tower / Archmage (고블린 비전 연금술사)
   u2_tink: {
-    modelKey: 'Mage',
+    modelKey: 'RPG_Wizard',
     scale: 0.96,
     primaryColor: 0x16a34a,
     emissiveColor: 0x84cc16,
@@ -365,10 +441,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 27. 카일 (심연의 사냥꾼 카일) - 2코 Abyssal Demon / Ranger (심연 흑가죽 흑궁수)
   u2_kyle: {
-    modelKey: 'Rogue_Hooded',
+    modelKey: 'Ninja_Sand',
     scale: 1.15,
     primaryColor: 0x18181b,
     emissiveColor: 0xdc2626,
@@ -376,10 +454,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 28. 엔트 (숲의 수호신 엔트) - 2코 Elven Sylvan / Vanguard / Paladin (거대 고목 수호신)
   u2_ent: {
-    modelKey: 'Barbarian',
+    modelKey: 'Elf',
     scale: 1.35,
     primaryColor: 0x3f2e1e,
     emissiveColor: 0x22c55e,
@@ -387,10 +467,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 29. 제피르 (심연 암살자 제피르) - 2코 Abyssal Demon / Shadow Assassin (심연 돌풍 자객)
   u2_zephyr: {
-    modelKey: 'Rogue',
+    modelKey: 'RPG_Rogue',
     scale: 1.14,
     primaryColor: 0x3b0764,
     emissiveColor: 0xa855f7,
@@ -398,10 +480,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Dualwield_Melee_Attack_Stab',
     stunAnim: 'Lie_Idle',
     aura: 'SHADOW_PURPLE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 30. 엘로웬 (숲의 무녀 엘로웬) - 2코 Elven Sylvan / Paladin (생명의 숲 성스러운 무녀 힐러)
   u2_elowen: {
-    modelKey: 'Mage',
+    modelKey: 'Witch',
     scale: 1.08,
     primaryColor: 0xf0fdf4,
     emissiveColor: 0x10b981,
@@ -409,6 +493,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Long',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
 
   // -------------------------------------------------------------
@@ -416,7 +502,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   // -------------------------------------------------------------
   // 31. 볼더 (룬 거석병 볼더) - 2코 Arcane Tower / Vanguard (거대 비전 룬 거석병)
   u2_boulder: {
-    modelKey: 'Barbarian',
+    modelKey: 'Monk',
     scale: 1.38,
     primaryColor: 0x64748b,
     emissiveColor: 0x38bdf8,
@@ -424,10 +510,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Jump_Chop',
     stunAnim: 'Lie_Idle',
     aura: 'ARCANE_BLUE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 32. 붐 (고블린 폭격수 붐) - 2코 Golden Goblin / Ranger (황금 고블린 폭탄마)
   u2_boom: {
-    modelKey: 'Rogue',
+    modelKey: 'Pirate_Male',
     scale: 0.95,
     primaryColor: 0x16a34a,
     emissiveColor: 0xf97316,
@@ -435,10 +523,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 33. 베인 (제국 석궁병 베인) - 2코 Holy Empire / Ranger (신성 제국 정예 은화살 석궁수)
   u2_vayne: {
-    modelKey: 'Rogue',
+    modelKey: 'Soldier_Female',
     scale: 1.10,
     primaryColor: 0xe2e8f0,
     emissiveColor: 0xfacc15,
@@ -446,10 +536,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 34. 파이어 (화염 비늘 전사 파이어) - 2코 Dragonkin / Berserker (용린 화염 버서커 전사)
   u2_pyre: {
-    modelKey: 'Barbarian',
+    modelKey: 'Viking_Male',
     scale: 1.25,
     primaryColor: 0xd97706,
     emissiveColor: 0xef4444,
@@ -457,9 +549,11 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 35. 말리스 (심연 흑마법사 말리스) - 2코 Abyssal Demon / Archmage (칠흑 보라 심연 사령술사)
-  u2_malice: {
+  u2_howl: {
     modelKey: 'Skeleton_Mage',
     scale: 1.18,
     primaryColor: 0x3b0764,
@@ -472,7 +566,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 36. 지크 (드래곤 나이트 지크) - 3코 Dragonkin / Vanguard (용린 판금 갑주 거대 용기사)
   u3_sieg: {
-    modelKey: 'Knight',
+    modelKey: 'Knight_Golden_Male',
     scale: 1.28,
     primaryColor: 0x991b1b,
     emissiveColor: 0xf59e0b,
@@ -480,6 +574,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Chop',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 37. 실피 (엘프 바람술사 실피) - 3코 Elven Sylvan / Archmage (돌풍과 폭풍을 부리는 요정 술사)
   u3_sylphie: {
@@ -493,8 +589,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     aura: 'POISON_GREEN',
   },
   // 38. 블라드 (블러드 로드 블라드) - 3코 Abyssal Demon / Arcane Tower (선혈 흡혈 군주 뱀파이어)
-  u3_vlad: {
-    modelKey: 'Rogue_Hooded',
+  u3_bramble: {
+    modelKey: 'Kimono_Female',
     scale: 1.20,
     primaryColor: 0x450a0a,
     emissiveColor: 0xb91c1c,
@@ -502,10 +598,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Long',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 39. 드레이크 (적염의 용기병 드레이크) - 3코 Dragonkin / Berserker / Vanguard (적염의 맹렬한 용기병)
   u3_drake: {
-    modelKey: 'Barbarian',
+    modelKey: 'Soldier_Male',
     scale: 1.26,
     primaryColor: 0xb45309,
     emissiveColor: 0xf97316,
@@ -513,10 +611,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 40. 레오나 (태양의 성기사 레오나) - 3코 Holy Empire / Vanguard / Paladin (광채의 태양 방패 여기사)
   u3_leona: {
-    modelKey: 'Knight',
+    modelKey: 'Cleric',
     scale: 1.22,
     primaryColor: 0xfacc15,
     emissiveColor: 0xfef08a,
@@ -524,6 +624,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
 
   // -------------------------------------------------------------
@@ -531,7 +633,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   // -------------------------------------------------------------
   // 41. 카즈 (환영의 검객 카즈) - 3코 Elven Sylvan / Shadow Assassin / Berserker (엘프 환영 신속 검객)
   u3_kazu: {
-    modelKey: 'Rogue',
+    modelKey: 'Ninja_Male_Hair',
     scale: 1.16,
     primaryColor: 0x065f46,
     emissiveColor: 0x34d399,
@@ -539,22 +641,13 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 42. 말라코르 (영혼 수확자 말라코르) - 3코 Undead Scourge / Archmage (망령 영혼 수확 사령관)
-  u3_malakor: {
-    modelKey: 'Skeleton_Mage',
-    scale: 1.20,
-    primaryColor: 0x1e293b,
-    emissiveColor: 0x06b6d4,
-    attackAnim: 'Spellcast_Shoot',
-    skillAnim: 'Spellcast_Raise',
-    deathAnim: 'Death_C_Skeletons',
-    stunAnim: 'Skeleton_Inactive_Standing_Pose',
-    aura: 'FROST_CYAN',
-  },
   // 43. 세라피나 (빛의 사제 세라피나) - 3코 Holy Empire / Arcane Tower / Paladin (순백의 대천사 사제)
-  u3_seraphina: {
-    modelKey: 'Mage',
+  u4_celeste: {
+    modelKey: 'RPG_Wizard',
     scale: 1.10,
     primaryColor: 0xfffbeb,
     emissiveColor: 0xfacc15,
@@ -562,10 +655,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Long',
     stunAnim: 'Lie_Idle',
     aura: 'HOLY_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 44. 그리즐 (고블린 중장갑차 그리즐) - 3코 Golden Goblin / Vanguard (황금 강철 중장갑 전사)
   u3_grizzle: {
-    modelKey: 'Knight',
+    modelKey: 'Pirate_Female',
     scale: 1.30,
     primaryColor: 0xd97706,
     emissiveColor: 0xfacc15,
@@ -573,6 +668,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 45. 오리온 (별자리 명궁 오리온) - 3코 Arcane Tower / Ranger / Archmage (비전 성운 천문 명궁)
   u3_orion: {
@@ -587,7 +684,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 46. 닉스 (심연의 밤마녀 닉스) - 3코 Abyssal Demon / Shadow Assassin / Archmage (심연 서큐버스 자객)
   u3_nyx: {
-    modelKey: 'Rogue',
+    modelKey: 'Ninja_Female',
     scale: 1.12,
     primaryColor: 0x581c87,
     emissiveColor: 0xc084fc,
@@ -595,6 +692,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Dualwield_Melee_Attack_Stab',
     stunAnim: 'Lie_Idle',
     aura: 'SHADOW_PURPLE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 47. 아스타로트 (심연의 대공 아스타로트) - 4코 Abyssal Demon / Berserker (거대 심연 악마 버서커 군주)
   u4_astaroth: {
@@ -608,8 +707,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     aura: 'FIRE_RED',
   },
   // 48. 벨코라 (공허의 여제 벨코라) - 4코 Abyssal Demon / Arcane Tower / Archmage (차원의 균열 공허 여제)
-  u4_velkora: {
-    modelKey: 'Mage',
+  u3_quartz: {
+    modelKey: 'Witch',
     scale: 1.22,
     primaryColor: 0x312e81,
     emissiveColor: 0xa855f7,
@@ -617,18 +716,10 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Long',
     stunAnim: 'Lie_Idle',
     aura: 'SHADOW_PURPLE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 49. 브륜힐드 (천상의 발키리 브륜힐드) - 4코 Holy Empire / Paladin / Ranger (황금빛 전장의 수호 발키리)
-  u4_valkyrie: {
-    modelKey: 'Knight',
-    scale: 1.26,
-    primaryColor: 0xf8fafc,
-    emissiveColor: 0xfacc15,
-    attackAnim: '1H_Melee_Attack_Slice_Horizontal',
-    skillAnim: '2H_Melee_Attack_Chop',
-    stunAnim: 'Lie_Idle',
-    aura: 'HOLY_GOLD',
-  },
   // 50. 파프니르 (황금 갑주룡 파프니르) - 4코 Dragonkin / Golden Goblin / Vanguard (탐욕의 거대 황금 갑주룡)
   u4_fafnir: {
     modelKey: 'Dragon',
@@ -662,7 +753,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   },
   // 52. 미다스 (황금 연금술사 미다스) - 4코 Golden Goblin / Archmage / Arcane Tower (만물 황금 연금술 대가)
   u4_midas: {
-    modelKey: 'Mage',
+    modelKey: 'Goblin_Male',
     scale: 1.18,
     primaryColor: 0xfacc15,
     emissiveColor: 0xfde047,
@@ -670,10 +761,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Spellcast_Raise',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 53. 아르테미스 (용사냥꾼 아르테미스) - 4코 Dragonkin / Ranger / Berserker (용린 갑주 전설의 용 학살자)
   u4_artemis: {
-    modelKey: 'Rogue_Hooded',
+    modelKey: 'Ninja_Sand',
     scale: 1.22,
     primaryColor: 0xb91c1c,
     emissiveColor: 0xf59e0b,
@@ -681,10 +774,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 54. 오베론 (숲의 고대수호자 오베론) - 4코 Elven Sylvan / Vanguard / Paladin (고대 요정왕 수호 기사)
-  u4_diablo: {
-    modelKey: 'Knight',
+  u4_ursa: {
+    modelKey: 'Elf',
     scale: 1.32,
     primaryColor: 0x065f46,
     emissiveColor: 0x22c55e,
@@ -692,10 +787,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 55. 골드투스 (황금 고블린 왕 골드투스) - 5코 전설 Golden Goblin / Paladin / Vanguard (탐욕의 황금 고블린 황제)
   u5_goldtooth: {
-    modelKey: 'Barbarian',
+    modelKey: 'Goblin_Female',
     scale: 1.30,
     primaryColor: 0xeab308,
     emissiveColor: 0xfef08a,
@@ -703,10 +800,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Jump_Chop',
     stunAnim: 'Lie_Idle',
     aura: 'GOBLIN_GOLD',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 56. 루시엘 (타락한 대천사 루시엘) - 5코 전설 Holy Empire / Undead Scourge / Ranger (흑백 날개 타락천사 명궁)
   u5_luciel: {
-    modelKey: 'Rogue_Hooded',
+    modelKey: 'BlueSoldier_Female',
     scale: 1.32,
     primaryColor: 0x111827,
     emissiveColor: 0xe0e7ff,
@@ -714,6 +813,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '1H_Ranged_Shoot',
     stunAnim: 'Lie_Idle',
     aura: 'SHADOW_PURPLE',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 57. 바하무트 (성운의 창세룡 바하무트) - 5코 전설 Dragonkin / Arcane Tower / Archmage (우주 성운 초대형 창세룡)
   u5_bahamut: {
@@ -731,19 +832,9 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     aura: 'ARCANE_BLUE',
   },
   // 58. 크로노스 (시간의 지배자 크로노스) - 5코 전설 Arcane Tower / Archmage / Undead Scourge (시공간 차원 지배신)
-  u5_chronos: {
-    modelKey: 'Mage',
-    scale: 1.30,
-    primaryColor: 0x1e3a8a,
-    emissiveColor: 0x38bdf8,
-    attackAnim: 'Spellcast_Shoot',
-    skillAnim: 'Spellcast_Long',
-    stunAnim: 'Lie_Idle',
-    aura: 'ARCANE_BLUE',
-  },
   // 59. 릴리스 (심연의 여왕 릴리스) - 5코 전설 Abyssal Demon / Shadow Assassin / Berserker (피의 지옥 심연 여왕)
   u5_lilith: {
-    modelKey: 'Rogue',
+    modelKey: 'Kimono_Female',
     scale: 1.24,
     primaryColor: 0x881337,
     emissiveColor: 0xef4444,
@@ -751,10 +842,12 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: 'Dualwield_Melee_Attack_Stab',
     stunAnim: 'Lie_Idle',
     aura: 'FIRE_RED',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
   // 60. 이그드라실 (세계수의 화신 이그드라실) - 5코 전설 Elven Sylvan / Vanguard / Paladin (태고의 거대 세계수 현신)
   u5_yggdrasil: {
-    modelKey: 'Barbarian',
+    modelKey: 'Worker_Male',
     scale: 1.45,
     primaryColor: 0x271c14,
     emissiveColor: 0x10b981,
@@ -762,6 +855,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
+    idleAnim: 'Idle',
+    walkAnim: 'Run',
   },
 };
 
@@ -789,6 +884,18 @@ interface UnitJuice3D {
   leapProgress: number;
   leapStartPos: THREE.Vector3;
   leapTargetPos: THREE.Vector3;
+  /** MOVE 이벤트 기반 시간 보간 (시각적 순간이동 방지) */
+  moveFrom: THREE.Vector3;
+  moveTo: THREE.Vector3;
+  moveElapsedMs: number;
+  moveDurationMs: number;
+  isMoving: boolean;
+  /** 엔진 미세 진동을 흡수한 표시용 목표 */
+  smoothTargetX: number;
+  smoothTargetZ: number;
+  smoothReady: boolean;
+  /** walk→idle 즉시 전환 방지 (짧은 파닥거림 억제) */
+  walkHoldMs: number;
 }
 
 interface Active3DProjectile {
@@ -839,6 +946,10 @@ export class ThreeJsGameRenderer {
   private boardGroup: THREE.Group = new THREE.Group();
   private benchGroup: THREE.Group = new THREE.Group();
   private unitsGroup: THREE.Group = new THREE.Group();
+  /** 화면고정 DOM HUD (체력·마나·장착아이템) — 3D 회전에 절대 묶이지 않음 */
+  private overheadLayer: HTMLElement | null = null;
+  private overheadDomMap: Map<string, HTMLElement> = new Map();
+  private overheadActiveIds: Set<string> = new Set();
   private environmentGroup: THREE.Group = new THREE.Group();
   private projectilesGroup: THREE.Group = new THREE.Group();
   private popupsGroup: THREE.Group = new THREE.Group();
@@ -853,6 +964,8 @@ export class ThreeJsGameRenderer {
   private unitMeshesMap: Map<string, THREE.Group> = new Map();
   private unitJuiceMap: Map<string, UnitJuice3D> = new Map();
   private unitAnimControllers: Map<string, UnitAnimController> = new Map();
+  private readonly _meshWorldPos = new THREE.Vector3();
+  private readonly _projectVec = new THREE.Vector3();
 
   // GLB 모델 에셋 캐시 (10종 판타지 전용 모델 및 골격 애니메이션)
   private glbLoadedTemplates: Map<string, THREE.Group> = new Map();
@@ -869,6 +982,32 @@ export class ThreeJsGameRenderer {
 
   // 횃불 조명들 (Flickering Torches)
   private torchLights: { light: THREE.PointLight; baseIntensity: number; phase: number }[] = [];
+  /** 떠다니는 마나 위습 / 깃발 펄럭임용 */
+  private ambientWisps: { mesh: THREE.Object3D; baseY: number; phase: number; speed: number }[] =
+    [];
+  private bannerMeshes: THREE.Object3D[] = [];
+
+  /** 플레이어 지휘관 아바타 (전장 걸어다니며 전리품 줍기) */
+  private commanderGroup: THREE.Group | null = null;
+  private commanderPos = new THREE.Vector3(0, 0, 7.2);
+  private commanderTarget: THREE.Vector3 | null = null;
+  private commanderFacing = 0;
+  private readonly commanderMoveSpeed = 5.8;
+  private readonly _commanderGroundHit = new THREE.Vector3();
+  /** 상대 지휘관 (고정 단상) — 피니시 레이저 조준점 */
+  private awayCommanderGroup: THREE.Group | null = null;
+  private awayCommanderPos = new THREE.Vector3(0, 0, -7.2);
+  private activeFinisherFX: {
+    lifeMs: number;
+    maxLifeMs: number;
+    winnerSide: 'HOME' | 'AWAY';
+    damage: number;
+    impactTriggered: boolean;
+    beam: THREE.Mesh;
+    bolt: THREE.Mesh;
+    lastId: number;
+  } | null = null;
+  private lastTriggeredFinisherId3D: number = -1;
 
   // 활성 투사체 및 팝업 텍스트
   private activeProjectiles: Active3DProjectile[] = [];
@@ -898,11 +1037,11 @@ export class ThreeJsGameRenderer {
     this.scene.background = new THREE.Color(0x60a5fa);
     this.scene.fog = new THREE.FogExp2(0x93c5fd, 0.012);
 
-    // 1. TFT 스타일 48° 쿼터뷰 3D 카메라 설정 (얼굴과 전신이 또렷하게 보이는 비스듬한 최적 앵글)
+    // 1. TFT 스타일 쿼터뷰 — 필드를 더 크게 보이도록 FOV↑ / 카메라 당김
     const aspect = (window.innerWidth || 800) / (window.innerHeight || 600);
-    this.camera = new THREE.PerspectiveCamera(43, aspect, 0.5, 140);
-    this.camera.position.set(0, 17.5, 16.2);
-    this.camera.lookAt(0, 0, 1.2);
+    this.camera = new THREE.PerspectiveCamera(50, aspect, 0.5, 140);
+    this.camera.position.set(0, 15.2, 14.0);
+    this.camera.lookAt(0, 0, 1.0);
 
     // 2. WebGL 렌더러
     this.renderer = new THREE.WebGLRenderer({
@@ -956,27 +1095,429 @@ export class ThreeJsGameRenderer {
     this.buildMedievalStoneArena();
     this.buildMedievalStoneBench();
     this.buildColosseumSurroundingsAndTorches();
+    this.ensureCommanderAvatar();
 
     // 4. 외부 고품질 GLB 캐릭터 모델 비동기 로딩 시작
     this.loadGlbCharacterModels();
   }
 
+  /** 홈 진영 앞쪽 지휘관 스폰 위치 */
+  private getCommanderHomeAnchor(): { x: number; z: number } {
+    const home = this.hexToWorldPos(7, 3);
+    return { x: home.x, z: home.z + 1.35 };
+  }
+
+  /** 적 진영 뒤쪽 지휘관 단상 위치 */
+  private getCommanderAwayAnchor(): { x: number; z: number } {
+    const away = this.hexToWorldPos(0, 3);
+    return { x: away.x, z: away.z - 1.35 };
+  }
+
+  private buildCommanderFigure(side: 'HOME' | 'AWAY'): THREE.Group {
+    const group = new THREE.Group();
+    const isHome = side === 'HOME';
+    const cloakMat = new THREE.MeshStandardMaterial({
+      color: isHome ? 0x1d4ed8 : 0xb91c1c,
+      roughness: 0.55,
+      metalness: 0.15,
+    });
+    const armorMat = new THREE.MeshStandardMaterial({
+      color: isHome ? 0xcbd5e1 : 0x94a3b8,
+      metalness: 0.65,
+      roughness: 0.3,
+    });
+    const goldMat = new THREE.MeshStandardMaterial({
+      color: 0xfbbf24,
+      metalness: 0.85,
+      roughness: 0.25,
+      emissive: 0xb45309,
+      emissiveIntensity: 0.25,
+    });
+    const skinMat = new THREE.MeshStandardMaterial({
+      color: 0xfcd34d,
+      roughness: 0.7,
+    });
+
+    const pad = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.55, 0.65, 0.12, 16),
+      new THREE.MeshStandardMaterial({
+        color: isHome ? 0x0e7490 : 0x991b1b,
+        transparent: true,
+        opacity: 0.55,
+        roughness: 0.6,
+      })
+    );
+    pad.position.y = 0.06;
+    group.add(pad);
+
+    const body = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.28, 0.55, 4, 8),
+      cloakMat
+    );
+    body.position.y = 0.72;
+    body.castShadow = true;
+    group.add(body);
+
+    const chest = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.35, 0.28),
+      armorMat
+    );
+    chest.position.y = 0.85;
+    chest.castShadow = true;
+    group.add(chest);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), skinMat);
+    head.position.y = 1.28;
+    head.castShadow = true;
+    group.add(head);
+
+    const helm = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.22, 0.16, 8),
+      armorMat
+    );
+    helm.position.y = 1.42;
+    group.add(helm);
+
+    const crest = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.28, 6), goldMat);
+    crest.position.y = 1.62;
+    group.add(crest);
+
+    const cape = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.55, 0.85),
+      cloakMat.clone()
+    );
+    (cape.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+    cape.position.set(0, 0.75, isHome ? 0.22 : -0.22);
+    cape.rotation.x = isHome ? 0.25 : -0.25;
+    group.add(cape);
+
+    return group;
+  }
+
   /**
-   * 외부 GLB 모델 파일 10종 비동기 사전 로딩
+   * 간단한 판타지 지휘관 메시 (망토 기사) — 전리품을 걸어가서 줍는 플레이어 대리인
+   */
+  private ensureCommanderAvatar(): void {
+    if (this.commanderGroup) return;
+
+    const group = this.buildCommanderFigure('HOME');
+    const anchor = this.getCommanderHomeAnchor();
+    this.commanderPos.set(anchor.x, 0, anchor.z);
+    group.position.copy(this.commanderPos);
+    this.commanderGroup = group;
+    this.scene.add(group);
+  }
+
+  private ensureAwayCommanderAvatar(): void {
+    if (this.awayCommanderGroup) return;
+    const group = this.buildCommanderFigure('AWAY');
+    const anchor = this.getCommanderAwayAnchor();
+    this.awayCommanderPos.set(anchor.x, 0, anchor.z);
+    group.position.copy(this.awayCommanderPos);
+    group.rotation.y = Math.PI;
+    this.awayCommanderGroup = group;
+    this.scene.add(group);
+  }
+
+  public setAwayCommanderVisible(visible: boolean): void {
+    if (visible) {
+      this.ensureAwayCommanderAvatar();
+    }
+    if (this.awayCommanderGroup) {
+      this.awayCommanderGroup.visible = visible;
+    }
+  }
+
+  /**
+   * 승리 지휘관 → 패배 지휘관으로 피니시 레이저 (실제 아바타 좌표 조준)
+   */
+  public triggerAvatarFinisherLaser(payload: {
+    id: number;
+    winnerSide: 'HOME' | 'AWAY';
+    damage: number;
+  } | null): void {
+    if (!payload) return;
+    if (payload.id === this.lastTriggeredFinisherId3D) return;
+    this.lastTriggeredFinisherId3D = payload.id;
+
+    this.ensureCommanderAvatar();
+    this.ensureAwayCommanderAvatar();
+    this.setAwayCommanderVisible(true);
+    this.clearFinisherFX();
+
+    const from =
+      payload.winnerSide === 'HOME'
+        ? this.commanderPos.clone()
+        : this.awayCommanderPos.clone();
+    const to =
+      payload.winnerSide === 'HOME'
+        ? this.awayCommanderPos.clone()
+        : this.commanderPos.clone();
+    from.y = 1.15;
+    to.y = 1.15;
+
+    const mid = from.clone().lerp(to, 0.5);
+    const dist = from.distanceTo(to);
+    const beamGeo = new THREE.CylinderGeometry(0.08, 0.08, Math.max(0.2, dist), 8);
+    const beamMat = new THREE.MeshStandardMaterial({
+      color: payload.winnerSide === 'HOME' ? 0x38bdf8 : 0xf43f5e,
+      emissive: payload.winnerSide === 'HOME' ? 0x22d3ee : 0xfb7185,
+      emissiveIntensity: 2.2,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const beam = new THREE.Mesh(beamGeo, beamMat);
+    beam.position.copy(mid);
+    beam.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      to.clone().sub(from).normalize()
+    );
+    beam.scale.set(1, 0.02, 1);
+    this.vfxGroup.add(beam);
+
+    const bolt = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 12, 12),
+      new THREE.MeshStandardMaterial({
+        color: 0xffea00,
+        emissive: 0xfbbf24,
+        emissiveIntensity: 2.5,
+      })
+    );
+    bolt.position.copy(from);
+    this.vfxGroup.add(bolt);
+
+    this.activeFinisherFX = {
+      lifeMs: 0,
+      maxLifeMs: 1050,
+      winnerSide: payload.winnerSide,
+      damage: payload.damage,
+      impactTriggered: false,
+      beam,
+      bolt,
+      lastId: payload.id,
+    };
+  }
+
+  private clearFinisherFX(): void {
+    if (!this.activeFinisherFX) return;
+    this.vfxGroup.remove(this.activeFinisherFX.beam);
+    this.vfxGroup.remove(this.activeFinisherFX.bolt);
+    this.activeFinisherFX.beam.geometry.dispose();
+    (this.activeFinisherFX.beam.material as THREE.Material).dispose();
+    this.activeFinisherFX.bolt.geometry.dispose();
+    (this.activeFinisherFX.bolt.material as THREE.Material).dispose();
+    this.activeFinisherFX = null;
+  }
+
+  private updateFinisherLaser(dtMs: number): void {
+    const fx = this.activeFinisherFX;
+    if (!fx) return;
+
+    fx.lifeMs += dtMs;
+    const from =
+      fx.winnerSide === 'HOME'
+        ? this.commanderPos.clone()
+        : this.awayCommanderPos.clone();
+    const to =
+      fx.winnerSide === 'HOME'
+        ? this.awayCommanderPos.clone()
+        : this.commanderPos.clone();
+    from.y = 1.15;
+    to.y = 1.15;
+
+    const prog = Math.min(1, fx.lifeMs / fx.maxLifeMs);
+    const beamReach = Math.min(1, prog / 0.38);
+    const cur = from.clone().lerp(to, beamReach);
+    fx.bolt.position.copy(cur);
+
+    const mid = from.clone().lerp(cur, 0.5);
+    const dist = Math.max(0.05, from.distanceTo(cur));
+    fx.beam.position.copy(mid);
+    fx.beam.scale.set(1, dist / Math.max(0.2, from.distanceTo(to)), 1);
+    fx.beam.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      cur.clone().sub(from).normalize()
+    );
+
+    const fade = prog > 0.72 ? 1 - (prog - 0.72) / 0.28 : 1;
+    (fx.beam.material as THREE.MeshStandardMaterial).opacity = Math.max(0, fade);
+
+    if (beamReach >= 1 && !fx.impactTriggered) {
+      fx.impactTriggered = true;
+      this.triggerImpactShake(9, 280);
+      // 명중 스파크
+      for (let i = 0; i < 18; i++) {
+        const spark = new THREE.Mesh(
+          new THREE.SphereGeometry(0.06, 6, 6),
+          new THREE.MeshStandardMaterial({
+            color: i % 2 === 0 ? 0xffea00 : fx.winnerSide === 'HOME' ? 0x38bdf8 : 0xf43f5e,
+            emissive: 0xffea00,
+            emissiveIntensity: 1.5,
+          })
+        );
+        spark.position.copy(to);
+        this.vfxGroup.add(spark);
+        const vel = new THREE.Vector3(
+          (Math.random() - 0.5) * 6,
+          2 + Math.random() * 4,
+          (Math.random() - 0.5) * 6
+        );
+        this.activeSparks.push({
+          mesh: spark,
+          vel,
+          lifeMs: 0,
+          maxLifeMs: 420 + Math.random() * 200,
+        });
+      }
+    }
+
+    if (fx.lifeMs >= fx.maxLifeMs) {
+      this.clearFinisherFX();
+    }
+  }
+
+  /** 화면 좌표 → 지면 월드 XZ (아바타 이동 목표) */
+  public screenPointToGroundWorld(
+    px: number,
+    py: number
+  ): { x: number; z: number } | null {
+    const w =
+      this.renderer.domElement.clientWidth ||
+      this.canvas.clientWidth ||
+      window.innerWidth ||
+      1;
+    const h =
+      this.renderer.domElement.clientHeight ||
+      this.canvas.clientHeight ||
+      window.innerHeight ||
+      1;
+    this.mouseVec.x = (px / w) * 2 - 1;
+    this.mouseVec.y = -(py / h) * 2 + 1;
+    this.raycaster.setFromCamera(this.mouseVec, this.camera);
+    if (this.raycaster.ray.intersectPlane(this.groundPlane, this._commanderGroundHit)) {
+      return {
+        x: this._commanderGroundHit.x,
+        z: this._commanderGroundHit.z,
+      };
+    }
+    return null;
+  }
+
+  /** 지휘관을 월드 좌표로 걷게 함 (전리품/전장 탭) */
+  public moveCommanderAvatarToWorld(x: number, z: number): void {
+    this.ensureCommanderAvatar();
+    const clampedX = Math.max(-14, Math.min(14, x));
+    const clampedZ = Math.max(-12, Math.min(this.benchZ + 0.5, z));
+    this.commanderTarget = new THREE.Vector3(clampedX, 0, clampedZ);
+  }
+
+  /** 화면 탭 위치로 지휘관 이동 */
+  public moveCommanderAvatarToScreen(px: number, py: number): boolean {
+    const ground = this.screenPointToGroundWorld(px, py);
+    if (!ground) return false;
+    this.moveCommanderAvatarToWorld(ground.x, ground.z);
+    return true;
+  }
+
+  public getCommanderWorldPos(): { x: number; y: number; z: number } {
+    this.ensureCommanderAvatar();
+    return {
+      x: this.commanderPos.x,
+      y: this.commanderPos.y,
+      z: this.commanderPos.z,
+    };
+  }
+
+  /** 헥스 위 전리품으로 지휘관 보행 */
+  public moveCommanderAvatarToHex(row: number, col: number): void {
+    const pos = this.hexToWorldPos(row, col);
+    this.moveCommanderAvatarToWorld(pos.x, pos.z);
+  }
+
+  private updateCommanderAvatar(dtMs: number): void {
+    if (!this.commanderGroup) return;
+
+    let walking = false;
+    if (this.commanderTarget) {
+      const dx = this.commanderTarget.x - this.commanderPos.x;
+      const dz = this.commanderTarget.z - this.commanderPos.z;
+      const dist = Math.hypot(dx, dz);
+      const step = (this.commanderMoveSpeed * dtMs) / 1000;
+      if (dist <= step || dist < 0.08) {
+        this.commanderPos.x = this.commanderTarget.x;
+        this.commanderPos.z = this.commanderTarget.z;
+        this.commanderTarget = null;
+      } else {
+        walking = true;
+        this.commanderPos.x += (dx / dist) * step;
+        this.commanderPos.z += (dz / dist) * step;
+        this.commanderFacing = Math.atan2(dx, dz);
+      }
+    }
+
+    const bob = walking
+      ? Math.sin(this.animClockMs * 0.028) * 0.08
+      : Math.sin(this.animClockMs * 0.006) * 0.03;
+    this.commanderGroup.position.set(
+      this.commanderPos.x,
+      this.commanderPos.y + bob,
+      this.commanderPos.z
+    );
+    // 이동 방향을 바라보되 부드럽게 회전
+    const desiredY = this.commanderFacing;
+    let cur = this.commanderGroup.rotation.y;
+    let delta = desiredY - cur;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    while (delta < -Math.PI) delta += Math.PI * 2;
+    this.commanderGroup.rotation.y = cur + delta * 0.18;
+  }
+
+  /**
+   * 외부 GLB 모델 파일 사전 로딩 (기존 아키타입 + Quaternius CC0 추가 메시)
    */
   private loadGlbCharacterModels(): void {
     const modelSources: { key: string; url: string; scale: number; offsetY: number }[] = [
-      { key: 'Knight', url: './models/Knight.glb', scale: 1.15, offsetY: 0 },
-      { key: 'Mage', url: './models/Mage.glb', scale: 1.15, offsetY: 0 },
-      { key: 'Rogue', url: './models/Rogue.glb', scale: 1.10, offsetY: 0 },
-      { key: 'Rogue_Hooded', url: './models/Rogue_Hooded.glb', scale: 1.12, offsetY: 0 },
-      { key: 'Barbarian', url: './models/Barbarian.glb', scale: 1.20, offsetY: 0 },
-      { key: 'Skeleton_Warrior', url: './models/Skeleton_Warrior.glb', scale: 1.15, offsetY: 0 },
-      { key: 'Skeleton_Mage', url: './models/Skeleton_Mage.glb', scale: 1.15, offsetY: 0 },
-      { key: 'Skeleton_Rogue', url: './models/Skeleton_Rogue.glb', scale: 1.10, offsetY: 0 },
-      { key: 'Wolf', url: './models/Wolf.glb', scale: 1.22, offsetY: 0 },
+      { key: 'Barbarian', url: './models/Barbarian.glb', scale: 1.2, offsetY: 0 },
+      { key: 'BlueSoldier_Female', url: './models/BlueSoldier_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'BlueSoldier_Male', url: './models/BlueSoldier_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Cleric', url: './models/Cleric.glb', scale: 1.05, offsetY: 0 },
       { key: 'Dragon', url: './models/Dragon.glb', scale: 0.95, offsetY: 0 },
-      { key: 'Imp', url: './models/Imp.glb', scale: 1.10, offsetY: 0 },
+      { key: 'Elf', url: './models/Elf.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Goblin_Female', url: './models/Goblin_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Goblin_Male', url: './models/Goblin_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Imp', url: './models/Imp.glb', scale: 1.1, offsetY: 0 },
+      { key: 'Kimono_Female', url: './models/Kimono_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Knight', url: './models/Knight.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Knight_Golden_Female', url: './models/Knight_Golden_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Knight_Golden_Male', url: './models/Knight_Golden_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Knight_Male', url: './models/Knight_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Mage', url: './models/Mage.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Monk', url: './models/Monk.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Ninja_Female', url: './models/Ninja_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Ninja_Male', url: './models/Ninja_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Ninja_Male_Hair', url: './models/Ninja_Male_Hair.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Ninja_Sand', url: './models/Ninja_Sand.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Pirate_Female', url: './models/Pirate_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Pirate_Male', url: './models/Pirate_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'RPG_Rogue', url: './models/RPG_Rogue.glb', scale: 1.05, offsetY: 0 },
+      { key: 'RPG_Wizard', url: './models/RPG_Wizard.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Ranger', url: './models/Ranger.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Rogue', url: './models/Rogue.glb', scale: 1.1, offsetY: 0 },
+      { key: 'Rogue_Hooded', url: './models/Rogue_Hooded.glb', scale: 1.12, offsetY: 0 },
+      { key: 'Skeleton_Mage', url: './models/Skeleton_Mage.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Skeleton_Rogue', url: './models/Skeleton_Rogue.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Skeleton_Warrior', url: './models/Skeleton_Warrior.glb', scale: 1.15, offsetY: 0 },
+      { key: 'Soldier_Female', url: './models/Soldier_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Soldier_Male', url: './models/Soldier_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Viking_Female', url: './models/Viking_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Viking_Male', url: './models/Viking_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Warrior', url: './models/Warrior.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Witch', url: './models/Witch.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Wizard', url: './models/Wizard.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Wolf', url: './models/Wolf.glb', scale: 1.22, offsetY: 0 },
+      { key: 'Worker_Male', url: './models/Worker_Male.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Zombie_Female', url: './models/Zombie_Female.glb', scale: 1.05, offsetY: 0 },
+      { key: 'Zombie_Male', url: './models/Zombie_Male.glb', scale: 1.05, offsetY: 0 },
     ];
 
     modelSources.forEach((src) => {
@@ -1036,13 +1577,27 @@ export class ThreeJsGameRenderer {
           clonedModel.name = 'GLB_MODEL_ROOT';
 
           if (cfg.primaryColor) {
+            const legacyKeys = new Set([
+              'Knight',
+              'Mage',
+              'Rogue',
+              'Rogue_Hooded',
+              'Barbarian',
+              'Skeleton_Warrior',
+              'Skeleton_Mage',
+              'Skeleton_Rogue',
+              'Wolf',
+              'Dragon',
+              'Imp',
+            ]);
+            const tintStrength = legacyKeys.has(cfg.modelKey) ? 0.3 : 0.12;
             clonedModel.traverse((child) => {
               if ((child as THREE.Mesh).isMesh) {
                 const mesh = child as THREE.Mesh;
                 if (mesh.material) {
                   const mat = (mesh.material as THREE.Material).clone() as THREE.MeshStandardMaterial;
                   if (mat.color && cfg.primaryColor) {
-                    mat.color.lerp(new THREE.Color(cfg.primaryColor), 0.3);
+                    mat.color.lerp(new THREE.Color(cfg.primaryColor), tintStrength);
                   }
                   mesh.material = mat;
                 }
@@ -1077,10 +1632,32 @@ export class ThreeJsGameRenderer {
     const mixer = new THREE.AnimationMixer(clonedModel);
     const actions = new Map<string, THREE.AnimationAction>();
 
+    /** GLB walk/gallop root translation → 메시가 그룹 안에서 덜덜 떨림. 위치 트랙 제거 */
+    const stripRootMotion = (clip: THREE.AnimationClip): THREE.AnimationClip => {
+      const kept = clip.tracks.filter((track) => {
+        const n = track.name.toLowerCase();
+        if (!n.endsWith('.position')) return true;
+        // hips / root / armature / scene root
+        if (
+          n.includes('hip') ||
+          n.includes('root') ||
+          n.includes('armature') ||
+          n.includes('pelvis') ||
+          n === 'position' ||
+          n.startsWith('.position')
+        ) {
+          return false;
+        }
+        // 안전: 모든 position 트랙 제거 (이동은 엔진 posX/posZ가 담당)
+        return false;
+      });
+      return new THREE.AnimationClip(clip.name, clip.duration, kept.length ? kept : clip.tracks);
+    };
+
     const getClip = (names: string[]): THREE.AnimationClip | undefined => {
       for (const name of names) {
         const c = clips.find((clip) => clip.name === name || clip.name.includes(name));
-        if (c) return c;
+        if (c) return stripRootMotion(c);
       }
       return undefined;
     };
@@ -1105,7 +1682,10 @@ export class ThreeJsGameRenderer {
         '1H_Melee_Attack_Chop',
         '2H_Melee_Attack_Chop',
         'Spellcast_Shoot',
-        'Attack'
+        'Attack',
+        'SwordSlash',
+        'Punch',
+        'Shoot_OneHanded',
       ]);
     }
     if (attackClip) actions.set('attack', mixer.clipAction(attackClip));
@@ -1129,11 +1709,28 @@ export class ThreeJsGameRenderer {
     if (spellClip) actions.set('spell', mixer.clipAction(spellClip));
 
     // 5. Hit (피격 리액션)
-    const hitClip = cfg.hitAnim ? getClip([cfg.hitAnim]) : getClip(['Hit_A', 'Hit_B', 'Block_Hit', 'Dragon_Hit', 'Idle_HitReact_Left']);
+    const hitClip = cfg.hitAnim
+      ? getClip([cfg.hitAnim])
+      : getClip([
+          'Hit_A',
+          'Hit_B',
+          'Block_Hit',
+          'Dragon_Hit',
+          'Idle_HitReact_Left',
+          'RecieveHit',
+        ]);
     if (hitClip) actions.set('hit', mixer.clipAction(hitClip));
 
     // 6. Death (사망 쓰러짐)
-    const deathClip = cfg.deathAnim ? getClip([cfg.deathAnim]) : getClip(['Death_A', 'Death_B', 'Death_C_Skeletons', 'Death']);
+    const deathClip = cfg.deathAnim
+      ? getClip([cfg.deathAnim])
+      : getClip([
+          'Death_A',
+          'Death_B',
+          'Death_C_Skeletons',
+          'Death',
+          'Defeat',
+        ]);
     if (deathClip) actions.set('death', mixer.clipAction(deathClip));
 
     // 7. Stun (기절/상태이상 쓰러짐 및 기절 포즈)
@@ -1193,19 +1790,23 @@ export class ThreeJsGameRenderer {
     if (!targetAction) return;
 
     const isOneShot = actionName === 'attack' || actionName === 'spell' || actionName === 'hit' || actionName === 'death';
+    const blend = actionName === 'walk' || actionName === 'idle' ? 0.22 : 0.12;
 
     if (ctrl.currentAction && ctrl.currentAction !== targetAction) {
-      ctrl.currentAction.fadeOut(0.12);
+      ctrl.currentAction.fadeOut(blend);
     }
 
     targetAction.reset();
     if (isOneShot) {
       targetAction.setLoop(THREE.LoopOnce, 1);
       targetAction.clampWhenFinished = true;
+      targetAction.timeScale = 1;
     } else {
       targetAction.setLoop(THREE.LoopRepeat, Infinity);
+      // 걷기는 살짝 느리게 → 짧은 파닥 보폭 완화
+      targetAction.timeScale = actionName === 'walk' ? 0.78 : 1;
     }
-    targetAction.fadeIn(0.12).play();
+    targetAction.fadeIn(blend).play();
 
     ctrl.currentAction = targetAction;
     ctrl.currentActionName = actionName;
@@ -1396,10 +1997,26 @@ export class ThreeJsGameRenderer {
       0.38,
       6
     );
+    const rimGeo = new THREE.CylinderGeometry(
+      this.hexRadius * 1.02,
+      this.hexRadius * 1.02,
+      0.06,
+      6,
+      1,
+      true
+    );
+    const inlayGeo = new THREE.CylinderGeometry(
+      this.hexRadius * 0.42,
+      this.hexRadius * 0.42,
+      0.05,
+      6
+    );
+    const runeGeo = new THREE.TorusGeometry(this.hexRadius * 0.28, 0.035, 6, 6);
 
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 7; c++) {
         const isAway = r < 4;
+        const onMidLine = r === 3 || r === 4;
         // 밝고 고급스러운 중세 성채 석조 바닥재 (플레이어: 산뜻한 은백색/아이보리 대리석 타일, 적: 온화한 샌드스톤 사암 타일)
         const stoneColor = isAway
           ? (r + c) % 2 === 0
@@ -1430,12 +2047,68 @@ export class ThreeJsGameRenderer {
           baseY: 0,
         };
 
+        // 타일 가장자리 청동/황금 림 + 중앙 룬 인레이
+        const rimMat = new THREE.MeshStandardMaterial({
+          color: onMidLine ? 0xfbbf24 : isAway ? 0xb45309 : 0x64748b,
+          metalness: 0.55,
+          roughness: 0.35,
+          side: THREE.DoubleSide,
+        });
+        const rim = new THREE.Mesh(rimGeo, rimMat);
+        rim.rotation.y = Math.PI / 6;
+        rim.position.set(pos.x, 0.2, pos.z);
+        rim.receiveShadow = true;
+        this.boardGroup.add(rim);
+
+        const inlayMat = new THREE.MeshStandardMaterial({
+          color: onMidLine ? 0xfde68a : isAway ? 0xc4a574 : 0xb8c5d6,
+          metalness: 0.25,
+          roughness: 0.5,
+          emissive: onMidLine ? 0xb45309 : 0x000000,
+          emissiveIntensity: onMidLine ? 0.35 : 0,
+          flatShading: true,
+        });
+        const inlay = new THREE.Mesh(inlayGeo, inlayMat);
+        inlay.rotation.y = Math.PI / 6;
+        inlay.position.set(pos.x, 0.2, pos.z);
+        this.boardGroup.add(inlay);
+
+        if ((r + c) % 3 === 0 || onMidLine) {
+          const runeMat = new THREE.MeshStandardMaterial({
+            color: onMidLine ? 0xf59e0b : 0x38bdf8,
+            emissive: onMidLine ? 0xf59e0b : 0x0284c7,
+            emissiveIntensity: 0.55,
+            metalness: 0.4,
+            roughness: 0.3,
+          });
+          const rune = new THREE.Mesh(runeGeo, runeMat);
+          rune.rotation.x = Math.PI / 2;
+          rune.rotation.z = Math.PI / 6;
+          rune.position.set(pos.x, 0.24, pos.z);
+          this.boardGroup.add(rune);
+        }
+
         const key = `${r},${c}`;
         this.hexTileMeshes.set(key, mesh);
         this.tileOriginalY.set(mesh, 0);
         this.boardGroup.add(mesh);
       }
     }
+
+    // 중앙 전선 아케인 빛줄기 (양 진영 경계)
+    const seamGeo = new THREE.BoxGeometry(14.5, 0.08, 0.22);
+    const seamMat = new THREE.MeshStandardMaterial({
+      color: 0xfbbf24,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 0.9,
+      metalness: 0.5,
+      roughness: 0.25,
+    });
+    const seam = new THREE.Mesh(seamGeo, seamMat);
+    const midA = this.hexToWorldPos(3, 3);
+    const midB = this.hexToWorldPos(4, 3);
+    seam.position.set(0, 0.28, (midA.z + midB.z) * 0.5);
+    this.boardGroup.add(seam);
   }
 
   /**
@@ -1600,7 +2273,9 @@ export class ThreeJsGameRenderer {
       const banner = new THREE.Mesh(bannerGeo, bannerMat);
       banner.position.set(0, 1.6, cfg.isAway ? 0.9 : -0.9);
       banner.rotation.y = cfg.isAway ? 0 : Math.PI;
+      banner.userData.baseRotZ = 0;
       pillarGroup.add(banner);
+      this.bannerMeshes.push(banner);
 
       // 따뜻한 주황빛 포인트 라이트 (Flickering Flame Light)
       const fireLight = new THREE.PointLight(0xff8822, 2.8, 20);
@@ -1616,47 +2291,278 @@ export class ThreeJsGameRenderer {
       this.environmentGroup.add(pillarGroup);
     });
 
-    // 5. 배경 외곽 자연 요소 (중세 상록수 몇 그루 배치로 풍성한 야외 전장 분위기 조성)
-    const treePositions = [
-      [-26, 0, -18],
-      [-22, 0, -24],
-      [24, 0, -20],
-      [28, 0, -14],
-      [-28, 0, 10],
-      [28, 0, 12],
-    ];
-    const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 2.5, 6);
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x543d2b, roughness: 0.9 });
-    const foliageGeo = new THREE.ConeGeometry(2.2, 5.0, 6);
-    const foliageMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.8 });
+    this.buildFantasyArenaSetDressing();
+  }
 
-    treePositions.forEach((tp) => {
+  /**
+   * 결투장 주변 판타지 셋드레싱: 나무·바위·수정·성채 실루엣·마나 위습 등
+   */
+  private buildFantasyArenaSetDressing(): void {
+    // 1) 다층 상록수 군락 (크기·색 다양화)
+    const treePositions: { x: number; z: number; s: number; hue: number }[] = [
+      { x: -26, z: -18, s: 1.0, hue: 0x15803d },
+      { x: -22, z: -24, s: 1.25, hue: 0x166534 },
+      { x: -30, z: -12, s: 0.85, hue: 0x14532d },
+      { x: -18, z: -28, s: 1.1, hue: 0x3f6212 },
+      { x: 24, z: -20, s: 1.15, hue: 0x15803d },
+      { x: 28, z: -14, s: 0.95, hue: 0x166534 },
+      { x: 32, z: -22, s: 1.35, hue: 0x14532d },
+      { x: 20, z: -26, s: 0.8, hue: 0x4d7c0f },
+      { x: -28, z: 10, s: 1.05, hue: 0x15803d },
+      { x: -32, z: 4, s: 0.9, hue: 0x3f6212 },
+      { x: 28, z: 12, s: 1.2, hue: 0x166534 },
+      { x: 31, z: 6, s: 0.85, hue: 0x14532d },
+      { x: -24, z: 18, s: 0.75, hue: 0x4d7c0f },
+      { x: 25, z: 18, s: 0.8, hue: 0x15803d },
+    ];
+    const trunkGeo = new THREE.CylinderGeometry(0.35, 0.55, 2.4, 6);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x543d2b, roughness: 0.92 });
+    const foliageGeoA = new THREE.ConeGeometry(2.0, 4.2, 7);
+    const foliageGeoB = new THREE.ConeGeometry(1.55, 3.2, 6);
+
+    treePositions.forEach((tp, i) => {
       const treeGroup = new THREE.Group();
-      treeGroup.position.set(tp[0], -0.8, tp[2]);
+      treeGroup.position.set(tp.x, -0.85, tp.z);
+      treeGroup.scale.setScalar(tp.s);
 
       const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-      trunk.position.y = 1.25;
+      trunk.position.y = 1.2;
       trunk.castShadow = true;
       treeGroup.add(trunk);
 
-      const foliage = new THREE.Mesh(foliageGeo, foliageMat);
-      foliage.position.y = 4.2;
+      const foliageMat = new THREE.MeshStandardMaterial({
+        color: tp.hue,
+        roughness: 0.82,
+        flatShading: true,
+      });
+      const foliage = new THREE.Mesh(foliageGeoA, foliageMat);
+      foliage.position.y = 3.9;
       foliage.castShadow = true;
       treeGroup.add(foliage);
 
+      const foliage2 = new THREE.Mesh(foliageGeoB, foliageMat.clone());
+      foliage2.position.y = 5.4;
+      foliage2.rotation.y = (i % 3) * 0.4;
+      foliage2.castShadow = true;
+      treeGroup.add(foliage2);
+
       this.environmentGroup.add(treeGroup);
     });
+
+    // 2) 이끼 낀 바위·돌무더기
+    const rockGeo = new THREE.DodecahedronGeometry(1.0, 0);
+    const rockMat = new THREE.MeshStandardMaterial({
+      color: 0x6b7280,
+      roughness: 0.95,
+      flatShading: true,
+    });
+    const rockSpots = [
+      [-14, 0, -11],
+      [13.5, 0, -10.5],
+      [-15.5, 0, 9],
+      [15, 0, 10],
+      [-19, 0, -4],
+      [18.5, 0, -3],
+      [-8, 0, -14],
+      [9, 0, -13.5],
+    ];
+    rockSpots.forEach((rp, i) => {
+      const rock = new THREE.Mesh(rockGeo, rockMat.clone());
+      (rock.material as THREE.MeshStandardMaterial).color.offsetHSL(0, 0, (i % 3) * 0.04 - 0.04);
+      rock.position.set(rp[0], -0.35, rp[2]);
+      rock.scale.set(0.7 + (i % 3) * 0.25, 0.45 + (i % 2) * 0.2, 0.85 + (i % 4) * 0.1);
+      rock.rotation.set(0.2 * i, 0.5 * i, 0.1 * i);
+      rock.castShadow = true;
+      rock.receiveShadow = true;
+      this.environmentGroup.add(rock);
+    });
+
+    // 3) 발광 수정 기둥 (아케인 크리스탈)
+    const crystalGeo = new THREE.OctahedronGeometry(0.55, 0);
+    const crystalConfigs = [
+      { x: -10.5, z: -6.2, c: 0x22d3ee },
+      { x: 10.5, z: -6.2, c: 0xa78bfa },
+      { x: -10.8, z: 6.8, c: 0x34d399 },
+      { x: 10.8, z: 6.8, c: 0xf472b6 },
+      { x: 0, z: -12.5, c: 0xfbbf24 },
+      { x: -16, z: 1.5, c: 0x60a5fa },
+      { x: 16, z: 1.5, c: 0xf59e0b },
+    ];
+    crystalConfigs.forEach((cc, i) => {
+      const mat = new THREE.MeshStandardMaterial({
+        color: cc.c,
+        emissive: cc.c,
+        emissiveIntensity: 0.85,
+        metalness: 0.35,
+        roughness: 0.2,
+        transparent: true,
+        opacity: 0.92,
+      });
+      const crystal = new THREE.Mesh(crystalGeo, mat);
+      crystal.position.set(cc.x, 0.55 + (i % 3) * 0.15, cc.z);
+      crystal.scale.set(0.7, 1.4 + (i % 2) * 0.35, 0.7);
+      crystal.rotation.y = i * 0.7;
+      crystal.castShadow = true;
+      this.environmentGroup.add(crystal);
+
+      const glow = new THREE.PointLight(cc.c, 0.55, 8);
+      glow.position.set(cc.x, 1.2, cc.z);
+      this.environmentGroup.add(glow);
+    });
+
+    // 4) 적 진영 뒤 성채 실루엣 (탑·성벽)
+    const keepGroup = new THREE.Group();
+    keepGroup.position.set(0, -0.6, -22);
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x57534e,
+      roughness: 0.88,
+      flatShading: true,
+    });
+    const keepWall = new THREE.Mesh(new THREE.BoxGeometry(18, 4.5, 2.2), wallMat);
+    keepWall.position.y = 2.0;
+    keepWall.castShadow = true;
+    keepGroup.add(keepWall);
+    const towerGeo = new THREE.CylinderGeometry(1.4, 1.7, 7.5, 8);
+    [-7.5, 0, 7.5].forEach((tx, i) => {
+      const tower = new THREE.Mesh(towerGeo, wallMat);
+      tower.position.set(tx, 3.4, -0.4);
+      tower.castShadow = true;
+      keepGroup.add(tower);
+      const roof = new THREE.Mesh(
+        new THREE.ConeGeometry(1.9, 2.2, 8),
+        new THREE.MeshStandardMaterial({
+          color: i === 1 ? 0xb91c1c : 0x7f1d1d,
+          roughness: 0.7,
+          flatShading: true,
+        })
+      );
+      roof.position.set(tx, 8.0, -0.4);
+      keepGroup.add(roof);
+    });
+    this.environmentGroup.add(keepGroup);
+
+    // 5) 테라스 가장자리 장식용 낮은 화로 (추가 횃불)
+    const sideBraziers = [
+      [-8.5, -11.5],
+      [8.5, -11.5],
+      [-17.5, 1.5],
+      [17.5, 1.5],
+    ];
+    sideBraziers.forEach((bp, idx) => {
+      const g = new THREE.Group();
+      g.position.set(bp[0], 0, bp[1]);
+      const pedestal = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.35, 0.45, 1.1, 6),
+        new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.85, flatShading: true })
+      );
+      pedestal.position.y = 0.55;
+      pedestal.castShadow = true;
+      g.add(pedestal);
+      const flame = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(0.28, 0),
+        new THREE.MeshStandardMaterial({
+          color: 0xff7700,
+          emissive: 0xff5500,
+          emissiveIntensity: 2.0,
+        })
+      );
+      flame.position.y = 1.35;
+      g.add(flame);
+      const light = new THREE.PointLight(0xff8822, 1.6, 12);
+      light.position.y = 1.5;
+      g.add(light);
+      this.torchLights.push({ light, baseIntensity: 1.6, phase: idx * 2.1 + 0.5 });
+      this.environmentGroup.add(g);
+    });
+
+    // 6) 떠다니는 마나 위습
+    const wispGeo = new THREE.SphereGeometry(0.12, 8, 8);
+    for (let i = 0; i < 14; i++) {
+      const angle = (i / 14) * Math.PI * 2;
+      const radius = 12 + (i % 4) * 2.2;
+      const mat = new THREE.MeshStandardMaterial({
+        color: i % 2 === 0 ? 0x7dd3fc : 0xfde68a,
+        emissive: i % 2 === 0 ? 0x38bdf8 : 0xfbbf24,
+        emissiveIntensity: 1.4,
+        transparent: true,
+        opacity: 0.85,
+      });
+      const wisp = new THREE.Mesh(wispGeo, mat);
+      const baseY = 1.2 + (i % 5) * 0.35;
+      wisp.position.set(Math.sin(angle) * radius, baseY, Math.cos(angle) * radius + 1.5);
+      this.environmentGroup.add(wisp);
+      this.ambientWisps.push({
+        mesh: wisp,
+        baseY,
+        phase: i * 0.9,
+        speed: 0.0012 + (i % 3) * 0.0004,
+      });
+    }
+
+    // 7) 외곽 덤불/관목
+    const bushGeo = new THREE.SphereGeometry(0.85, 6, 5);
+    const bushMat = new THREE.MeshStandardMaterial({
+      color: 0x3f6212,
+      roughness: 0.9,
+      flatShading: true,
+    });
+    const bushSpots = [
+      [-12, 11.5],
+      [-6, 12.2],
+      [6, 12.2],
+      [12, 11.5],
+      [-20, -8],
+      [20, -8],
+      [-21, 8],
+      [21, 8],
+    ];
+    bushSpots.forEach((b, i) => {
+      const bush = new THREE.Mesh(bushGeo, bushMat);
+      bush.position.set(b[0], -0.15, b[1]);
+      bush.scale.set(1 + (i % 3) * 0.15, 0.65 + (i % 2) * 0.2, 1);
+      bush.castShadow = true;
+      this.environmentGroup.add(bush);
+    });
+
+    // 8) 테라스 가장자리 석조 난간 기둥 (시야 가리지 않는 낮은 높이)
+    const postGeo = new THREE.CylinderGeometry(0.22, 0.28, 1.4, 6);
+    const postMat = new THREE.MeshStandardMaterial({
+      color: 0x78716c,
+      roughness: 0.8,
+      flatShading: true,
+    });
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2;
+      if (angle > Math.PI * 0.32 && angle < Math.PI * 0.68) continue;
+      const post = new THREE.Mesh(postGeo, postMat);
+      post.position.set(Math.sin(angle) * 20.5, 0.35, Math.cos(angle) * 20.5 + 1.5);
+      post.castShadow = true;
+      this.environmentGroup.add(post);
+      const cap = new THREE.Mesh(
+        new THREE.SphereGeometry(0.2, 8, 8),
+        new THREE.MeshStandardMaterial({ color: 0xd6d3d1, metalness: 0.4, roughness: 0.4 })
+      );
+      cap.position.copy(post.position);
+      cap.position.y = 1.15;
+      this.environmentGroup.add(cap);
+    }
   }
 
   /**
    * 2D HexCoord (row, col) -> 3D World Position (X, Z)
    */
   public hexToWorldPos(row: number, col: number): { x: number; z: number } {
-    const isOdd = row % 2 === 1;
-    const offsetX = isOdd ? this.hexWidth * 0.5 : 0;
-    const x = (col - 3) * this.hexWidth + offsetX;
-    const z = (row - 3.5) * this.rowStepZ;
-    return { x, z };
+    const plane = HexGridMath.offsetToPlane(row, col);
+    return this.planeToWorldPos(plane.x, plane.z);
+  }
+
+  /** 전투 자유이동 평면 좌표 → 3D 월드 */
+  public planeToWorldPos(posX: number, posZ: number): { x: number; z: number } {
+    const rowFrac = posZ / (Math.sqrt(3) / 2);
+    return {
+      x: (posX - 3) * this.hexWidth,
+      z: (rowFrac - 3.5) * this.rowStepZ,
+    };
   }
 
   /**
@@ -1729,6 +2635,222 @@ export class ThreeJsGameRenderer {
     return null;
   }
 
+  /** 월드 좌표 → 캔버스 정규화 비율(0~1) */
+  public worldToScreenPercent(
+    worldX: number,
+    worldY: number,
+    worldZ: number
+  ): { x: number; y: number } {
+    const v = new THREE.Vector3(worldX, worldY, worldZ);
+    v.project(this.camera);
+    return {
+      x: Math.min(0.98, Math.max(0.02, (v.x + 1) * 0.5)),
+      y: Math.min(0.98, Math.max(0.02, (1 - v.y) * 0.5)),
+    };
+  }
+
+  /** 헥스 → 화면 % (루트 오브 배치용) */
+  public hexToScreenPercent(row: number, col: number): { x: number; y: number } {
+    const pos = this.hexToWorldPos(row, col);
+    return this.worldToScreenPercent(pos.x, 0.6, pos.z);
+  }
+
+  /**
+   * 아이템 장착용: 화면 좌표에서 가장 가까운 아군(정비 보드/대기석) 기물.
+   * 전투 중에는 실제 메시(또는 pos) 투영을 쓰고 HOME_ 접두를 원본 id로 환원한다.
+   */
+  public findNearestUnitForItemEquip(
+    px: number,
+    py: number,
+    candidates: Array<{
+      instanceId: string;
+      row?: number;
+      col?: number;
+      benchIndex?: number;
+      worldX?: number;
+      worldZ?: number;
+    }>,
+    maxDistPx: number = 150
+  ): { instanceId: string; screenX: number; screenY: number } | null {
+    const w =
+      this.renderer.domElement.clientWidth ||
+      this.canvas.clientWidth ||
+      window.innerWidth ||
+      1;
+    const h =
+      this.renderer.domElement.clientHeight ||
+      this.canvas.clientHeight ||
+      window.innerHeight ||
+      1;
+
+    let best: { instanceId: string; screenX: number; screenY: number; dist: number } | null =
+      null;
+
+    for (const c of candidates) {
+      let wx: number | null = null;
+      let wy = 1.1;
+      let wz: number | null = null;
+
+      // 1) 살아 있는 메시 월드 좌표(전투 이동 반영) 최우선
+      const mesh = this.unitMeshesMap.get(c.instanceId);
+      if (mesh) {
+        mesh.getWorldPosition(this._meshWorldPos);
+        wx = this._meshWorldPos.x;
+        wy = this._meshWorldPos.y + 1.0;
+        wz = this._meshWorldPos.z;
+      } else if (c.worldX !== undefined && c.worldZ !== undefined) {
+        wx = c.worldX;
+        wz = c.worldZ;
+        wy = 1.0;
+      } else if (c.benchIndex !== undefined) {
+        const world = this.benchIndexToWorldPos(c.benchIndex);
+        wx = world.x;
+        wz = world.z;
+        wy = 0.9;
+      } else if (c.row !== undefined && c.col !== undefined) {
+        const world = this.hexToWorldPos(c.row, c.col);
+        wx = world.x;
+        wz = world.z;
+        wy = 0.9;
+      }
+      if (wx === null || wz === null) continue;
+
+      const pct = this.worldToScreenPercent(wx, wy, wz);
+      const sx = pct.x * w;
+      const sy = pct.y * h;
+      const dist = Math.hypot(px - sx, py - sy);
+      if (dist <= maxDistPx && (!best || dist < best.dist)) {
+        const rawId = c.instanceId.startsWith('HOME_')
+          ? c.instanceId.slice('HOME_'.length)
+          : c.instanceId.startsWith('AWAY_')
+          ? c.instanceId.slice('AWAY_'.length)
+          : c.instanceId;
+        best = { instanceId: rawId, screenX: sx, screenY: sy, dist };
+      }
+    }
+    return best
+      ? {
+          instanceId: best.instanceId,
+          screenX: best.screenX,
+          screenY: best.screenY,
+        }
+      : null;
+  }
+
+  public setOverheadLayer(layer: HTMLElement | null): void {
+    this.overheadLayer = layer;
+  }
+
+  public setOverheadLayerVisible(visible: boolean): void {
+    if (!this.overheadLayer) return;
+    this.overheadLayer.classList.toggle('hidden', !visible);
+    if (!visible) this.clearAllOverheadHuds();
+  }
+
+  public beginOverheadHudPass(): void {
+    this.overheadActiveIds.clear();
+  }
+
+  public endOverheadHudPass(): void {
+    for (const id of [...this.overheadDomMap.keys()]) {
+      if (!this.overheadActiveIds.has(id)) this.disposeOverheadHud(id);
+    }
+  }
+
+  public clearAllOverheadHuds(): void {
+    for (const id of [...this.overheadDomMap.keys()]) {
+      this.disposeOverheadHud(id);
+    }
+  }
+
+  private createOverheadHudEl(): HTMLElement {
+    const el = document.createElement('div');
+    el.className = 'unit-overhead-hud';
+    el.innerHTML = `
+      <div class="uoh-items"></div>
+      <div class="uoh-hp-track"><div class="uoh-hp-fill"></div></div>
+      <div class="uoh-mana-track"><div class="uoh-mana-fill"></div></div>
+    `;
+    return el;
+  }
+
+  private syncOverheadHud(
+    instanceId: string,
+    worldX: number,
+    worldY: number,
+    worldZ: number,
+    opts: {
+      hpRatio: number;
+      manaRatio: number;
+      hpColor: number;
+      items: ItemId[];
+      starLevel: number;
+    }
+  ): void {
+    if (!this.overheadLayer) return;
+    this.overheadActiveIds.add(instanceId);
+
+    let el = this.overheadDomMap.get(instanceId);
+    if (!el) {
+      el = this.createOverheadHudEl();
+      this.overheadDomMap.set(instanceId, el);
+      this.overheadLayer.appendChild(el);
+    }
+
+    const lift = 2.55 + (opts.starLevel >= 3 ? 0.45 : opts.starLevel >= 2 ? 0.2 : 0);
+    this._projectVec.set(worldX, worldY + lift, worldZ).project(this.camera);
+    // 카메라 뒤로 가면 숨김
+    if (this._projectVec.z > 1) {
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = 'flex';
+    const sx = ((this._projectVec.x + 1) * 0.5) * 100;
+    const sy = ((1 - this._projectVec.y) * 0.5) * 100;
+    el.style.left = `${sx}%`;
+    el.style.top = `${sy}%`;
+
+    const hpRatio = Math.max(0, Math.min(1, opts.hpRatio));
+    const manaRatio = Math.max(0, Math.min(1, opts.manaRatio));
+    const hpFill = el.querySelector('.uoh-hp-fill') as HTMLElement | null;
+    const manaFill = el.querySelector('.uoh-mana-fill') as HTMLElement | null;
+    if (hpFill) {
+      hpFill.style.transform = `scaleX(${Math.max(0.001, hpRatio)})`;
+      hpFill.classList.toggle('is-enemy', opts.hpColor === 0xef4444);
+    }
+    if (manaFill) {
+      manaFill.style.transform = `scaleX(${Math.max(0.001, manaRatio)})`;
+    }
+
+    const itemsRow = el.querySelector('.uoh-items') as HTMLElement | null;
+    if (itemsRow) {
+      const key = opts.items.slice(0, 3).join('|');
+      if (itemsRow.dataset.itemsKey !== key) {
+        itemsRow.dataset.itemsKey = key;
+        itemsRow.innerHTML = '';
+        for (const itemId of opts.items.slice(0, 3)) {
+          const def = ITEM_DEFINITIONS[itemId];
+          if (!def) continue;
+          const chip = document.createElement('div');
+          chip.className = 'uoh-item';
+          chip.dataset.itemId = itemId;
+          chip.title = `${def.name} — ${def.description}`;
+          chip.setAttribute('role', 'button');
+          chip.setAttribute('aria-label', def.name);
+          chip.textContent = def.icon;
+          itemsRow.appendChild(chip);
+        }
+      }
+    }
+  }
+
+  private disposeOverheadHud(instanceId: string): void {
+    const el = this.overheadDomMap.get(instanceId);
+    if (!el) return;
+    el.remove();
+    this.overheadDomMap.delete(instanceId);
+  }
+
   /**
    * 3D 캐릭터 메시 빌더 (GLB 에셋 복제 또는 정교한 로우폴리 피규어)
    */
@@ -1769,8 +2891,16 @@ export class ThreeJsGameRenderer {
           mesh.receiveShadow = true;
           if (mesh.material) {
             const mat = (mesh.material as THREE.Material).clone() as THREE.MeshStandardMaterial;
+            // 신규 Quaternius 텍스처 메시는 실루엣 유지 위해 틴트 약하게
+            const tintStrength =
+              typeof cfg.modelKey === 'string' &&
+              !['Knight', 'Mage', 'Rogue', 'Rogue_Hooded', 'Barbarian', 'Skeleton_Warrior', 'Skeleton_Mage', 'Skeleton_Rogue', 'Wolf', 'Dragon', 'Imp'].includes(
+                cfg.modelKey
+              )
+                ? 0.12
+                : 0.3;
             if (mat.color && cfg.primaryColor) {
-              mat.color.lerp(new THREE.Color(cfg.primaryColor), 0.3);
+              mat.color.lerp(new THREE.Color(cfg.primaryColor), tintStrength);
             } else if (mat.color && cost >= 3) {
               mat.color.lerp(new THREE.Color(palette.primary), 0.25);
             }
@@ -1852,53 +2982,39 @@ export class ThreeJsGameRenderer {
       group.add(fallbackRoot);
     }
 
-    // -------------------------------------------------------------
-    // 머리 위 실시간 3D 체력바 / 마나바 / 성급 빌보드 게이지
-    // -------------------------------------------------------------
-    const overheadGroup = new THREE.Group();
-    overheadGroup.name = 'OVERHEAD_BAR';
-    overheadGroup.position.set(0, 2.45, 0);
+    // 머리 위 체력/아이템 HUD는 화면고정 DOM (#unit-overhead-layer)
 
-    const hpBgGeo = new THREE.PlaneGeometry(1.4, 0.18);
-    const hpBgMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
-    const hpBg = new THREE.Mesh(hpBgGeo, hpBgMat);
-    overheadGroup.add(hpBg);
+    // TFT식 메인 시너지(Origin) 발밑 컬러 패드 — Class(선봉 등)는 제외
+    const originHex = getOriginThemeColor(UNIT_TEMPLATES[unitId]?.traits || []);
+    if (originHex) {
+      const originNum = originColorToHexNumber(originHex);
+      const padGeo = new THREE.CircleGeometry(0.95, 20);
+      const padMat = new THREE.MeshBasicMaterial({
+        color: originNum,
+        transparent: true,
+        opacity: 0.42,
+        depthWrite: false,
+      });
+      const pad = new THREE.Mesh(padGeo, padMat);
+      pad.rotation.x = -Math.PI / 2;
+      pad.position.y = 0.02;
+      pad.name = 'ORIGIN_PAD';
+      group.add(pad);
 
-    const hpFillGeo = new THREE.PlaneGeometry(1.36, 0.14);
-    const hpFillMat = new THREE.MeshBasicMaterial({ color: 0x22c55e });
-    const hpFill = new THREE.Mesh(hpFillGeo, hpFillMat);
-    hpFill.name = 'HP_FILL';
-    hpFill.position.set(0, 0, 0.01);
-    overheadGroup.add(hpFill);
-
-    const manaBgGeo = new THREE.PlaneGeometry(1.4, 0.08);
-    const manaBgMat = new THREE.MeshBasicMaterial({ color: 0x020617 });
-    const manaBg = new THREE.Mesh(manaBgGeo, manaBgMat);
-    manaBg.position.set(0, -0.12, 0);
-    overheadGroup.add(manaBg);
-
-    const manaFillGeo = new THREE.PlaneGeometry(1.36, 0.06);
-    const manaFillMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-    const manaFill = new THREE.Mesh(manaFillGeo, manaFillMat);
-    manaFill.name = 'MANA_FILL';
-    manaFill.position.set(0, -0.12, 0.01);
-    overheadGroup.add(manaFill);
-
-    // 성급 별 표시 (1성: 1개, 2성: 2개, 3성: 3개 황금 큐브)
-    const starCount = starLevel;
-    const starGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12);
-    const starMat = new THREE.MeshStandardMaterial({
-      color: starLevel === 3 ? 0xfacc15 : starLevel === 2 ? 0xfef08a : 0x94a3b8,
-      emissive: 0xfacc15,
-      emissiveIntensity: starLevel === 3 ? 0.9 : 0.4,
-    });
-    for (let s = 0; s < starCount; s++) {
-      const star = new THREE.Mesh(starGeo, starMat);
-      const starX = (s - (starCount - 1) * 0.5) * 0.22;
-      star.position.set(starX, 0.16, 0.02);
-      overheadGroup.add(star);
+      const rimGeo = new THREE.RingGeometry(0.82, 1.05, 20);
+      const rimMat = new THREE.MeshBasicMaterial({
+        color: originNum,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.7,
+        depthWrite: false,
+      });
+      const rim = new THREE.Mesh(rimGeo, rimMat);
+      rim.rotation.x = Math.PI / 2;
+      rim.position.y = 0.03;
+      rim.name = 'ORIGIN_RIM';
+      group.add(rim);
     }
-    group.add(overheadGroup);
 
     // 3성 전용 바닥 황금 룬 마법진
     if (starLevel === 3) {
@@ -1998,11 +3114,18 @@ export class ThreeJsGameRenderer {
           this.playUnitAnimation(ev.sourceId, 'walk');
 
           if (ev.type === 'LEAP') {
+            juice.isMoving = false;
             juice.leapProgress = 0.01;
             juice.leapStartPos.set(pFrom.x, 0.2, pFrom.z);
             juice.leapTargetPos.set(pTo.x, 0.2, pTo.z);
             this.spawnSparks(pFrom.x, 0.5, pFrom.z, 0x9333ea, 8);
             this.spawnSparks(pTo.x, 0.5, pTo.z, 0xc084fc, 12);
+          } else {
+            juice.isMoving = true;
+            juice.moveFrom.set(pFrom.x, 0.2, pFrom.z);
+            juice.moveTo.set(pTo.x, 0.2, pTo.z);
+            juice.moveElapsedMs = 0;
+            juice.moveDurationMs = Math.max(420, ev.durationMs ?? 700);
           }
         }
       } else if (ev.type === 'BASIC_ATTACK' || ev.type === 'SKILL_CAST') {
@@ -2228,6 +3351,15 @@ export class ThreeJsGameRenderer {
         leapProgress: 0,
         leapStartPos: new THREE.Vector3(),
         leapTargetPos: new THREE.Vector3(),
+        moveFrom: new THREE.Vector3(),
+        moveTo: new THREE.Vector3(),
+        moveElapsedMs: 0,
+        moveDurationMs: 700,
+        isMoving: false,
+        smoothTargetX: 0,
+        smoothTargetZ: 0,
+        smoothReady: false,
+        walkHoldMs: 0,
       };
       this.unitJuiceMap.set(instanceId, juice);
     }
@@ -2267,16 +3399,34 @@ export class ThreeJsGameRenderer {
       shakeOffsetY = (Math.random() - 0.5) * this.shakeIntensity * decay;
     }
     this.camera.position.x = shakeOffsetX;
-    this.camera.position.y = 17.5 + shakeOffsetY;
-    this.camera.position.z = 16.2;
-    this.camera.lookAt(0, 0, 1.2);
+    this.camera.position.y = 15.2 + shakeOffsetY;
+    this.camera.position.z = 14.0;
+    this.camera.lookAt(0, 0, 1.0);
 
     // 2. 판타지 횃불 깜빡임 (Flickering Torches)
     this.torchLights.forEach((t) => {
       const flicker = Math.sin(this.animClockMs * 0.008 + t.phase) * 0.4 +
                       Math.cos(this.animClockMs * 0.017 + t.phase) * 0.2;
-      t.light.intensity = Math.max(1.2, t.baseIntensity + flicker);
+      t.light.intensity = Math.max(0.8, t.baseIntensity + flicker);
     });
+
+    // 2b. 마나 위습 부유 + 깃발 펄럭임
+    for (const w of this.ambientWisps) {
+      w.mesh.position.y =
+        w.baseY + Math.sin(this.animClockMs * w.speed + w.phase) * 0.35;
+      w.mesh.rotation.y = this.animClockMs * 0.001 + w.phase;
+    }
+    for (let i = 0; i < this.bannerMeshes.length; i++) {
+      const b = this.bannerMeshes[i];
+      b.rotation.z = Math.sin(this.animClockMs * 0.0035 + i * 1.2) * 0.08;
+    }
+
+    // 2c. 지휘관 보행 + 피니시 레이저
+    this.updateCommanderAvatar(dtMs);
+    this.updateFinisherLaser(dtMs);
+    this.setAwayCommanderVisible(
+      !state.isCreepMatch && (state.inCombat || this.activeFinisherFX !== null)
+    );
 
     // 3. 호버링/드래그 타일 물리적 엘리베이션 리프트 (Elevation Lift) & 황금 룬 반응
     for (const [key, mesh] of this.hexTileMeshes) {
@@ -2395,6 +3545,7 @@ export class ThreeJsGameRenderer {
    */
   private syncUnits3D(dtMs: number, state: RenderState3D): void {
     const activeIds = new Set<string>();
+    this.beginOverheadHudPass();
 
     if (state.inCombat) {
       for (const cu of state.combatUnits) {
@@ -2420,34 +3571,84 @@ export class ThreeJsGameRenderer {
           lungeOffsetZ = juice.lungeDirZ * ratio;
         }
 
+        // 자유이동: 엔진 posX/posZ를 월드로 변환해 추적 (칸 점프 제거)
+        const planeTarget =
+          cu.posX !== undefined && cu.posZ !== undefined
+            ? this.planeToWorldPos(cu.posX, cu.posZ)
+            : targetPos;
+
         if (juice.leapProgress > 0 && juice.leapProgress < 1.0) {
-          juice.leapProgress = Math.min(1.0, juice.leapProgress + dtMs * 0.0035);
+          juice.leapProgress = Math.min(1.0, juice.leapProgress + dtMs * 0.0026);
           const lp = juice.leapProgress;
           const lx = juice.leapStartPos.x + (juice.leapTargetPos.x - juice.leapStartPos.x) * lp;
           const lz = juice.leapStartPos.z + (juice.leapTargetPos.z - juice.leapStartPos.z) * lp;
           const ly = juice.leapStartPos.y + Math.sin(lp * Math.PI) * 2.8;
           group.position.set(lx, ly, lz);
+          juice.walkHoldMs = 320;
           this.playUnitAnimation(cu.instanceId, 'walk');
         } else {
           const prevX = group.position.x;
           const prevZ = group.position.z;
-          group.position.x += (targetPos.x + lungeOffsetX - group.position.x) * 0.3;
-          group.position.z += (targetPos.z + lungeOffsetZ - group.position.z) * 0.3;
-          group.position.y = 0.2 + Math.sin(this.animClockMs * 0.005 + cu.row) * 0.05;
+          const rawX = planeTarget.x + lungeOffsetX;
+          const rawZ = planeTarget.z + lungeOffsetZ;
 
-          // 기절(Stun) 상태 확인
+          // 1) 엔진 목표 자체를 부드럽게 흡수 (충돌 틱 진동 억제)
+          if (!juice.smoothReady) {
+            juice.smoothTargetX = rawX;
+            juice.smoothTargetZ = rawZ;
+            juice.smoothReady = true;
+          } else {
+            const targetFollow = 1 - Math.exp(-dtMs / 160);
+            juice.smoothTargetX += (rawX - juice.smoothTargetX) * targetFollow;
+            juice.smoothTargetZ += (rawZ - juice.smoothTargetZ) * targetFollow;
+          }
+
+          const wantX = juice.smoothTargetX;
+          const wantZ = juice.smoothTargetZ;
+          const err = Math.hypot(wantX - group.position.x, wantZ - group.position.z);
+
+          // 2) 큰 데드존: 미세 오차는 메시를 아예 안 움직임
+          if (err < 0.07) {
+            // 거의 도착 — 스냅하지 않고 아주 천천히만 보정
+            if (err > 0.02) {
+              const settle = 1 - Math.exp(-dtMs / 220);
+              group.position.x += (wantX - group.position.x) * settle;
+              group.position.z += (wantZ - group.position.z) * settle;
+            }
+          } else {
+            // 본이동: 더 긴 추종 상수로 미끄러지듯 이동
+            const follow = 1 - Math.exp(-dtMs / 170);
+            group.position.x += (wantX - group.position.x) * follow;
+            group.position.z += (wantZ - group.position.z) * follow;
+          }
+          group.position.y = 0.2;
+
           const isStunned = (cu.stunTimerMs ?? 0) > 0;
           const distMoved = Math.hypot(group.position.x - prevX, group.position.z - prevZ);
-          const distToTarget = Math.hypot(targetPos.x - group.position.x, targetPos.z - group.position.z);
+          const moveSpeed = distMoved / Math.max(0.001, dtMs * 0.001);
 
+          // 3) walk/idle 히스테리시스 — 짧은 파닥 전환 금지
           if (isStunned) {
+            juice.walkHoldMs = 0;
             this.playUnitAnimation(cu.instanceId, 'stun');
-          } else if (distToTarget > 0.18 && distMoved > 0.02) {
+          } else if (err > 0.28 || moveSpeed > 0.55) {
+            juice.walkHoldMs = 340;
+            juice.isMoving = true;
             this.playUnitAnimation(cu.instanceId, 'walk');
+            if (distMoved > 0.02) {
+              juice.facingY = Math.atan2(
+                group.position.x - prevX,
+                group.position.z - prevZ
+              );
+            }
           } else {
-            const ctrl = this.unitAnimControllers.get(cu.instanceId);
-            if (ctrl && (ctrl.currentActionName === 'walk' || ctrl.currentActionName === 'stun')) {
-              this.playUnitAnimation(cu.instanceId, 'idle');
+            juice.walkHoldMs = Math.max(0, juice.walkHoldMs - dtMs);
+            juice.isMoving = juice.walkHoldMs > 0;
+            if (juice.walkHoldMs <= 0) {
+              const ctrl = this.unitAnimControllers.get(cu.instanceId);
+              if (ctrl && (ctrl.currentActionName === 'walk' || ctrl.currentActionName === 'stun')) {
+                this.playUnitAnimation(cu.instanceId, 'idle');
+              }
             }
           }
         }
@@ -2489,10 +3690,14 @@ export class ThreeJsGameRenderer {
             targetRotY = Math.atan2(dx, dz);
           }
         }
+        // 이동 중엔 진행 방향, 정지 시에만 적 방향 — 회전도 느리게
+        if (juice.isMoving || juice.walkHoldMs > 0) {
+          targetRotY = juice.facingY;
+        }
         let rotDiff = targetRotY - group.rotation.y;
         while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
         while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
-        group.rotation.y += rotDiff * 0.2;
+        group.rotation.y += rotDiff * 0.08;
         group.rotation.x = 0;
 
         const star3Ring = group.getObjectByName('STAR3_RING');
@@ -2500,24 +3705,19 @@ export class ThreeJsGameRenderer {
           star3Ring.rotation.z += 0.03;
         }
 
-        const overhead = group.getObjectByName('OVERHEAD_BAR');
-        if (overhead) {
-          overhead.quaternion.copy(this.camera.quaternion);
-
-          const hpRatio = Math.max(0, Math.min(1, cu.currentHp / Math.max(1, cu.maxHp)));
-          const hpFill = overhead.getObjectByName('HP_FILL') as THREE.Mesh;
-          if (hpFill) {
-            hpFill.scale.x = hpRatio;
-            hpFill.position.x = -(1.36 * (1 - hpRatio) * 0.5);
+        this.syncOverheadHud(
+          cu.instanceId,
+          group.position.x,
+          group.position.y,
+          group.position.z,
+          {
+            hpRatio: cu.currentHp / Math.max(1, cu.maxHp),
+            manaRatio: cu.currentMana / Math.max(1, cu.maxMana),
+            hpColor: cu.team === 'HOME' ? 0x22c55e : 0xef4444,
+            items: cu.items ?? [],
+            starLevel: cu.starLevel,
           }
-
-          const manaRatio = Math.max(0, Math.min(1, cu.currentMana / Math.max(1, cu.maxMana)));
-          const manaFill = overhead.getObjectByName('MANA_FILL') as THREE.Mesh;
-          if (manaFill) {
-            manaFill.scale.x = manaRatio;
-            manaFill.position.x = -(1.36 * (1 - manaRatio) * 0.5);
-          }
-        }
+        );
       }
     } else {
       // 정비 페이즈: 보드 위 기물
@@ -2561,10 +3761,19 @@ export class ThreeJsGameRenderer {
           const star3Ring = group.getObjectByName('STAR3_RING');
           if (star3Ring) star3Ring.rotation.z += 0.03;
 
-          const overhead = group.getObjectByName('OVERHEAD_BAR');
-          if (overhead) {
-            overhead.quaternion.copy(this.camera.quaternion);
-          }
+          this.syncOverheadHud(
+            u.instanceId,
+            group.position.x,
+            group.position.y,
+            group.position.z,
+            {
+              hpRatio: 1,
+              manaRatio: 0,
+              hpColor: 0x22c55e,
+              items: u.items ?? [],
+              starLevel: u.starLevel,
+            }
+          );
         }
       }
 
@@ -2607,10 +3816,19 @@ export class ThreeJsGameRenderer {
         const star3Ring = group.getObjectByName('STAR3_RING');
         if (star3Ring) star3Ring.rotation.z += 0.03;
 
-        const overhead = group.getObjectByName('OVERHEAD_BAR');
-        if (overhead) {
-          overhead.quaternion.copy(this.camera.quaternion);
-        }
+        this.syncOverheadHud(
+          u.instanceId,
+          group.position.x,
+          group.position.y,
+          group.position.z,
+          {
+            hpRatio: 1,
+            manaRatio: 0,
+            hpColor: 0x22c55e,
+            items: u.items ?? [],
+            starLevel: u.starLevel,
+          }
+        );
       }
     }
 
@@ -2627,6 +3845,7 @@ export class ThreeJsGameRenderer {
         }
       }
     }
+    this.endOverheadHudPass();
   }
 
   // -------------------------------------------------------------
@@ -2791,38 +4010,36 @@ export class ThreeJsGameRenderer {
     pCtx.imageSmoothingEnabled = true;
 
     const spec = UNIT_PIXEL_SPECS[unitId] ?? UNIT_PIXEL_SPECS.u1_garen;
+    const originHex =
+      getOriginThemeColor(UNIT_TEMPLATES[unitId]?.traits || []) || '#64748b';
 
-    // 1) 3D 전용 프리미엄 다크 메탈릭 그라데이션 배경
-    const costThemes: Record<number, { bgTop: string; bgBottom: string; ringColor: string }> = {
-      1: { bgTop: '#1e293b', bgBottom: '#090d16', ringColor: '#94a3b8' },
-      2: { bgTop: '#14532d', bgBottom: '#052e16', ringColor: '#22c55e' },
-      3: { bgTop: '#0369a1', bgBottom: '#082f49', ringColor: '#38bdf8' },
-      4: { bgTop: '#581c87', bgBottom: '#2e1065', ringColor: '#c084fc' },
-      5: { bgTop: '#78350f', bgBottom: '#451a03', ringColor: '#facc15' },
-    };
-    const theme = costThemes[cost] || costThemes[1];
-
+    // 1) TFT식 메인 시너지(Origin) 테마 배경 (코스트 틴트 대신)
     const bgGrad = pCtx.createRadialGradient(
       logicalW * 0.5,
       logicalH * 0.55,
-      8,
+      6,
       logicalW * 0.5,
       logicalH * 0.52,
       logicalW * 0.72
     );
-    bgGrad.addColorStop(0, theme.bgTop);
-    bgGrad.addColorStop(0.65, theme.bgBottom);
+    bgGrad.addColorStop(0, originColorToRgba(originHex, 0.88));
+    bgGrad.addColorStop(0.42, originColorToRgba(originHex, 0.4));
+    bgGrad.addColorStop(0.75, '#0c1220');
     bgGrad.addColorStop(1, '#05070c');
     pCtx.fillStyle = bgGrad;
     pCtx.fillRect(0, 0, logicalW, logicalH);
 
-    // 2) 바닥 3D 룬 서클 패드 (Subtle 3D Halo)
-    pCtx.strokeStyle = theme.ringColor;
-    pCtx.lineWidth = 1.2;
-    pCtx.globalAlpha = 0.45;
+    // 2) Origin 바닥 할로 링
+    pCtx.strokeStyle = originHex;
+    pCtx.lineWidth = 1.4;
+    pCtx.globalAlpha = 0.55;
     pCtx.beginPath();
     pCtx.ellipse(logicalW * 0.5, logicalH * 0.88, 28, 7, 0, 0, Math.PI * 2);
     pCtx.stroke();
+    pCtx.fillStyle = originColorToRgba(originHex, 0.28);
+    pCtx.beginPath();
+    pCtx.ellipse(logicalW * 0.5, logicalH * 0.88, 26, 6, 0, 0, Math.PI * 2);
+    pCtx.fill();
     pCtx.globalAlpha = 1.0;
 
     // 3) 2성/3성 합성 가능 시 골드 후광 링

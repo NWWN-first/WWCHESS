@@ -1,6 +1,15 @@
 // src/SkillRegistry.ts
 
-import { CostTier, ItemId, SkillType, StarLevel, TraitId, UNIT_TEMPLATES } from './GameData';
+import {
+  COST_COMBAT_BALANCE,
+  CostTier,
+  ItemId,
+  SkillType,
+  STAR_STAT_MULTIPLIER,
+  StarLevel,
+  TraitId,
+  UNIT_TEMPLATES,
+} from './GameData';
 import { HexGridMath } from './HexGridMath';
 
 export type CombatTeam = 'HOME' | 'AWAY';
@@ -57,6 +66,9 @@ export interface CombatUnit {
 
   row: number;
   col: number;
+  /** 전투 자유이동 평면 좌표 (헥스는 배치/스킬 점유용) */
+  posX: number;
+  posZ: number;
 
   maxHp: number;
   currentHp: number;
@@ -82,6 +94,10 @@ export interface CombatUnit {
   enableSkillCrit: boolean;
   trueDamageBonusRatio: number;
   damageReductionRatio: number;
+  /** 전술가 등 상시 피해 감소 (개전 감피해와 별개) */
+  durableDamageReduction: number;
+  /** 전술가 후열 등 출구 딜증 */
+  outgoingDamageAmp: number;
   ccDurationReduction: number;
 
   stunTimerMs: number;
@@ -161,18 +177,88 @@ function chebyshevDist(
   return HexGridMath.hexDistance(r1, c1, r2, c2);
 }
 
+/** 스킬 핸들러별 공격력 계수를 툴팁/미리보기용으로 공개 */
+export const SKILL_ATK_RATIO_BY_UNIT: Record<string, number> = {
+  u1_garen: 0.8,
+  u1_pip: 1.1,
+  u1_aria: 1.35,
+  u1_skel: 0.9,
+  u2_kyle: 0.85,
+  u2_zed: 1.1,
+  u3_grom: 1.0,
+  u4_arthur: 1.25,
+  u4_thanatos: 1.4,
+  u5_lilith: 1.5,
+  u5_luciel: 1.5,
+};
+
+function getSkillScaleMult(unitId: string, starLevel: StarLevel): number {
+  const template = UNIT_TEMPLATES[unitId];
+  if (!template) return 1;
+  const starMult = STAR_STAT_MULTIPLIER[template.cost][starLevel]?.skillMult ?? 1;
+  const costBal = COST_COMBAT_BALANCE[template.cost]?.skill ?? 1;
+  return starMult * costBal;
+}
+
 function getSkillPrimaryValue(caster: CombatUnit): number {
   const template = UNIT_TEMPLATES[caster.unitId];
   if (!template) return 200;
   const idx = Math.max(0, Math.min(2, caster.starLevel - 1));
-  return template.skill.baseValueByStar[idx] * caster.spellPower;
+  return (
+    template.skill.baseValueByStar[idx] *
+    caster.spellPower *
+    getSkillScaleMult(caster.unitId, caster.starLevel)
+  );
 }
 
 function getSkillSecondaryValue(caster: CombatUnit): number {
   const template = UNIT_TEMPLATES[caster.unitId];
   if (!template || !template.skill.secondaryValueByStar) return 0;
   const idx = Math.max(0, Math.min(2, caster.starLevel - 1));
-  return template.skill.secondaryValueByStar[idx];
+  return (
+    template.skill.secondaryValueByStar[idx] *
+    getSkillScaleMult(caster.unitId, caster.starLevel)
+  );
+}
+
+export interface SkillDamagePreview {
+  primaryDamage: number;
+  secondaryValue: number | null;
+  atkRatio: number;
+  spellPowerPct: number;
+  skillName: string;
+  description: string;
+}
+
+/**
+ * 정비/전투 툴팁용 스킬 피해 미리보기 (아이템·성급·주문력 반영).
+ */
+export function estimateSkillDamagePreview(opts: {
+  unitId: string;
+  starLevel: StarLevel;
+  atk: number;
+  spellPower: number;
+}): SkillDamagePreview | null {
+  const template = UNIT_TEMPLATES[opts.unitId];
+  if (!template) return null;
+  const idx = Math.max(0, Math.min(2, opts.starLevel - 1)) as 0 | 1 | 2;
+  const scale = getSkillScaleMult(opts.unitId, opts.starLevel);
+  const primaryBase = template.skill.baseValueByStar[idx] * opts.spellPower * scale;
+  const atkRatio = SKILL_ATK_RATIO_BY_UNIT[opts.unitId] ?? 0;
+  const primaryDamage = Math.round(primaryBase + opts.atk * atkRatio);
+  const secondaryRaw = template.skill.secondaryValueByStar?.[idx];
+  const secondaryValue =
+    secondaryRaw === undefined
+      ? null
+      : Math.round(secondaryRaw * opts.spellPower * scale);
+  return {
+    primaryDamage,
+    secondaryValue,
+    atkRatio,
+    spellPowerPct: Math.round(opts.spellPower * 100),
+    skillName: template.skill.name,
+    description: template.skill.description,
+  };
 }
 
 // ============================================================================

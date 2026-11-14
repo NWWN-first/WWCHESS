@@ -7,7 +7,7 @@ import { DopamineEngine, LootOrb } from './DopamineEngine';
 import {
   AugmentDefinition,
   AugmentTier,
-  BASE_ITEM_IDS,
+  STANDARD_BASE_ITEM_IDS,
   CompletedItemId,
   ITEM_DEFINITIONS,
   ItemId,
@@ -86,6 +86,13 @@ export class GameLoopManager {
   public playbackSpeed: 1 | 2 = 1;
 
   /**
+   * 정비→전투 진입 방식
+   * - TIMER: 스테이지별 카운트다운 종료 시 자동 전투 시작 (TFT 순정)
+   * - MANUAL: 시간 자동 종료 없음 — 유저가 [라운드 시작]을 눌러야 전투 진입
+   */
+  public prepStartMode: 'TIMER' | 'MANUAL' = 'TIMER';
+
+  /**
    * 실제 TFT 순정 정비 시간표 카운트다운 상태 (초반 1~2스테이지 30초, 3스테이지 35초, 4스테이지 이후 40초)
    */
   public prepTotalSec: number = 30;
@@ -116,8 +123,12 @@ export class GameLoopManager {
    */
   public gameAugmentTiers: [AugmentTier, AugmentTier, AugmentTier] = ['SILVER', 'GOLD', 'PRISMATIC'];
   public currentAugmentTier: AugmentTier | null = null;
+  /** 현재 증강 페이즈의 라운드 라벨 (2-1 / 3-2 / 4-2) — 단계별 풀 게이트 */
+  public currentAugmentStage: '2-1' | '3-2' | '4-2' | null = null;
   public playerAugmentChoices: AugmentDefinition[] = [];
   public augmentCardRerolled: [boolean, boolean, boolean] = [false, false, false];
+  /** 이번 증강 페이즈에서 한 번이라도 제시된 ID (리롤로 버린 카드 포함 — 재출현 금지) */
+  public offeredAugmentIdsThisPhase: string[] = [];
 
   /**
    * 모바일형 회전초밥(운명의 모루) 선택지 4종
@@ -266,6 +277,40 @@ export class GameLoopManager {
     return `${this.stage}-${this.roundInStage}`;
   }
 
+  /** 현재 스테이지에 속한 라운드 수 (1스테이지=2, 이후=5) */
+  public getRoundsInCurrentStage(): number {
+    return this.stage === 1 ? 2 : 5;
+  }
+
+  /**
+   * HUD용 직관적 스테이지 표기
+   * - stageTitle: "스테이지 2"
+   * - roundProgress: "3/5"
+   * - matchTypeLabel: "대인전" | "크립" | "보스"
+   * - code: "2-3" (기존 코드 호환)
+   */
+  public getStageHudInfo(): {
+    code: string;
+    stageTitle: string;
+    roundProgress: string;
+    matchTypeLabel: string;
+    roundInStage: number;
+    roundsInStage: number;
+  } {
+    const roundsInStage = this.getRoundsInCurrentStage();
+    const type = this.getCurrentRoundType();
+    const matchTypeLabel =
+      type === 'CREEP' ? '크립전' : type === 'BOSS_CREEP' ? '보스전' : '대인전';
+    return {
+      code: this.getRoundLabel(),
+      stageTitle: `스테이지 ${this.stage}`,
+      roundProgress: `${this.roundInStage}/${roundsInStage}`,
+      matchTypeLabel,
+      roundInStage: this.roundInStage,
+      roundsInStage,
+    };
+  }
+
   /**
    * 현재 라운드의 유형(초반 크립 / 보스 크립 / 대인전) 판별
    */
@@ -377,27 +422,41 @@ export class GameLoopManager {
   private triggerAugmentPhase(tier: AugmentTier): void {
     this.phase = 'AUGMENT_PHASE';
     this.currentAugmentTier = tier;
+    const label = this.getRoundLabel();
+    this.currentAugmentStage =
+      label === '2-1' || label === '3-2' || label === '4-2' ? label : null;
     this.augmentCardRerolled = [false, false, false];
+    this.offeredAugmentIdsThisPhase = [];
     this.playerAugmentChoices = DopamineEngine.rollAugmentChoices(
       this.player,
-      tier
+      tier,
+      [],
+      this.currentAugmentStage ?? undefined,
+      3
     );
+    this.offeredAugmentIdsThisPhase = this.playerAugmentChoices.map((c) => c.id);
 
-    // 생존한 AI 봇 7명도 자신의 페르소나와 덱에 맞는 증강체를 즉시 선택
     for (const p of this.participants) {
       if (p.isAI && !p.isEliminated) {
-        this.aiController.selectAugmentForBot(p, tier, this.sharedPool, this.participants);
+        this.aiController.selectAugmentForBot(
+          p,
+          tier,
+          this.sharedPool,
+          this.participants,
+          this.currentAugmentStage ?? undefined
+        );
       }
     }
 
     this.pushBannerNotification(
-      `✨ [${this.getRoundLabel()}] ${tier} 등급 증강체 선택 페이즈! 원하는 증강체 카드를 선택하세요.`
+      `✨ [${label}] ${tier} 등급 증강체 선택 페이즈! 원하는 증강체 카드를 선택하세요.`
     );
     this.notifyStateChange();
   }
 
   /**
    * 플레이어가 특정 증강체 카드(0, 1, 2)를 1회 리롤한다.
+   * 이미 제시됐던 카드(다른 칸·리롤로 버린 카드 포함)는 다시 나오지 않는다.
    */
   public rerollPlayerAugmentCard(cardIndex: 0 | 1 | 2): boolean {
     if (
@@ -408,15 +467,17 @@ export class GameLoopManager {
       return false;
     }
 
-    const currentIds = this.playerAugmentChoices.map((c) => c.id);
     const replacementList = DopamineEngine.rollAugmentChoices(
       this.player,
       this.currentAugmentTier,
-      currentIds
+      this.offeredAugmentIdsThisPhase,
+      this.currentAugmentStage ?? undefined,
+      1
     );
 
     if (replacementList.length > 0) {
       this.playerAugmentChoices[cardIndex] = replacementList[0];
+      this.offeredAugmentIdsThisPhase.push(replacementList[0].id);
       this.augmentCardRerolled[cardIndex] = true;
       this.notifyStateChange();
       return true;
@@ -438,6 +499,8 @@ export class GameLoopManager {
       `✨ 증강체 [${chosen.name}] 선택 완료! 정비 페이즈를 시작합니다.`
     );
     this.currentAugmentTier = null;
+    this.currentAugmentStage = null;
+    this.offeredAugmentIdsThisPhase = [];
     this.playerAugmentChoices = [];
     this.enterPreparationPhase();
     return true;
@@ -451,14 +514,14 @@ export class GameLoopManager {
     const isLateStage = this.stage >= 4;
 
     const completedItems = Object.values(ITEM_DEFINITIONS).filter(
-      (i) => i.isCompleted
+      (i) => i.isCompleted && !i.grantsTrait
     );
     const randomCompleted =
       completedItems[Math.floor(Math.random() * completedItems.length)];
     const randomBaseA =
-      BASE_ITEM_IDS[Math.floor(Math.random() * BASE_ITEM_IDS.length)];
+      STANDARD_BASE_ITEM_IDS[Math.floor(Math.random() * STANDARD_BASE_ITEM_IDS.length)];
     const randomBaseB =
-      BASE_ITEM_IDS.find((b) => b !== randomBaseA) ?? BASE_ITEM_IDS[0];
+      STANDARD_BASE_ITEM_IDS.find((b) => b !== randomBaseA) ?? STANDARD_BASE_ITEM_IDS[0];
 
     const targetCost = isLateStage ? 5 : this.stage === 3 ? 4 : 3;
     const unitPool = UNITS_BY_COST[targetCost];
@@ -509,7 +572,7 @@ export class GameLoopManager {
     for (const p of this.participants) {
       if (p.isAI && !p.isEliminated) {
         const botItem =
-          BASE_ITEM_IDS[Math.floor(Math.random() * BASE_ITEM_IDS.length)];
+          STANDARD_BASE_ITEM_IDS[Math.floor(Math.random() * STANDARD_BASE_ITEM_IDS.length)];
         p.addItemToBench(botItem);
         p.gold += 4;
       }
@@ -584,6 +647,28 @@ export class GameLoopManager {
       }
     }
 
+    // 1.5 Step 7b: 동적 전략/페르소나 전환 평가 (EXPERIMENT_DYNAMIC_STRATEGY=1, X-1/X-2만)
+    // prepareBotForRealTimePrep보다 먼저 실행해야 골드 하한·리롤 상한이 새 페르소나로 갱신된다.
+    {
+      const stage = this.stage;
+      const roundInStage = this.roundInStage;
+      const isStrategyEvalWindow =
+        stage >= 2 && (roundInStage === 1 || roundInStage === 2);
+      if (
+        typeof process !== 'undefined' &&
+        process.env?.EXPERIMENT_DYNAMIC_STRATEGY === '1' &&
+        isStrategyEvalWindow
+      ) {
+        const absoluteRoundIndex = (stage - 1) * 5 + roundInStage;
+        this.aiController.evaluateDynamicStrategies(
+          this.participants,
+          this.sharedPool,
+          roundLabel,
+          absoluteRoundIndex
+        );
+      }
+    }
+
     // 2. 생존한 AI 봇 7명의 실시간 동적 APM(평상시 1~5초 간격 vs 올인 Rolldown 시 0.6~1초 '다다다다' 리롤) 초기화
     for (const p of this.participants) {
       if (p.isAI && !p.isEliminated) {
@@ -627,9 +712,12 @@ export class GameLoopManager {
         return;
       }
 
+      const isManual = this.prepStartMode === 'MANUAL';
       const prevSec = this.prepRemainingSec;
-      this.prepRemainingMs = Math.max(0, this.prepRemainingMs - tickMs);
-      this.prepRemainingSec = Math.ceil(this.prepRemainingMs / 1000);
+      if (!isManual) {
+        this.prepRemainingMs = Math.max(0, this.prepRemainingMs - tickMs);
+        this.prepRemainingSec = Math.ceil(this.prepRemainingMs / 1000);
+      }
 
       // AI 봇 7명의 실시간 동적 APM 스텝 실행 (평상시 1~5초, 올인 타이밍 0.6~1.0초 초고속 리롤)
       let anyBotActed = false;
@@ -650,7 +738,8 @@ export class GameLoopManager {
         }
       }
 
-      if (this.prepRemainingMs <= 0) {
+      // 타이머 모드만 0초 자동 전투 진입. 수동 모드는 유저 [라운드 시작] 대기
+      if (!isManual && this.prepRemainingMs <= 0) {
         this.stopPrepTimer();
         this.startCombatPhase();
         return;
@@ -701,6 +790,54 @@ export class GameLoopManager {
   // ==========================================================================
 
   /**
+   * 대기석 왼쪽(index 0→) 기물을 보드 중앙부터 가까운 빈칸에 자동 배치한다.
+   * 라운드 시작 시 인구수(레벨/증강) 한도까지 채운다.
+   */
+  private autoFillBoardFromBenchLeftToCenter(p: Participant): void {
+    const maxSlots = p.getMaxTeamSlots();
+    const centerR = (Participant.BOARD_ROWS - 1) / 2;
+    const centerC = (Participant.BOARD_COLS - 1) / 2;
+
+    const emptySlots: { row: number; col: number; dist: number }[] = [];
+    for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+      for (let c = 0; c < Participant.BOARD_COLS; c++) {
+        if (p.board[r][c] === null) {
+          emptySlots.push({
+            row: r,
+            col: c,
+            dist: Math.hypot(r - centerR, c - centerC),
+          });
+        }
+      }
+    }
+    emptySlots.sort(
+      (a, b) => a.dist - b.dist || a.row - b.row || a.col - b.col
+    );
+
+    let slotIdx = 0;
+    while (p.getBoardUnitCount() < maxSlots && slotIdx < emptySlots.length) {
+      const benchIdx = p.bench.findIndex((u) => u !== null);
+      if (benchIdx === -1) break;
+
+      // 이미 채워진 칸은 건너뛰고 다음 중앙 우선 빈칸 사용
+      while (
+        slotIdx < emptySlots.length &&
+        p.board[emptySlots[slotIdx].row][emptySlots[slotIdx].col] !== null
+      ) {
+        slotIdx++;
+      }
+      if (slotIdx >= emptySlots.length) break;
+
+      const slot = emptySlots[slotIdx++];
+      const ok = p.moveUnit(
+        { area: 'BENCH', index: benchIdx },
+        { area: 'BOARD', row: slot.row, col: slot.col }
+      );
+      if (!ok) break;
+    }
+  }
+
+  /**
    * 정비 카운트다운 종료(0초) 또는 유저의 [즉시 전투] 단축 버튼 클릭 시 전투 페이즈로 진입한다.
    */
   public startCombatPhase(): void {
@@ -717,27 +854,28 @@ export class GameLoopManager {
           this.sharedPool,
           roundLabel
         );
+        // Stage4: 전투 직전 벤치 압박 마무리 (EconomyPlanner)
+        const brain = this.aiController.getBotBrain(p.id);
+        if (brain) {
+          this.aiController.finalizePrepEconomy(p, brain, this.sharedPool);
+        }
       }
     }
 
-    // 전투 돌입 시 플레이어 보드에 빈자리가 있고 대기석에 기물이 있으면 자동 충원 보조
-    while (this.player.getBoardUnitCount() < this.player.level) {
-      const benchIdx = this.player.bench.findIndex((u) => u !== null);
-      if (benchIdx === -1) break;
-      let placed = false;
-      for (let r = 0; r < Participant.BOARD_ROWS && !placed; r++) {
-        for (let c = 0; c < Participant.BOARD_COLS && !placed; c++) {
-          if (this.player.board[r][c] === null) {
-            this.player.moveUnit(
-              { area: 'BENCH', index: benchIdx },
-              { area: 'BOARD', row: r, col: c }
-            );
-            placed = true;
+    // [Step 5 B] EXPERIMENT_BENCH_CLEAR: 정비 단계 종료 직전(전투 진입 직전) 대기석 정리
+    if (typeof process !== 'undefined' && process.env?.EXPERIMENT_BENCH_CLEAR === '1') {
+      for (const p of this.participants) {
+        if (!p.isEliminated) {
+          const brain = this.aiController.getBotBrain(p.id);
+          if (brain) {
+            this.aiController.executeExperimentalBenchClear(p, brain, this.sharedPool);
           }
         }
       }
-      if (!placed) break;
     }
+
+    // 전투 돌입 직전: 빈 칸이 있으면 대기석 맨 왼쪽부터 → 필드 중앙 우선 자동 배치
+    this.autoFillBoardFromBenchLeftToCenter(this.player);
 
     this.phase = 'COMBAT_PHASE';
     this.viewedParticipantId = this.player.id;
@@ -1046,30 +1184,45 @@ export class GameLoopManager {
     // 3) 크립 라운드 종료 시: 8인 공정성 보장 법칙(Loot Equity Rule)에 따라 ?/! 미스터리 박스 및 AI 동기화 전리품 지급!
     if (roundType === 'CREEP' || roundType === 'BOSS_CREEP') {
       const aiBots = this.participants.filter((p) => p.isAI && !p.isEliminated);
+      const deathHexes: Array<{ row: number; col: number }> = [];
+      if (this.playerCombatEngine) {
+        for (const u of this.playerCombatEngine.units) {
+          if (u.team === 'AWAY' && u.currentHp <= 0) {
+            deathHexes.push({ row: u.row, col: u.col });
+          }
+        }
+      }
       const mysteryBoxes = CreepRoundManager.distributeEquityCreepLoot(
         roundLabel,
         roundType,
         this.player,
-        aiBots
+        aiBots,
+        deathHexes
       );
       if (mysteryBoxes.length > 0) {
         this.playerLootOrbs.push(...mysteryBoxes);
         this.pushBannerNotification(
-          `🎁 [${roundLabel} 크립 처치!] 전장에 ?/! 미스터리 보물상자 ${mysteryBoxes.length}개가 드랍되었습니다! 터치하여 오픈하세요!`
+          `🎁 [${roundLabel} 크립 처치!] 전장에 ?/! 미스터리 보물상자 ${mysteryBoxes.length}개가 드랍되었습니다! 지휘관을 걸어가 줍으세요!`
         );
       }
     }
 
     // 4) 체력 0 이하 탈락자 처리 및 공유 풀 100% 환원
-    for (const p of this.participants) {
-      if (!p.isEliminated && p.hp <= 0) {
-        p.eliminate(this.sharedPool);
-        if (!this.eliminationOrderIds.includes(p.id)) {
-          this.eliminationOrderIds.push(p.id);
-        }
-        const elimMsg = `🔥 [${p.name}] 탈락! 보유하던 모든 기물이 공유 풀로 반환되었습니다!`;
-        this.pushBannerNotification(elimMsg);
+    // Stage0: 동시 탈락 시 participants 배열 순서(플레이어 항상 앞) 편향 제거
+    // → 잔여 HP(더 많이 죽은 쪽 우선) → id 로 안정 정렬 후 탈락 순서 기록
+    const newlyEliminated = this.participants
+      .filter((p) => !p.isEliminated && p.hp <= 0)
+      .sort((a, b) => {
+        if (a.hp !== b.hp) return a.hp - b.hp; // 더 낮은(음수 큰) HP = 먼저 탈락 = 더 나쁜 순위
+        return a.id.localeCompare(b.id);
+      });
+    for (const p of newlyEliminated) {
+      p.eliminate(this.sharedPool);
+      if (!this.eliminationOrderIds.includes(p.id)) {
+        this.eliminationOrderIds.push(p.id);
       }
+      const elimMsg = `🔥 [${p.name}] 탈락! 보유하던 모든 기물이 공유 풀로 반환되었습니다!`;
+      this.pushBannerNotification(elimMsg);
     }
 
     // 5) 게임 종료 조건 확인 (플레이어 탈락 또는 생존자 1명 이하)
@@ -1114,15 +1267,36 @@ export class GameLoopManager {
       participant.loseStreak = 0;
       if (!isCreepMatch) {
         participant.gold += 1;
+        // 국왕시해자: 승리 시 1골드, 상대 체력이 더 높았다면 6골드
+        if (participant.augments.includes('AUG_KINGSLAYER')) {
+          participant.gold += 1;
+        }
       }
     } else if (!isDraw) {
       participant.loseStreak += 1;
       participant.winStreak = 0;
+      // 계산된 패배: 2골드 + 무료 새로고침 1
+      if (
+        !isCreepMatch &&
+        participant.augments.includes('AUG_CALCULATED_LOSS')
+      ) {
+        participant.gold += 2;
+        participant.freeRerolls += 1;
+      }
     }
 
-    // 체력 차감
-    if (damageTaken > 0) {
-      participant.hp = Math.max(0, participant.hp - damageTaken);
+    // 체력 차감 (저주받은 왕관: 패배 피해 2배)
+    let finalDamage = damageTaken;
+    if (
+      finalDamage > 0 &&
+      !didWin &&
+      !isDraw &&
+      participant.augments.includes('AUG_CURSED_CROWN')
+    ) {
+      finalDamage *= 2;
+    }
+    if (finalDamage > 0) {
+      participant.hp = Math.max(0, participant.hp - finalDamage);
     }
 
     // 황금 고블린(GOLDEN_GOBLIN) 시너지 패배 스택 축적 또는 승리 캐시아웃 발동!
@@ -1142,7 +1316,7 @@ export class GameLoopManager {
           if (!participant.isAI) {
             this.playerLootOrbs.push(...cashoutOrbs);
             this.pushBannerNotification(
-              `💥🪙 [황금 고블린 금고 대폭발!] ! 대박 미스터리 상자 ${cashoutOrbs.length}개가 보드에 쏟아졌습니다! 터치하여 오픈하세요!`
+              `💥🪙 [황금 고블린 금고 대폭발!] ! 대박 미스터리 상자 ${cashoutOrbs.length}개가 보드에 쏟아졌습니다! 지휘관을 걸어가 줍으세요!`
             );
           } else {
             // AI 봇은 캐시아웃 구슬을 즉시 오픈하여 보상 획득
@@ -1162,19 +1336,33 @@ export class GameLoopManager {
    * 라운드 기본 골드(5G) + 이자 골드(최대 5G / 사악한 금융 7G) + 연승/연패 골드 지급 및 +2 XP, 상점 자동 새로고침
    */
   private distributeRoundIncomeAndRefreshShops(): void {
+    // 스테이지 1~2는 TFT보다 타이트하게 (골드 과속 체감 완화)
     const baseGold =
-      this.stage === 1 ? (this.roundInStage === 1 ? 3 : 4) : 5;
+      this.stage === 1
+        ? this.roundInStage === 1
+          ? 2
+          : 3
+        : this.stage === 2
+          ? 3
+          : this.stage === 3
+            ? 4
+            : 5;
 
     for (const p of this.participants) {
       if (p.isEliminated) continue;
 
       const interestGold = p.calculateInterestGold();
       const maxStreak = Math.max(p.winStreak, p.loseStreak);
-      const streakGold =
-        maxStreak >= 5 ? 3 : maxStreak >= 4 ? 2 : maxStreak >= 2 ? 1 : 0;
+      // TFT에 가깝게: 2연은 0, 3연=1, 4연=2, 5연+=3 (기존 2연부터 +1이라 골드가 빨리 쌓임)
+      let streakGold =
+        maxStreak >= 5 ? 3 : maxStreak >= 4 ? 2 : maxStreak >= 3 ? 1 : 0;
+      // 전술적 후퇴: 연패 골드 1.5배
+      if (p.augments.includes('AUG_TACTICAL_RETREAT') && p.loseStreak >= 2) {
+        streakGold = Math.floor(streakGold * 1.5);
+      }
 
       p.gold += baseGold + interestGold + streakGold;
-      p.addXp(2);
+      p.addXp(2, this.sharedPool);
 
       if (!p.isShopLocked) {
         this.sharedPool.drawShopForParticipant(p);

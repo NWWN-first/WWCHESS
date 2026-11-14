@@ -81,6 +81,8 @@
       <canvas id="fx-canvas" class="game-viewport-canvas"></canvas>
       <!-- Pixi.js v8 WebGL 하드웨어 가속 발광 파티클 & 육각형 배치 충격파 캔버스 -->
       <canvas id="pixi-canvas" class="pixi-viewport-canvas"></canvas>
+      <!-- 화면고정 유닛 체력/아이템 HUD (3D 회전에 절대 영향받지 않음) -->
+      <div id="unit-overhead-layer" class="unit-overhead-layer" aria-hidden="true"></div>
 
       <!-- 정비 시간 5초 이하 긴박 붉은 맥동 비네팅 오버레이 -->
       <div id="urgent-vignette-overlay" class="urgent-vignette-overlay hidden"></div>
@@ -96,9 +98,16 @@
             <span id="rank-text" class="gem-text">실버 20LP</span>
           </div>
 
-          <div id="round-badge" class="gem-pill stage-emblem">
-            <span id="round-label" class="stage-num">1-1</span>
-            <span id="phase-label" class="phase-ribbon">정비</span>
+          <div id="round-badge" class="gem-pill stage-emblem" title="스테이지 진행">
+            <div class="stage-badge-col">
+              <span id="round-label" class="stage-num">스테이지 1</span>
+              <div id="round-dots" class="stage-round-dots" aria-hidden="true"></div>
+            </div>
+            <div class="stage-badge-meta">
+              <span id="round-progress" class="stage-progress">1/2</span>
+              <span id="phase-label" class="phase-ribbon">정비</span>
+              <span id="match-type-label" class="match-type-ribbon">크립전</span>
+            </div>
           </div>
 
           <div id="prep-timer-pill" class="gem-pill prep-timer-pill">
@@ -210,45 +219,14 @@
         🎲 우측 3칸: 판도라 변신
       </div>
 
-      <!-- 상점 접기/열기 플로팅 핸들 탭 (가로모드에서 전장 시야 최대 확보용) -->
-      <div id="shop-drawer-toggle-bar" class="shop-drawer-toggle-bar">
-        <div id="toggle-shop-btn" class="shop-toggle-pill" role="button" tabindex="0">
-          🛒 상점 접기 ▼
-        </div>
+      <!-- 상점 확률 스트립 (상점 열림 시 카드 바로 아래) -->
+      <div id="shop-drawer-toggle-bar" class="shop-drawer-toggle-bar hidden">
         <div id="shop-odds-bar" class="shop-odds-strip"></div>
+        <div id="lock-shop-btn" class="lock-gem-btn" role="button" tabindex="0" title="상점 잠금">🔓</div>
       </div>
 
-      <!-- 하단 슬림 접이식 상점 드로어 (Bottom Shop Dock) -->
-      <footer id="bottom-shop-bar" class="bottom-shop-dock">
-        <!-- 좌측 레벨/골드 & [레벨업], [리롤] 룬석 버튼 -->
-        <div class="dock-left-controls">
-          <div class="econ-status-strip">
-            <div class="level-gem-box">
-              <span id="player-level-text" class="lvl-title">Lv.1</span>
-              <span id="player-xp-text" class="xp-caption">0/2</span>
-            </div>
-            <div class="gold-gem-box">
-              <span id="player-gold-text" class="gold-title">🪙10G</span>
-              <span id="player-interest-text" class="interest-caption">+1G</span>
-            </div>
-            <div id="lock-shop-btn" class="lock-gem-btn" role="button" tabindex="0" title="상점 잠금 전환">
-              🔓
-            </div>
-          </div>
-
-          <div class="big-rune-buttons">
-            <div id="buy-xp-btn" class="rune-stone-btn sapphire-rune" role="button" tabindex="0">
-              <span class="btn-main-label">⬆️레벨업</span>
-              <span class="btn-sub-cost">4G</span>
-            </div>
-            <div id="reroll-btn" class="rune-stone-btn amber-rune" role="button" tabindex="0">
-              <span class="btn-main-label">🎲리롤</span>
-              <span class="btn-sub-cost">2G</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 중앙 5장 도트 일러스트 챔피언 카드 슬롯 (드래그 중 판매 드롭존으로 전환) -->
+      <!-- 상단 상점 카드만 (버튼은 전부 하단 고정) -->
+      <footer id="bottom-shop-bar" class="bottom-shop-dock hidden">
         <div id="shop-cards-wrapper" class="dock-center-cards">
           <div id="shop-cards-container" class="shop-cards-container"></div>
           <div id="sell-dropzone-overlay" class="sell-dropzone-overlay hidden">
@@ -257,23 +235,35 @@
             </div>
           </div>
         </div>
-
-        <!-- 우측 전투 시작 크리스탈 버튼 -->
-        <div class="dock-right-combat">
-          <div id="start-combat-btn" class="start-battle-crystal" role="button" tabindex="0">
-            <span class="sword-emblem">⚔️</span>
-            <span class="battle-label">전투시작</span>
-          </div>
-        </div>
       </footer>
 
-      <!-- 상점이 접혔거나 전투 중일 때 우하단에 뜨는 빠른 액션 플로팅 바 -->
-      <div id="Collapsed-quick-bar" class="collapsed-quick-bar hidden">
-        <div id="quick-open-shop-btn" class="quick-action-gem gold-gem" role="button" tabindex="0">
-          🛒 상점 열기 (<span id="quick-gold-text">10G</span>)
+      <!-- 좌하단: 레벨업 -->
+      <div id="tft-left-controls" class="tft-left-controls">
+        <div class="tft-level-chip">
+          <span id="player-level-text" class="tft-lvl">Lv.1</span>
+          <span id="player-xp-text" class="tft-xp">0/2</span>
         </div>
-        <div id="quick-start-combat-btn" class="quick-action-gem battle-gem" role="button" tabindex="0">
-          ⚔️ 전투시작
+        <div id="buy-xp-btn" class="tft-xp-btn" role="button" tabindex="0">
+          <span class="btn-main-label">⬆️ 레벨업</span>
+          <span class="btn-sub-cost">4G</span>
+        </div>
+      </div>
+
+      <!-- 우하단: 리롤 위 / [작은즉시시작 | 골드(상점토글)] 아래 -->
+      <div id="Collapsed-quick-bar" class="collapsed-quick-bar">
+        <div id="reroll-btn" class="quick-action-gem reroll-gem" role="button" tabindex="0">
+          <span class="btn-main-label">🎲리롤</span>
+          <span class="btn-sub-cost">2G</span>
+        </div>
+        <div class="tft-shop-row">
+          <div id="quick-start-combat-btn" class="tft-mini-combat" role="button" tabindex="0" title="즉시 출격">
+            ⚔️
+          </div>
+          <div id="start-combat-btn" class="hidden" aria-hidden="true"></div>
+          <div id="toggle-shop-btn" class="quick-action-gem gold-gem tft-shop-btn" role="button" tabindex="0" title="상점 열기/접기" aria-live="polite">
+            <span id="player-gold-text" class="tft-shop-gold">🪙10</span>
+            <span id="player-interest-text" class="tft-interest-mini">+1</span>
+          </div>
         </div>
       </div>
 
@@ -386,6 +376,16 @@
                   <button class="setting-opt-btn" data-map="town">🏰 왕도 광장</button>
                 </div>
               </div>
+              <div class="settings-row">
+                <span class="settings-label">라운드 시작</span>
+                <div class="settings-options" id="settings-prep-mode-options">
+                  <button class="setting-opt-btn active" data-prep-mode="TIMER">⏱️ 타이머 자동</button>
+                  <button class="setting-opt-btn" data-prep-mode="MANUAL">👆 수동 시작</button>
+                </div>
+              </div>
+              <p class="settings-hint">
+                수동 시작: 정비 시간이 끝나도 자동으로 넘어가지 않으며, [라운드 시작]을 눌러야 전투가 시작됩니다.
+              </p>
             </div>
 
             <div class="settings-section">
@@ -406,9 +406,10 @@
         </div>
       </div>
 
-      <!-- 모바일 터치 드래그 고스트 아바타 -->
-      <div id="drag-ghost" class="drag-ghost hidden"></div>
     </div>
+
+    <!-- 드래그 고스트: #app 밖에 두어 force-landscape 회전과 무관하게 clientX/Y로 커서 추종 -->
+    <div id="drag-ghost" class="drag-ghost hidden"></div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

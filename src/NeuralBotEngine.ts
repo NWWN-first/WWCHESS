@@ -1,6 +1,5 @@
 // src/NeuralBotEngine.ts
-// 딥러닝 ONNX 및 초고속 인라인 행렬 순전파(0ms) 신경망 추론 엔진
-// 100% 완전 오프라인 지원: 외부 서버 통신 없이 기기 내부에서 동작합니다.
+// Expanded offline neural policy: 24-d state → value + 8 macros + 4 urgencies
 
 import { TRAINED_NEURAL_WEIGHTS, NeuralNetworkWeights } from './NeuralWeights';
 
@@ -8,13 +7,37 @@ export type NeuralMacroAction =
   | 'SAVE_INTEREST'
   | 'TEMPO_LEVEL'
   | 'ROLLDOWN'
-  | 'STABILIZE_REROLL';
+  | 'STABILIZE_REROLL'
+  | 'PIVOT_BOARD'
+  | 'SLAM_ITEMS'
+  | 'DENY_HOLD'
+  | 'HIGHROLL_GREED';
+
+export const NEURAL_MACRO_ACTIONS: NeuralMacroAction[] = [
+  'SAVE_INTEREST',
+  'TEMPO_LEVEL',
+  'ROLLDOWN',
+  'STABILIZE_REROLL',
+  'PIVOT_BOARD',
+  'SLAM_ITEMS',
+  'DENY_HOLD',
+  'HIGHROLL_GREED',
+];
+
+export interface NeuralUrgencies {
+  item: number;
+  pivot: number;
+  deny: number;
+  combatAugBias: number;
+}
 
 export interface NeuralInferenceResult {
-  valueScore: number; // 0.0 (8등 기대) ~ 1.0 (1등 기대)
+  valueScore: number;
   macroAction: NeuralMacroAction;
   policyLogits: number[];
-  itemUrgency: number; // 0.0 (여유) ~ 1.0 (즉시 템 소진 필요)
+  /** @deprecated use urgencies.item */
+  itemUrgency: number;
+  urgencies: NeuralUrgencies;
   backend: 'DIRECT_NEURAL_MATRIX' | 'ONNX_RUNTIME';
 }
 
@@ -42,6 +65,15 @@ function matmul(vec: number[], weights: number[][], bias: number[]): number[] {
   return out;
 }
 
+function packUrgencies(arr: number[]): NeuralUrgencies {
+  return {
+    item: Math.max(0, Math.min(1, arr[0] ?? 0.3)),
+    pivot: Math.max(0, Math.min(1, arr[1] ?? 0.2)),
+    deny: Math.max(0, Math.min(1, arr[2] ?? 0.2)),
+    combatAugBias: Math.max(0, Math.min(1, arr[3] ?? 0.5)),
+  };
+}
+
 export class NeuralBotEngine {
   private static instance: NeuralBotEngine | null = null;
   private weights: NeuralNetworkWeights = TRAINED_NEURAL_WEIGHTS;
@@ -59,52 +91,49 @@ export class NeuralBotEngine {
     return NeuralBotEngine.instance;
   }
 
-  /**
-   * onnxruntime-web 비동기 세션 초기화 시도
-   * (웹뷰 오프라인 또는 환경에 따라 실패해도 Direct Matrix로 100% 정상 작동)
-   */
+  /** Hot-reload after retrain in same JS context (sims / tests). */
+  public static resetInstance(): void {
+    NeuralBotEngine.instance = null;
+  }
+
   private async tryInitOnnx(): Promise<void> {
     try {
       if (typeof window !== 'undefined') {
         const ort = await import('onnxruntime-web');
-        // wasm 경로 설정 및 로드
         ort.env.wasm.numThreads = 1;
         this.onnxSession = await ort.InferenceSession.create('./models/wwchess_bot.onnx');
         this.isOnnxReady = true;
         console.log('[NeuralBotEngine] ONNX Runtime Web session initialized successfully.');
       }
-    } catch (e) {
-      // Direct Neural Matrix가 항상 즉시 폴백 대기
+    } catch (_) {
       this.isOnnxReady = false;
     }
   }
 
-  /**
-   * 동기적 초고속(0.001ms) 순전파 추론
-   * 실시간 게임 틱 및 1000판 시뮬레이션에서도 딜레이 없이 100% 네이티브 실행
-   */
   public predictSync(features: number[]): NeuralInferenceResult {
     const w = this.weights;
+    const expectedIn = w.fc1_w[0]?.length ?? features.length;
+    // 재학습 전/후 피처 차원 불일치 시 패딩·절단 (크래시 방지)
+    let x = features;
+    if (features.length !== expectedIn) {
+      x = features.slice(0, expectedIn);
+      while (x.length < expectedIn) x.push(0);
+    }
 
-    // Backbone: fc1 (11 -> 32) -> relu -> fc2 (32 -> 32) -> relu
-    const h1 = relu(matmul(features, w.fc1_w, w.fc1_b));
+    const h1 = relu(matmul(x, w.fc1_w, w.fc1_b));
     const h2 = relu(matmul(h1, w.fc2_w, w.fc2_b));
 
-    // Value Head (순위 기대치 0~1)
     const v_h = relu(matmul(h2, w.val_fc_w, w.val_fc_b));
     const v_out = matmul(v_h, w.val_out_w, w.val_out_b)[0];
     const valueScore = sigmoid(v_out);
 
-    // Policy Head (4종 매크로 행동 로짓)
     const p_h = relu(matmul(h2, w.pol_fc_w, w.pol_fc_b));
     const policyLogits = matmul(p_h, w.pol_out_w, w.pol_out_b);
 
-    // Item Urgency Head (0~1)
     const u_h = relu(matmul(h2, w.urg_fc_w, w.urg_fc_b));
-    const u_out = matmul(u_h, w.urg_out_w, w.urg_out_b)[0];
-    const itemUrgency = sigmoid(u_out);
+    const urgRaw = matmul(u_h, w.urg_out_w, w.urg_out_b).map(sigmoid);
+    const urgencies = packUrgencies(urgRaw);
 
-    // Argmax Policy
     let bestActionIdx = 0;
     let maxLogit = -Infinity;
     for (let i = 0; i < policyLogits.length; i++) {
@@ -114,25 +143,16 @@ export class NeuralBotEngine {
       }
     }
 
-    const ACTIONS: NeuralMacroAction[] = [
-      'SAVE_INTEREST',
-      'TEMPO_LEVEL',
-      'ROLLDOWN',
-      'STABILIZE_REROLL',
-    ];
-
     return {
       valueScore: Math.max(0, Math.min(1, valueScore)),
-      macroAction: ACTIONS[bestActionIdx] ?? 'SAVE_INTEREST',
+      macroAction: NEURAL_MACRO_ACTIONS[bestActionIdx] ?? 'SAVE_INTEREST',
       policyLogits,
-      itemUrgency: Math.max(0, Math.min(1, itemUrgency)),
+      itemUrgency: urgencies.item,
+      urgencies,
       backend: 'DIRECT_NEURAL_MATRIX',
     };
   }
 
-  /**
-   * ONNX 모델 비동기 추론 (ONNX 세션 활성화 시)
-   */
   public async predictONNX(features: number[]): Promise<NeuralInferenceResult> {
     if (!this.isOnnxReady || !this.onnxSession) {
       return this.predictSync(features);
@@ -145,7 +165,8 @@ export class NeuralBotEngine {
 
       const vArr = results.value_score.data as Float32Array;
       const pArr = results.policy_logits.data as Float32Array;
-      const uArr = results.item_urgency.data as Float32Array;
+      const uKey = results.urgencies ? 'urgencies' : 'item_urgency';
+      const uArr = results[uKey].data as Float32Array;
 
       const policyLogits = Array.from(pArr);
       let bestActionIdx = 0;
@@ -157,18 +178,13 @@ export class NeuralBotEngine {
         }
       }
 
-      const ACTIONS: NeuralMacroAction[] = [
-        'SAVE_INTEREST',
-        'TEMPO_LEVEL',
-        'ROLLDOWN',
-        'STABILIZE_REROLL',
-      ];
-
+      const urgencies = packUrgencies(Array.from(uArr));
       return {
         valueScore: Math.max(0, Math.min(1, vArr[0])),
-        macroAction: ACTIONS[bestActionIdx] ?? 'SAVE_INTEREST',
+        macroAction: NEURAL_MACRO_ACTIONS[bestActionIdx] ?? 'SAVE_INTEREST',
         policyLogits,
-        itemUrgency: Math.max(0, Math.min(1, uArr[0])),
+        itemUrgency: urgencies.item,
+        urgencies,
         backend: 'ONNX_RUNTIME',
       };
     } catch (_) {

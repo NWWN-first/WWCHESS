@@ -6,10 +6,17 @@ import {
   TraitEffectTier,
   TraitId,
   UNIT_TEMPLATES,
+  getEffectiveUnitTraits,
 } from './GameData';
 import { Participant, UnitInstance } from './Participant';
 
-export type SynergyStyleTier = 'NONE' | 'BRONZE' | 'SILVER' | 'GOLD' | 'PRISMATIC';
+/** 시너지 UI 색 등급. 모든 시너지가 4단계를 갖진 않음(실버/플레 생략 가능). */
+export type SynergyStyleTier =
+  | 'NONE'
+  | 'BRONZE'
+  | 'SILVER'
+  | 'GOLD'
+  | 'PLATINUM';
 
 export interface ActiveSynergyState {
   traitId: TraitId;
@@ -22,18 +29,32 @@ export interface ActiveSynergyState {
 }
 
 const STYLE_PRIORITY: Record<SynergyStyleTier, number> = {
-  PRISMATIC: 4,
+  PLATINUM: 4,
   GOLD: 3,
   SILVER: 2,
   BRONZE: 1,
   NONE: 0,
 };
 
+/**
+ * 임계값 개수에 맞는 색 사다리.
+ * - 4단계: 브론즈→실버→골드→플레
+ * - 3단계: 브론즈→실버→플레 (골드 없음) 또는 브론즈→골드→플레는 아님 — TFT식 기본은 B/S/플레
+ * - 2단계: 브론즈→골드 (실버·플레 없음)
+ * - 1단계: 골드
+ */
+const STYLE_LADDER_BY_LENGTH: Record<number, SynergyStyleTier[]> = {
+  1: ['GOLD'],
+  2: ['BRONZE', 'GOLD'],
+  3: ['BRONZE', 'SILVER', 'PLATINUM'],
+  4: ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM'],
+};
+
 export class SynergyEngine {
   /**
    * participant.board 위에 배치된 기물들의 고유 unitId만 추출(Set)하여
    * 각 기물의 traits 카운트를 합산하고, participant.bonusTraits(증강체 추가 시너지)를 더해
-   * 각 시너지의 현재 카운트, 활성화된 등급(NONE, BRONZE, SILVER, GOLD, PRISMATIC),
+   * 각 시너지의 현재 카운트, 활성화된 등급(NONE~PLATINUM),
    * 그리고 적용될 수치 데이터(activeEffect)를 반환한다.
    */
   public static calculateActiveSynergies(participant: Participant): ActiveSynergyState[] {
@@ -49,7 +70,8 @@ export class SynergyEngine {
 
         uniqueBoardUnitIds.add(unit.unitId);
         const template = UNIT_TEMPLATES[unit.unitId];
-        const traits = template ? template.traits : unit.traits;
+        const baseTraits = template ? template.traits : unit.traits;
+        const traits = getEffectiveUnitTraits(baseTraits, unit.items);
 
         for (const traitId of traits) {
           traitCounts.set(traitId, (traitCounts.get(traitId) ?? 0) + 1);
@@ -64,7 +86,7 @@ export class SynergyEngine {
       }
     }
 
-    // 3. 각 시너지별 활성화 단계(BRONZE / SILVER / GOLD / PRISMATIC) 및 효과 계산
+    // 3. 각 시너지별 활성화 단계(BRONZE / SILVER / GOLD / PLATINUM) 및 효과 계산
     const results: ActiveSynergyState[] = [];
 
     for (const [traitId, count] of traitCounts.entries()) {
@@ -87,7 +109,7 @@ export class SynergyEngine {
   }
 
   /**
-   * 특정 시너지 정의와 카운트를 받아 등급(NONE~PRISMATIC) 및 효과 객체를 생성한다.
+   * 특정 시너지 정의와 카운트를 받아 등급(NONE~PLATINUM) 및 효과 객체를 생성한다.
    */
   public static buildSynergyState(
     definition: TraitDefinition,
@@ -108,11 +130,7 @@ export class SynergyEngine {
     const activeEffect: TraitEffectTier | null =
       activeIndex >= 0 ? effects[activeIndex] ?? null : null;
 
-    const styleTier = SynergyEngine.resolveStyleTier(
-      definition.id,
-      thresholds,
-      activeIndex
-    );
+    const styleTier = SynergyEngine.resolveStyleTier(thresholds, activeIndex);
 
     return {
       traitId: definition.id,
@@ -126,37 +144,21 @@ export class SynergyEngine {
   }
 
   /**
-   * 시너지 임계값 단계에 따른 시각적 등급(NONE, BRONZE, SILVER, GOLD, PRISMATIC) 판정
+   * 시너지 임계값 단계 → 시각 등급.
+   * 시너지마다 단계 수가 다르므로, 해당 시너지 사다리에서 활성 인덱스 색만 쓴다.
+   * (예: 2단계면 브론즈/골드만, 3단계면 브론즈/실버/플레 — 없는 색은 건너뜀)
    */
   private static resolveStyleTier(
-    traitId: TraitId,
     thresholds: number[],
     activeIndex: number
   ): SynergyStyleTier {
     if (activeIndex < 0) return 'NONE';
 
-    const totalTiers = thresholds.length;
-
-    // 4단계 시너지: [2, 4, 6, 8] 또는 [2, 3, 4, 6]
-    if (totalTiers >= 4) {
-      if (activeIndex === 0) return 'BRONZE';
-      if (activeIndex === 1) return 'SILVER';
-      if (activeIndex === 2) return 'GOLD';
-      return 'PRISMATIC'; // 8시너지 또는 6용족 등 최고 티어는 프리즘!
-    }
-
-    // 3단계 시너지: [2, 4, 6], [2, 3, 5], [3, 5, 7]
-    if (totalTiers === 3) {
-      if (activeIndex === 0) return 'BRONZE';
-      if (activeIndex === 1) return 'SILVER';
-      return 'PRISMATIC'; // 6순찰, 6암살, 5성기사, 7고블린 등 최종 티어는 프리즘!
-    }
-
-    if (totalTiers === 2) {
-      return activeIndex === 0 ? 'BRONZE' : 'GOLD';
-    }
-
-    return 'GOLD';
+    const totalTiers = Math.min(4, Math.max(1, thresholds.length));
+    const ladder =
+      STYLE_LADDER_BY_LENGTH[totalTiers] ?? STYLE_LADDER_BY_LENGTH[4];
+    const clampedIdx = Math.min(activeIndex, ladder.length - 1);
+    return ladder[clampedIdx];
   }
 
   /**
@@ -175,7 +177,7 @@ export class SynergyEngine {
 
   /**
    * 임의의 기물 조합이 만들어내는 시너지 점수를 수치화한다 (AI 봇 최적 조합 평가용).
-   * - 8고시너지(PRISMATIC) 대박 뽕맛 가중치 (+65)
+   * - 최고단계(PLATINUM) 대박 뽕맛 가중치 (+65)
    * - 다채로운 시너지 활성화(2/2/2, 4/2/2 등)를 통한 초중반 체력 보존 및 TOP 4(순방) 가중치 부여
    */
   public static evaluateCandidateUnitsSynergyScore(
@@ -188,7 +190,7 @@ export class SynergyEngine {
     for (const u of units) {
       if (uniqueIds.has(u.unitId)) continue;
       uniqueIds.add(u.unitId);
-      for (const t of u.traits) {
+      for (const t of getEffectiveUnitTraits(u.traits, u.items)) {
         counts.set(t, (counts.get(t) ?? 0) + 1);
       }
     }
@@ -206,7 +208,7 @@ export class SynergyEngine {
       const def = TRAIT_DEFINITIONS[traitId];
       if (!def) continue;
       const state = SynergyEngine.buildSynergyState(def, count);
-      if (state.styleTier === 'PRISMATIC') {
+      if (state.styleTier === 'PLATINUM') {
         score += 65;
         activeSynergyCount++;
       } else if (state.styleTier === 'GOLD') {
@@ -221,6 +223,12 @@ export class SynergyEngine {
       } else if (count > 0) {
         score += count * 1.5;
       }
+      // V2.1: 실제 thresholds 기준 "다음 단계 1칸 전" 가산 (하드코딩 2/4/6/8 폐기)
+      if (state.nextThreshold !== null && count === state.nextThreshold - 1) {
+        const isTop =
+          state.nextThreshold === def.thresholds[def.thresholds.length - 1];
+        score += isTop ? 14 : 8;
+      }
     }
 
     // TFT 순방(TOP 4) 가중치: 다양한 시너지가 촘촘히 엮여있는 안정적인 밸런스 조합에 보너스 부여
@@ -231,5 +239,32 @@ export class SynergyEngine {
     }
 
     return score;
+  }
+
+  /**
+   * 상점 구매 시: 이 unitId가 보드에 아직 없으면 trait 카운트 +1 가정.
+   * 실제 TRAIT_DEFINITIONS.thresholds 중 하나를 새로 찍으면 보너스 점수.
+   */
+  public static breakpointReachBonus(
+    activeCounts: Map<TraitId, number>,
+    traits: TraitId[],
+    alreadyOnBoard: boolean
+  ): number {
+    if (alreadyOnBoard) return 0;
+    let bonus = 0;
+    for (const t of traits) {
+      const def = TRAIT_DEFINITIONS[t];
+      if (!def) continue;
+      const have = activeCounts.get(t) ?? 0;
+      const after = have + 1;
+      for (const th of def.thresholds) {
+        if (have < th && after >= th) {
+          const isTop = th === def.thresholds[def.thresholds.length - 1];
+          bonus = Math.max(bonus, isTop ? 48 : 35);
+          break;
+        }
+      }
+    }
+    return bonus;
   }
 }
