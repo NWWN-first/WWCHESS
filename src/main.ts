@@ -123,8 +123,8 @@ class FantasyAutoBattlerApp {
     this.threeRenderer = new ThreeJsGameRenderer(this.threeCanvas);
     const overheadLayer = document.getElementById('unit-overhead-layer');
     this.threeRenderer.setOverheadLayer(overheadLayer);
-    // 장착 아이템 아이콘 탭 → 능력치/설명 툴팁 (3D 오버헤드)
-    overheadLayer?.addEventListener('pointerdown', (e) => {
+    // 장착 아이템 아이콘 탭 → 설명 툴팁 (3D 오버헤드)
+    overheadLayer?.addEventListener('pointerup', (e) => {
       const chip = (e.target as HTMLElement | null)?.closest?.(
         '.uoh-item'
       ) as HTMLElement | null;
@@ -132,10 +132,13 @@ class FantasyAutoBattlerApp {
       if (!itemId || !ITEM_DEFINITIONS[itemId as ItemId]) return;
       e.preventDefault();
       e.stopPropagation();
-      this.showEquippedItemTooltip(itemId as ItemId, {
-        x: e.clientX,
-        y: e.clientY,
-      });
+      this.showEquippedItemTooltip(itemId as ItemId);
+    });
+    overheadLayer?.addEventListener('pointerdown', (e) => {
+      if ((e.target as HTMLElement | null)?.closest?.('.uoh-item')) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
     });
     // 유닛 상세 툴팁 안의 장착 아이템 칩 탭
     document
@@ -187,7 +190,10 @@ class FantasyAutoBattlerApp {
     window.addEventListener('resize', () => this.resizeCanvas());
     window.addEventListener('orientationchange', () => {
       setTimeout(() => this.resizeCanvas(), 60);
+      setTimeout(() => this.resizeCanvas(), 300);
     });
+    window.visualViewport?.addEventListener('resize', () => this.resizeCanvas());
+    window.visualViewport?.addEventListener('scroll', () => this.resizeCanvas());
 
     this.onGameStateUpdated();
     this.startRenderLoop();
@@ -1850,14 +1856,14 @@ class FantasyAutoBattlerApp {
               ? { kind: 'ITEM', itemBenchIndex: idx, itemId }
               : null,
             () => {
-              const stats = this.formatItemStatLines(itemId);
-              const statsHtml = stats.length
-                ? `<div style="margin-top:4px;color:#fef08a">${stats.join('<br/>')}</div>`
-                : '';
-              this.showTapTooltip(
-                `<strong>${def.icon} ${def.name}</strong><br/>${def.description}${statsHtml}<br/><span style="color:#7dd3fc">기물 위에 올려 장착 · 재료끼리 미리보기 후 놓으면 대기석 합성 · 빈곳/트레이에 놓으면 취소</span>`,
-                { x: e.clientX, y: e.clientY }
-              );
+              this.showEquippedItemTooltip(itemId);
+              const hint = document.createElement('div');
+              hint.className = 'item-desc-kind';
+              hint.style.marginTop = '6px';
+              hint.style.color = '#7dd3fc';
+              hint.textContent =
+                '기물 위에 올려 장착 · 재료 미리보기 후 놓으면 합성 · 빈곳/트레이에 놓으면 취소';
+              document.getElementById('tap-tooltip-content')?.appendChild(hint);
             }
           );
         });
@@ -2495,50 +2501,58 @@ class FantasyAutoBattlerApp {
 
   private showEquippedItemTooltip(
     itemId: ItemId,
-    anchorClient?: { x: number; y: number }
+    _anchorClient?: { x: number; y: number }
   ): void {
     const def = ITEM_DEFINITIONS[itemId];
     if (!def) return;
     const stats = this.formatItemStatLines(itemId);
     const statsHtml = stats.length
-      ? `<div style="margin-top:4px;color:#fef08a">${stats.join('<br/>')}</div>`
+      ? `<ul class="item-desc-stats">${stats
+          .map((s) => `<li>${s}</li>`)
+          .join('')}</ul>`
       : '';
     const kind = def.isCompleted ? '완성 아이템' : '기본 재료';
     this.showTapTooltip(
-      `<strong>${def.icon} ${def.name}</strong> <span style="color:#94a3b8;font-size:11px">(${kind})</span><br/>${def.description}${statsHtml}`,
-      anchorClient
+      `<div class="item-desc-card">
+        <div class="item-desc-title">${def.icon} ${def.name}</div>
+        <div class="item-desc-kind">${kind}</div>
+        <div class="item-desc-body">${def.description}</div>
+        ${statsHtml}
+      </div>`
     );
   }
 
+  /**
+   * 가로모드(실기 가로 + 세로폰 강제회전)에서도 잘리지 않게
+   * #app 로컬 좌표계 기준 상단 중앙 카드로 고정한다.
+   */
   private showTapTooltip(
     html: string,
-    anchorClient?: { x: number; y: number }
+    _anchorClient?: { x: number; y: number }
   ): void {
     const bar = document.getElementById('tap-tooltip-bar');
     const content = document.getElementById('tap-tooltip-content');
     if (!bar || !content) return;
     content.innerHTML = html;
     bar.classList.remove('hidden');
-    // 아이템 등 클릭 지점 근처로 고정 — 화면 중앙을 떠다니지 않게
-    if (anchorClient) {
-      // #app force-landscape 회전 시에도 올바른 로컬 좌표 사용
-      const pt = this.clientToCanvasPoint(anchorClient.x, anchorClient.y);
-      const app = document.getElementById('app');
-      const w = app?.clientWidth || window.innerWidth || 360;
-      const h = app?.clientHeight || window.innerHeight || 640;
-      const maxW = Math.min(w * 0.92, 540);
-      const left = Math.max(8, Math.min(w - maxW - 8, pt.x - maxW * 0.5));
-      const top = Math.max(8, Math.min(h - 80, pt.y + 18));
-      bar.style.left = `${left}px`;
-      bar.style.top = `${top}px`;
-      bar.style.transform = 'none';
-      bar.classList.add('tooltip-anchored');
-    } else {
-      bar.style.left = '50%';
-      bar.style.top = '36px';
-      bar.style.transform = 'translateX(-50%)';
-      bar.classList.remove('tooltip-anchored');
-    }
+
+    const app = document.getElementById('app');
+    // force-landscape 시 clientWidth/Height = 가로 게임 해상도 (예: 800×360)
+    const w = app?.clientWidth || window.innerWidth || 360;
+    const h = app?.clientHeight || window.innerHeight || 640;
+    const maxW = Math.min(Math.floor(w * 0.94), 560);
+    const left = Math.max(6, Math.floor((w - maxW) / 2));
+    const top = Math.max(4, Math.min(28, Math.floor(h * 0.03)));
+    const maxH = Math.max(110, Math.floor(h * 0.78));
+
+    bar.style.left = `${left}px`;
+    bar.style.top = `${top}px`;
+    bar.style.width = `${maxW}px`;
+    bar.style.maxWidth = `${maxW}px`;
+    bar.style.maxHeight = `${maxH}px`;
+    bar.style.transform = 'none';
+    bar.classList.add('tooltip-anchored');
+    bar.classList.add('tooltip-landscape-safe');
   }
 
   private formatTraitsLine(traits: TraitId[]): string {
@@ -2756,10 +2770,13 @@ class FantasyAutoBattlerApp {
   // ==========================================================================
 
   private resizeCanvas(): void {
-    const rawW = window.innerWidth || 800;
-    const rawH = window.innerHeight || 600;
+    const vv = window.visualViewport;
+    const rawW = Math.round(vv?.width || window.innerWidth || 800);
+    const rawH = Math.round(vv?.height || window.innerHeight || 600);
     const dpr = window.devicePixelRatio || 1;
     const appEl = document.getElementById('app');
+    document.documentElement.classList.toggle('is-portrait-device', rawH > rawW);
+    document.body.classList.toggle('is-portrait-device', rawH > rawW);
 
     // 폰이 세로(rawH > rawW)로 들려 있으면 자동으로 #app을 90도 회전해 100% 가로모드로 고정
     if (rawH > rawW) {
@@ -2773,6 +2790,7 @@ class FantasyAutoBattlerApp {
       );
       this.pixiVfx.resize(rawH, rawW, dpr);
       this.threeRenderer.resize(rawH, rawW);
+      this.tryLockNativeLandscape();
     } else {
       this.isPortraitRotated = false;
       appEl?.classList.remove('force-landscape-rotated');
