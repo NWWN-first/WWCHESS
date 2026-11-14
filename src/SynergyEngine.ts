@@ -223,6 +223,12 @@ export class SynergyEngine {
       } else if (count > 0) {
         score += count * 1.5;
       }
+      // V2.1: 실제 thresholds 기준 "다음 단계 1칸 전" 가산 (하드코딩 2/4/6/8 폐기)
+      if (state.nextThreshold !== null && count === state.nextThreshold - 1) {
+        const isTop =
+          state.nextThreshold === def.thresholds[def.thresholds.length - 1];
+        score += isTop ? 14 : 8;
+      }
     }
 
     // TFT 순방(TOP 4) 가중치: 다양한 시너지가 촘촘히 엮여있는 안정적인 밸런스 조합에 보너스 부여
@@ -233,5 +239,32 @@ export class SynergyEngine {
     }
 
     return score;
+  }
+
+  /**
+   * 상점 구매 시: 이 unitId가 보드에 아직 없으면 trait 카운트 +1 가정.
+   * 실제 TRAIT_DEFINITIONS.thresholds 중 하나를 새로 찍으면 보너스 점수.
+   */
+  public static breakpointReachBonus(
+    activeCounts: Map<TraitId, number>,
+    traits: TraitId[],
+    alreadyOnBoard: boolean
+  ): number {
+    if (alreadyOnBoard) return 0;
+    let bonus = 0;
+    for (const t of traits) {
+      const def = TRAIT_DEFINITIONS[t];
+      if (!def) continue;
+      const have = activeCounts.get(t) ?? 0;
+      const after = have + 1;
+      for (const th of def.thresholds) {
+        if (have < th && after >= th) {
+          const isTop = th === def.thresholds[def.thresholds.length - 1];
+          bonus = Math.max(bonus, isTop ? 48 : 35);
+          break;
+        }
+      }
+    }
+    return bonus;
   }
 }

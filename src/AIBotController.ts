@@ -13,6 +13,7 @@ import {
   UNIT_TEMPLATES,
   UnitTemplate,
   combineBaseItems,
+  getEffectiveUnitTraits,
   getRecipeForCompletedItem,
   getUnitRecommendedItems,
 } from './GameData';
@@ -35,11 +36,16 @@ import {
   getPersonaBias,
   ItemBoardPlan,
   itemPlanPriorityBonus,
+  isBotHeuristicOnly,
   isDynamicStrategyExperimentEnabled,
+  isEmblemItem,
   mergeEconomyWithCorrection,
   ObservableStateSummary,
+  scoreEmblemEquipTarget,
   selectDenyTargets,
   shouldDeferNonBisCraft,
+  shouldHoldBaseComponent,
+  spatulaCraftTraitBonus,
   StrategyChangeReason,
   validateStrategicPlan,
 } from './strategy';
@@ -150,7 +156,7 @@ export interface BotBrainState {
   maxRerollsAllowedThisRound: number;
   targetGoldFloorThisRound: number;
   unitsToDenyCache: Set<string>;
-  lastNeuralResult?: NeuralInferenceResult;
+  lastNeuralResult?: NeuralInferenceResult | null;
   currentRoundLabel?: string;
   /** Step 7b: 페르소나 전환 횟수 (판당 최대 1) */
   personaSwitchCount: number;
@@ -168,6 +174,7 @@ const STANDARD_ORIGIN_TRAITS: TraitId[] = [
   'DRAGONKIN',
   'UNDEAD_SCOURGE',
   'ARCANE_TOWER',
+  'BEASTKIN',
 ];
 
 export type UnitRole = 'TANK' | 'AD_CARRY' | 'AP_CARRY' | 'BRUISER';
@@ -289,7 +296,7 @@ const BOT_PRESETS: Array<{ name: string; persona: AIPersona; initialTrait: Trait
   { name: '봇4 [만수르 골드]', persona: 'FAST_NINE_GREEDY', initialTrait: 'DRAGONKIN' },
   { name: '봇5 [패스트9 황제]', persona: 'FAST_NINE_GREEDY', initialTrait: 'HOLY_EMPIRE' },
   { name: '봇6 [정석 마스터 린]', persona: 'FLEX_MASTER', initialTrait: 'ARCANE_TOWER' },
-  { name: '봇7 [유연한 카이]', persona: 'FLEX_MASTER', initialTrait: 'ABYSSAL_DEMON' },
+  { name: '봇7 [야수 카이]', persona: 'FLEX_MASTER', initialTrait: 'BEASTKIN' },
 ];
 
 const BOT_NEUTRAL_NAMES = [
@@ -409,6 +416,12 @@ export class AIBotController {
         ? 'SHADOW_ASSASSIN'
         : initialTrait === 'GOLDEN_GOBLIN'
         ? 'BERSERKER'
+        : initialTrait === 'BEASTKIN'
+        ? 'BERSERKER'
+        : initialTrait === 'ABYSSAL_DEMON'
+        ? 'SHADOW_ASSASSIN'
+        : initialTrait === 'DRAGONKIN'
+        ? 'PALADIN'
         : 'PALADIN';
 
     const state: BotBrainState = {
@@ -707,10 +720,17 @@ export class AIBotController {
     brain.currentRoundLabel = currentRound;
     const aiParams = this.rankManager.getAISkillParameters();
 
-    // 0. 신경망 먼저 — 피봇/견제/매크로가 urgencies를 참조
-    const stateTensor = this.extractAIStateTensor(bot, allParticipants, currentRound);
-    const neuralResult = NeuralBotEngine.getInstance().predictSync(stateTensor.features);
-    brain.lastNeuralResult = neuralResult;
+    // 0. 신경망 — V2.1 기본은 휴리스틱 전용 (BOT_NEURAL_CORRECTION=1 일 때만)
+    const heuristicOnly = isBotHeuristicOnly();
+    if (heuristicOnly) {
+      brain.lastNeuralResult = null;
+    } else {
+      const stateTensor = this.extractAIStateTensor(bot, allParticipants, currentRound);
+      brain.lastNeuralResult = NeuralBotEngine.getInstance().predictSync(
+        stateTensor.features
+      );
+    }
+    const neuralResult = brain.lastNeuralResult;
 
     // 1. 정찰/견제 (trait 피벗은 Stage2 Planner가 담당)
     brain.unitsToDenyCache = this.performScoutingAndPivot(
@@ -828,8 +848,8 @@ export class AIBotController {
       bot,
       persona,
       stage: stageNum,
-      // Stage6: 매크로는 보정층에서 처리 — 플래너에는 힌트만 약하게 전달
-      macroAction: neuralResult.macroAction,
+      // Stage6: 매크로는 보정층에서 처리 — 휴리스틱 전용 시 힌트 차단
+      macroAction: neuralResult?.macroAction ?? null,
       levelHint: brain.activeCompLevelHint ?? null,
       pivotDecision: (brain.lastCompDecision?.decision as
         | 'stay'
@@ -844,7 +864,7 @@ export class AIBotController {
       skillLevel: aiParams.skillLevel,
     });
 
-    // Stage6: 신경망 보정층 — 플래너 출력에 delta
+    // Stage6: 신경망 보정층 — 플래너 출력에 delta (휴리스틱 전용이면 no-op)
     const neuralCorr = applyNeuralCorrection({
       economy: economyPlan,
       neural: neuralResult,
@@ -2001,16 +2021,22 @@ export class AIBotController {
       }
     }
 
-    // 4. 시너지 브레이크포인트 검사 (내 보드에 즉시 시너지 티어를 켤 수 있는가?)
+    // 4. 시너지 브레이크포인트 (V2.1: 실제 thresholds — 하드코딩 2/4/6/8 폐기)
     const activeCounts = bot.getActiveTraitCounts();
-    for (const t of template.traits) {
-      const currentCount = activeCounts.get(t) ?? 0;
-      // 2, 4, 6, 8, 9 등 임계치 바로 1보 전일 때
-      if (currentCount === 1 || currentCount === 3 || currentCount === 5 || currentCount === 7) {
-        score += 35; // 즉시 시너지 발동 보너스!
-        break;
+    let alreadyOnBoard = false;
+    for (let r = 0; r < Participant.BOARD_ROWS && !alreadyOnBoard; r++) {
+      for (let c = 0; c < Participant.BOARD_COLS; c++) {
+        if (bot.board[r][c]?.unitId === template.id) {
+          alreadyOnBoard = true;
+          break;
+        }
       }
     }
+    score += SynergyEngine.breakpointReachBonus(
+      activeCounts,
+      template.traits,
+      alreadyOnBoard
+    );
 
     // 5. 역할군 밸런스 (앞라인 탱커 vs 후열 딜러)
     const role = getUnitRole(template.id);
@@ -2690,10 +2716,10 @@ export class AIBotController {
 
   /**
    * 고정 BiS를 강제하지 않고, 대기석의 기본 재료 및 완성 아이템을 유동적으로 합성/장착한다.
+   * - 상징(문장)은 targetTrait 쪽으로 즉시 장착 (카운트 +1 유닛 우선)
+   * - 뒤집개(SPATULA)는 잉여 슬램 금지, targetTrait 상징 조합 우선
    * - 대기석 재료가 3개 이상 놀고 있으면 완성 아이템 즉시 합성 보너스 부여
-   * - 가장 높은 효용(Utility)을 내는 (조합템 쌍 -> 대상 기물)을 찾아 즉시 합성
    * - 이미 완성된 아이템은 가장 어울리는 유닛에게 즉시 장착
-   * - 잉여 단일 재료는 역할군에 맞게 적절히 배분
    */
   private dynamicallyCraftAndEquipItems(
     bot: Participant,
@@ -2717,12 +2743,17 @@ export class AIBotController {
       )
     );
 
+    const boardTraitCounts = bot.getActiveTraitCounts();
+    const useNeuralItemHints = !isBotHeuristicOnly() && !!brain.lastNeuralResult;
+
     // 1. 이미 itemBench에 있는 완성 아이템들을 먼저 최적 유닛에게 장착
+    //    상징(문장)은 시너지 휴리스틱으로 별도 평가 + 낮은 장착 문턱
     for (let i = bot.itemBench.length - 1; i >= 0; i--) {
       const itemId = bot.itemBench[i];
       const itemDef = ITEM_DEFINITIONS[itemId];
       if (!itemDef || !itemDef.isCompleted) continue;
 
+      const isEmblem = isEmblemItem(itemId);
       let bestUnit: UnitInstance | null = null;
       let bestScore = -999;
       let secondUnit: UnitInstance | null = null;
@@ -2730,13 +2761,25 @@ export class AIBotController {
 
       for (const unit of allBoardUnits) {
         if (unit.items.length >= 3) continue;
-        const score =
-          this.evaluateCompletedItemForUnit(
-            itemId as CompletedItemId,
-            unit,
-            scouting,
-            itemPlan
-          ) + this.softNoise(aiParams, 18);
+        let score: number;
+        if (isEmblem) {
+          score =
+            scoreEmblemEquipTarget({
+              emblemId: itemId,
+              unit,
+              targetTrait: brain.targetTrait,
+              secondaryTrait: brain.secondaryTrait,
+              boardTraitCounts,
+            }) + this.softNoise(aiParams, 12);
+        } else {
+          score =
+            this.evaluateCompletedItemForUnit(
+              itemId as CompletedItemId,
+              unit,
+              scouting,
+              itemPlan
+            ) + this.softNoise(aiParams, 18);
+        }
         if (score > bestScore) {
           secondScore = bestScore;
           secondUnit = bestUnit;
@@ -2748,8 +2791,10 @@ export class AIBotController {
         }
       }
 
-      const equipThreshold = 35 - slam * 18 + this.softNoise(aiParams, 12);
-      // Soft noise: 가끔 2등 유닛에게 슬램
+      // 상징은 벤치에 쌓아두지 말고 거의 항상 장착
+      const equipThreshold = isEmblem
+        ? 15 - slam * 10 + this.softNoise(aiParams, 8)
+        : 35 - slam * 18 + this.softNoise(aiParams, 12);
       const target =
         secondUnit &&
         this.softShouldSkip(aiParams, 0.2) &&
@@ -2758,11 +2803,22 @@ export class AIBotController {
           : bestUnit;
       if (target && bestScore >= equipThreshold) {
         brain.itemEquipAttempts += 1;
+        const granted = isEmblem ? itemDef.grantsTrait : undefined;
+        const alreadyHadTrait =
+          !!granted &&
+          getEffectiveUnitTraits(target.traits, target.items).includes(granted);
         if (bot.equipItemToUnit(i, target.instanceId)) {
           brain.itemSlamCount += 1;
-          const bis = getUnitRecommendedItems(target.unitId);
-          if (bis.includes(itemId as CompletedItemId)) {
-            brain.itemBisHitCount += 1;
+          if (isEmblem && granted && !alreadyHadTrait) {
+            boardTraitCounts.set(
+              granted,
+              (boardTraitCounts.get(granted) ?? 0) + 1
+            );
+          } else if (!isEmblem) {
+            const bis = getUnitRecommendedItems(target.unitId);
+            if (bis.includes(itemId as CompletedItemId)) {
+              brain.itemBisHitCount += 1;
+            }
           }
         }
       }
@@ -2800,34 +2856,55 @@ export class AIBotController {
           const craftedId = combineBaseItems(matA, matB);
           if (!craftedId) continue;
 
+          const spatulaBonus = spatulaCraftTraitBonus(
+            craftedId,
+            brain.targetTrait,
+            brain.secondaryTrait
+          );
+          const craftingEmblem = isEmblemItem(craftedId);
+
           for (const unit of allBoardUnits) {
             if (unit.items.length >= 3) continue;
+            // 상징은 BiS defer 대상이 아님 — 시너지 가치가 우선
             if (
+              !craftingEmblem &&
               itemPlan &&
               shouldDeferNonBisCraft(itemPlan, craftedId, unit)
             ) {
               continue;
             }
 
-            let score = this.evaluateCompletedItemForUnit(
-              craftedId,
-              unit,
-              scouting,
-              itemPlan
-            );
+            let score: number;
+            if (craftingEmblem) {
+              score = scoreEmblemEquipTarget({
+                emblemId: craftedId,
+                unit,
+                targetTrait: brain.targetTrait,
+                secondaryTrait: brain.secondaryTrait,
+                boardTraitCounts,
+              });
+            } else {
+              score = this.evaluateCompletedItemForUnit(
+                craftedId,
+                unit,
+                scouting,
+                itemPlan
+              );
+            }
+            score += spatulaBonus;
 
             if (baseIndices.length >= 4) score += 30;
             else if (baseIndices.length >= 3) score += 15;
 
-            const itemU =
-              brain.lastNeuralResult?.urgencies?.item ??
-              brain.lastNeuralResult?.itemUrgency ??
-              0;
-            if (brain.lastNeuralResult && itemU > 0.55) {
-              score += Math.round(itemU * 30);
-            }
-            if (brain.lastNeuralResult?.macroAction === 'SLAM_ITEMS') {
-              score += 35;
+            if (useNeuralItemHints) {
+              const itemU =
+                brain.lastNeuralResult?.urgencies?.item ??
+                brain.lastNeuralResult?.itemUrgency ??
+                0;
+              if (itemU > 0.55) score += Math.round(itemU * 30);
+              if (brain.lastNeuralResult?.macroAction === 'SLAM_ITEMS') {
+                score += 35;
+              }
             }
 
             if (brain.heroTargetUnitId === unit.unitId) score += 25;
@@ -2845,8 +2922,16 @@ export class AIBotController {
       }
 
       // Soft noise + Stage5 slamAggressiveness로 문턱 완화
-      const baseThreshold =
-        baseIndices.length >= 4 ? 40 : baseIndices.length >= 3 ? 55 : 68;
+      // 상징 조합은 문턱을 더 낮춤 (targetTrait 문장을 벤치에 쌓지 않음)
+      const craftingBestEmblem =
+        !!bestCraftedId && isEmblemItem(bestCraftedId);
+      const baseThreshold = craftingBestEmblem
+        ? 30
+        : baseIndices.length >= 4
+        ? 40
+        : baseIndices.length >= 3
+        ? 55
+        : 68;
       const threshold =
         baseThreshold - slam * 22 + this.softNoise(aiParams, 14);
 
@@ -2859,6 +2944,16 @@ export class AIBotController {
         const firstIdx = Math.max(bestMatIdx1, bestMatIdx2);
         const secondIdx = Math.min(bestMatIdx1, bestMatIdx2);
         brain.itemEquipAttempts += 1;
+        const granted =
+          bestCraftedId && isEmblemItem(bestCraftedId)
+            ? ITEM_DEFINITIONS[bestCraftedId]?.grantsTrait
+            : undefined;
+        const alreadyHadTrait =
+          !!granted &&
+          getEffectiveUnitTraits(
+            bestTargetUnit.traits,
+            bestTargetUnit.items
+          ).includes(granted);
         const ok1 = bot.equipItemToUnit(firstIdx, bestTargetUnit.instanceId);
         const ok2 = bot.equipItemToUnit(secondIdx, bestTargetUnit.instanceId);
         if (ok1 || ok2) {
@@ -2871,12 +2966,19 @@ export class AIBotController {
           ) {
             brain.itemBisHitCount += 1;
           }
+          if (granted && !alreadyHadTrait) {
+            boardTraitCounts.set(
+              granted,
+              (boardTraitCounts.get(granted) ?? 0) + 1
+            );
+          }
         }
         canStillCraft = true;
       }
     }
 
     // 3. 남은 잉여 단일 재료 — 슬램 공격성 높거나 재료 과다일 때만
+    //    SPATULA는 절대 잉여 슬램하지 않음 (상징 조합용으로 홀드)
     const leftoverBases = bot.itemBench.filter((id) => {
       const d = ITEM_DEFINITIONS[id];
       return d && !d.isCompleted;
@@ -2889,6 +2991,7 @@ export class AIBotController {
       const itemId = bot.itemBench[i];
       const itemDef = ITEM_DEFINITIONS[itemId];
       if (!itemDef || itemDef.isCompleted) continue;
+      if (shouldHoldBaseComponent(itemId)) continue;
       if (this.softShouldSkip(aiParams, 0.18)) continue;
 
       let bestUnit: UnitInstance | null = null;

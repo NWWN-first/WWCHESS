@@ -10,3 +10,4 @@ export * from './EconomyPlanner';
 export * from './ItemBoardPlanner';
 export * from './PersonaBias';
 export * from './NeuralCorrection';
+export * from './EmblemHeuristics';

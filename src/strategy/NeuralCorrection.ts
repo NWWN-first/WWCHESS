@@ -1,8 +1,10 @@
 // src/strategy/NeuralCorrection.ts
 // Stage 6 (원안): 플래너 출력 위에 신경망 보정 — 하드 교체가 아니라 delta
+// V2.1 플레이테스트: 기본은 휴리스틱 전용. BOT_NEURAL_CORRECTION=1 일 때만 보정.
 
 import { NeuralInferenceResult, NeuralMacroAction } from '../NeuralBotEngine';
 import { EconomyPlan, EconomyTempo } from './EconomyPlanner';
+import { isBotHeuristicOnly } from './EmblemHeuristics';
 import { ItemBoardPlan } from './ItemBoardPlanner';
 
 export interface NeuralCorrectionResult {
@@ -64,6 +66,9 @@ export function applyNeuralCorrection(args: {
   };
 
   const { economy, neural, skillLevel, isEmergency } = args;
+  if (isBotHeuristicOnly()) {
+    return { ...empty, reason: 'HEURISTIC_ONLY' };
+  }
   if (!neural || isEmergency) {
     return { ...empty, reason: isEmergency ? 'EMERGENCY_SKIP' : 'NO_NEURAL' };
   }
