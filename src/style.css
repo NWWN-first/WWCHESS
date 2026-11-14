@@ -59,8 +59,20 @@ body {
 #app.app-root.force-landscape-rotated {
   width: 100vh;
   height: 100vw;
+  max-width: 100vh;
+  max-height: 100vw;
   transform-origin: top left;
   transform: translateX(100vw) rotate(90deg);
+  /* 세로 폰에서도 게임 UI는 항상 가로 기준 */
+  position: fixed;
+}
+
+html.is-portrait-device,
+html.is-portrait-device body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
 }
 
 canvas,
@@ -145,25 +157,26 @@ img {
 }
 
 .uoh-item {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(15, 23, 42, 0.92);
+  background: rgba(15, 23, 42, 0.95);
   border: 1.5px solid #facc15;
-  border-radius: 4px;
-  font-size: 13px;
+  border-radius: 5px;
+  font-size: 14px;
   line-height: 1;
   pointer-events: auto;
   cursor: pointer;
   touch-action: manipulation;
   user-select: none;
+  z-index: 2;
 }
 
 .uoh-item:active {
   border-color: #38bdf8;
-  transform: scale(1.12);
+  transform: scale(1.14);
 }
 
 .uoh-hp-track,
@@ -641,11 +654,46 @@ img {
   gap: 4px;
   pointer-events: none;
   transition: top 0.2s ease;
+  overflow: hidden;
 }
 
 #app:not(.shop-dock-top-expanded) .left-floating-dock {
   top: 42px;
   bottom: 100px;
+}
+
+/* 세로폰→강제가로: 짧은 높이에 맞춰 좌측 독/아이템 랙 압축 */
+#app.force-landscape-rotated .left-floating-dock {
+  top: 36px;
+  bottom: 8px;
+  width: 88px;
+  gap: 3px;
+}
+
+#app.force-landscape-rotated:not(.shop-dock-top-expanded) .left-floating-dock {
+  top: 28px;
+  bottom: 8px;
+}
+
+#app.force-landscape-rotated .hex-synergy-dock {
+  max-height: 36%;
+}
+
+#app.force-landscape-rotated .item-slot {
+  height: 36px;
+  min-height: 36px;
+  font-size: 16px;
+}
+
+#app.force-landscape-rotated .duplicator-chip {
+  height: 30px;
+  font-size: 12px;
+}
+
+#app.force-landscape-rotated .uoh-item {
+  width: 28px;
+  height: 28px;
+  font-size: 15px;
 }
 
 .goblin-vault-gem {
@@ -976,26 +1024,73 @@ img {
   top: 36px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 25;
-  max-width: min(92%, 540px);
-  max-height: 48vh;
+  z-index: 40;
+  max-width: min(94%, 560px);
+  max-height: 78%;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 10px 12px;
   background: rgba(11, 16, 31, 0.97);
   border: 2px solid #facc15;
   border-radius: 10px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.85);
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.45;
   color: #f8fafc;
   pointer-events: auto;
+  box-sizing: border-box;
 }
 
-.tap-tooltip-bar.tooltip-anchored {
+.tap-tooltip-bar.tooltip-anchored,
+.tap-tooltip-bar.tooltip-landscape-safe {
   transform: none;
+}
+
+/* 가로 강제회전(#app 높이≈폰 가로폭)에서도 설명이 잘리지 않게 */
+#app.force-landscape-rotated .tap-tooltip-bar {
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.item-desc-card {
+  width: 100%;
+  min-width: 0;
+}
+
+.item-desc-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #fde047;
+  margin-bottom: 2px;
+}
+
+.item-desc-kind {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.item-desc-body {
+  font-size: 13px;
+  color: #f1f5f9;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  margin-bottom: 6px;
+}
+
+.item-desc-stats {
+  margin: 0;
+  padding-left: 1.1em;
+  color: #fef08a;
+  font-size: 12px;
+}
+
+.item-desc-stats li {
+  margin: 2px 0;
 }
 
 .tooltip-thumb {
@@ -1011,6 +1106,29 @@ img {
 
 .tooltip-body {
   overflow: hidden;
+}
+
+.tooltip-item-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 2px 3px 2px 0;
+  padding: 3px 7px;
+  border-radius: 6px;
+  border: 1px solid #facc15;
+  background: rgba(15, 23, 42, 0.95);
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  touch-action: manipulation;
+  pointer-events: auto;
+}
+
+.tooltip-item-chip:active {
+  border-color: #38bdf8;
+  background: rgba(30, 41, 59, 0.98);
 }
 
 .tooltip-traits {

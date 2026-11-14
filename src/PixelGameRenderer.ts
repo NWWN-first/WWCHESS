@@ -969,6 +969,16 @@ export class PixelGameRenderer {
   public benchSlotRects: Array<{ x: number; y: number; w: number; h: number }> = [];
   public isShopExpanded: boolean = true;
 
+  /** 2D 모드: 장착 아이템 미니 아이콘 히트박스 (매 프레임 갱신) */
+  public equippedItemHitRects: Array<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    itemId: ItemId;
+    unitInstanceId: string;
+  }> = [];
+
   /**
    * 유저가 화면(전장)을 터치했을 때 아바타의 목표 이동 좌표를 설정
    */
@@ -1105,6 +1115,20 @@ export class PixelGameRenderer {
    * 화면 좌표 (px, py)로부터 가장 가까운 플레이어의 보드/대기석 기물 탐색 (자석 스냅)
    * 기본 최대 반경 maxDistance (기본 68px) 이내에서 가장 가까운 기물 반환
    */
+  /** 2D 장착 아이템 아이콘 히트 테스트 (가장 위에 그려진 것 우선) */
+  public hitTestEquippedItem(
+    px: number,
+    py: number
+  ): { itemId: ItemId; unitInstanceId: string } | null {
+    for (let i = this.equippedItemHitRects.length - 1; i >= 0; i--) {
+      const r = this.equippedItemHitRects[i];
+      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
+        return { itemId: r.itemId, unitInstanceId: r.unitInstanceId };
+      }
+    }
+    return null;
+  }
+
   public findNearestUnitInstance(
     px: number,
     py: number,
@@ -1665,6 +1689,7 @@ export class PixelGameRenderer {
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.imageSmoothingEnabled = false;
+    this.equippedItemHitRects = [];
 
     const w = this.viewportWidth;
     const h = this.viewportHeight;
@@ -2343,6 +2368,7 @@ export class PixelGameRenderer {
             selectedTraits.includes(t)
           );
         this.drawUnitCompleteOnCanvas(ctx, {
+          instanceId: unit.instanceId,
           unitId: unit.unitId,
           name: unit.name,
           cost: unit.cost,
@@ -2438,6 +2464,7 @@ export class PixelGameRenderer {
           selectedTraits.includes(t)
         );
       this.drawUnitCompleteOnCanvas(ctx, {
+        instanceId: unit.instanceId,
         unitId: unit.unitId,
         name: unit.name,
         cost: unit.cost,
@@ -2596,6 +2623,7 @@ export class PixelGameRenderer {
       const { cu, trailHp, screenX, screenY, facingX, hitFlash, squashX, squashY } =
         item;
       this.drawUnitCompleteOnCanvas(ctx, {
+        instanceId: cu.instanceId,
         unitId: cu.unitId,
         name: cu.name,
         cost: cu.cost,
@@ -2629,6 +2657,7 @@ export class PixelGameRenderer {
   private drawUnitCompleteOnCanvas(
     ctx: CanvasRenderingContext2D,
     u: {
+      instanceId?: string;
       unitId: string;
       name: string;
       cost: CostTier;
@@ -3047,15 +3076,16 @@ export class PixelGameRenderer {
       badgeY + Math.round(badgeH * 0.74)
     );
 
-    // 6-7) 장착 아이템 미니 슬롯 통합 (체력바 바로 위에 최대 3개 11x11px 테두리 미니 아이콘 정렬)
+    // 6-7) 장착 아이템 미니 슬롯 통합 (체력바 바로 위에 최대 3개 — 탭 가능 히트박스 등록)
     if (u.items.length > 0) {
       const equipped = u.items.slice(0, 3);
-      const slotSize = u.compactBenchMode ? 9 : 11;
+      const slotSize = u.compactBenchMode ? 12 : 14;
       const slotGap = 2;
       const totalItemsW =
         equipped.length * slotSize + (equipped.length - 1) * slotGap;
       const startItemX = Math.round(feetAnchorX - totalItemsW * 0.5);
       const itemY = barY - slotSize - 3;
+      const pad = 4;
 
       equipped.forEach((itemId, idx) => {
         const def = ITEM_DEFINITIONS[itemId];
@@ -3076,6 +3106,17 @@ export class PixelGameRenderer {
           ix + slotSize * 0.5,
           itemY + slotSize - 1.5
         );
+
+        if (u.instanceId) {
+          this.equippedItemHitRects.push({
+            x: ix - pad,
+            y: itemY - pad,
+            w: slotSize + pad * 2,
+            h: slotSize + pad * 2,
+            itemId,
+            unitInstanceId: u.instanceId,
+          });
+        }
       });
     }
 
