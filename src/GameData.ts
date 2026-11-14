@@ -327,12 +327,13 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     type: 'ORIGIN',
     icon: '🪙',
     color: '#F1C40F',
-    thresholds: [3, 5, 7],
-    description: '패배 시 금고 스택, 승리 시 환전하는 경제 시너지.',
+    thresholds: [3, 5, 7, 9],
+    description: '패배 시 금고 스택, 승리 시 환전하는 경제 시너지. 최고단계(9)는 상징 필요.',
     effects: [
       { threshold: 3, label: '(3) 패배 스택 1.0x · 승리 시 개봉', goblinStackMultiplier: 1.0 },
       { threshold: 5, label: '(5) 패배 스택 1.75x', goblinStackMultiplier: 1.75 },
-      { threshold: 7, label: '(7) [문장] 패배 스택 3.0x', goblinStackMultiplier: 3.0 },
+      { threshold: 7, label: '(7) 패배 스택 2.5x', goblinStackMultiplier: 2.5 },
+      { threshold: 9, label: '(9) [문장] 패배 스택 3.5x', goblinStackMultiplier: 3.5 },
     ],
   },
   BEASTKIN: {
