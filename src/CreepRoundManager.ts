@@ -3,7 +3,7 @@
 import { createCreepMonsterInstance } from './CreepMonsterData';
 import { LootOrb, LootOrbTier } from './DopamineEngine';
 import {
-  BASE_ITEM_IDS,
+  STANDARD_BASE_ITEM_IDS,
   CompletedItemId,
   ITEM_DEFINITIONS,
   ItemId,
@@ -12,7 +12,7 @@ import { RoundType } from './GameLoopManager';
 import { Participant } from './Participant';
 
 const COMPLETED_ITEM_IDS: CompletedItemId[] = Object.values(ITEM_DEFINITIONS)
-  .filter((item) => item.isCompleted)
+  .filter((item) => item.isCompleted && !item.grantsTrait)
   .map((item) => item.id as CompletedItemId);
 
 export interface CreepEquityQuota {
@@ -316,7 +316,7 @@ export class CreepRoundManager {
       bot.gold += botGoldReward;
 
       for (let i = 0; i < quota.baseItemCount; i++) {
-        bot.addItemToBench(this.pickRandomItem(BASE_ITEM_IDS));
+        bot.addItemToBench(this.pickRandomItem(STANDARD_BASE_ITEM_IDS));
       }
       for (let i = 0; i < quota.completedItemCount; i++) {
         bot.addItemToBench(this.pickRandomItem(COMPLETED_ITEM_IDS));
@@ -340,7 +340,7 @@ export class CreepRoundManager {
 
     const box1Items: ItemId[] = [];
     if (quota.baseItemCount >= 1) {
-      box1Items.push(this.pickRandomItem(BASE_ITEM_IDS));
+      box1Items.push(this.pickRandomItem(STANDARD_BASE_ITEM_IDS));
     }
     playerOrbs.push(
       this.createMysteryBoxOrb(
@@ -355,7 +355,7 @@ export class CreepRoundManager {
 
     const box2Items: ItemId[] = [];
     for (let i = 1; i < quota.baseItemCount; i++) {
-      box2Items.push(this.pickRandomItem(BASE_ITEM_IDS));
+      box2Items.push(this.pickRandomItem(STANDARD_BASE_ITEM_IDS));
     }
     playerOrbs.push(
       this.createMysteryBoxOrb(

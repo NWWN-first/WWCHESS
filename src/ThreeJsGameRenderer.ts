@@ -148,7 +148,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     walkAnim: 'Run',
   },
   // 5. 데스나이트 (망자 기병 데스나이트) - 2코 Undead Scourge / Vanguard / Berserker (흑철 갑주 해골 챔피언)
-  u2_boneknight: {
+  u4_bone: {
     modelKey: 'Warrior',
     scale: 1.25,
     primaryColor: 0x1e293b,
@@ -188,7 +188,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     aura: 'HOLY_GOLD',
   },
   // 8. 타나토스 (칠흑의 사신 타나토스) - 4코 Undead Scourge / Shadow Assassin (칠흑 후드 망토 & 영혼 수확도)
-  u4_thanatos: {
+  u5_kairos: {
     modelKey: 'Rogue',
     scale: 1.22,
     primaryColor: 0x1e1b4b,
@@ -381,7 +381,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     walkAnim: 'Run',
   },
   // 22. 크로나 (마탑 파수병 크로나) - 1코 Arcane Tower / Vanguard (비전 룬 마법 판금병)
-  u1_chrona: {
+  u4_chrona: {
     modelKey: 'BlueSoldier_Male',
     scale: 1.16,
     primaryColor: 0x1e3a8a,
@@ -394,7 +394,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     walkAnim: 'Run',
   },
   // 23. 스내치 (고블린 투창병 스내치) - 1코 Golden Goblin / Ranger (황금 고블린 투창 저격병)
-  u1_snatch: {
+  u4_snatch: {
     modelKey: 'Goblin_Female',
     scale: 0.95,
     primaryColor: 0x15803d,
@@ -407,7 +407,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     walkAnim: 'Run',
   },
   // 24. 프레이 (황혼의 도끼병 프레이) - 1코 Holy Empire / Berserker / Vanguard (황혼 발키리 전사)
-  u1_shieldmaiden: {
+  u1_tusk: {
     modelKey: 'Viking_Female',
     scale: 1.12,
     primaryColor: 0xb91c1c,
@@ -553,7 +553,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     walkAnim: 'Run',
   },
   // 35. 말리스 (심연 흑마법사 말리스) - 2코 Abyssal Demon / Archmage (칠흑 보라 심연 사령술사)
-  u2_malice: {
+  u2_howl: {
     modelKey: 'Skeleton_Mage',
     scale: 1.18,
     primaryColor: 0x3b0764,
@@ -589,7 +589,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     aura: 'POISON_GREEN',
   },
   // 38. 블라드 (블러드 로드 블라드) - 3코 Abyssal Demon / Arcane Tower (선혈 흡혈 군주 뱀파이어)
-  u3_vlad: {
+  u3_bramble: {
     modelKey: 'Kimono_Female',
     scale: 1.20,
     primaryColor: 0x450a0a,
@@ -645,21 +645,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     walkAnim: 'Run',
   },
   // 42. 말라코르 (영혼 수확자 말라코르) - 3코 Undead Scourge / Archmage (망령 영혼 수확 사령관)
-  u3_malakor: {
-    modelKey: 'Zombie_Female',
-    scale: 1.20,
-    primaryColor: 0x1e293b,
-    emissiveColor: 0x06b6d4,
-    attackAnim: 'Spellcast_Shoot',
-    skillAnim: 'Spellcast_Raise',
-    deathAnim: 'Death_C_Skeletons',
-    stunAnim: 'Skeleton_Inactive_Standing_Pose',
-    aura: 'FROST_CYAN',
-    idleAnim: 'Idle',
-    walkAnim: 'Run',
-  },
   // 43. 세라피나 (빛의 사제 세라피나) - 3코 Holy Empire / Arcane Tower / Paladin (순백의 대천사 사제)
-  u3_seraphina: {
+  u4_celeste: {
     modelKey: 'RPG_Wizard',
     scale: 1.10,
     primaryColor: 0xfffbeb,
@@ -720,7 +707,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     aura: 'FIRE_RED',
   },
   // 48. 벨코라 (공허의 여제 벨코라) - 4코 Abyssal Demon / Arcane Tower / Archmage (차원의 균열 공허 여제)
-  u4_velkora: {
+  u3_quartz: {
     modelKey: 'Witch',
     scale: 1.22,
     primaryColor: 0x312e81,
@@ -733,18 +720,6 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     walkAnim: 'Run',
   },
   // 49. 브륜힐드 (천상의 발키리 브륜힐드) - 4코 Holy Empire / Paladin / Ranger (황금빛 전장의 수호 발키리)
-  u4_valkyrie: {
-    modelKey: 'Viking_Female',
-    scale: 1.26,
-    primaryColor: 0xf8fafc,
-    emissiveColor: 0xfacc15,
-    attackAnim: '1H_Melee_Attack_Slice_Horizontal',
-    skillAnim: '2H_Melee_Attack_Chop',
-    stunAnim: 'Lie_Idle',
-    aura: 'HOLY_GOLD',
-    idleAnim: 'Idle',
-    walkAnim: 'Run',
-  },
   // 50. 파프니르 (황금 갑주룡 파프니르) - 4코 Dragonkin / Golden Goblin / Vanguard (탐욕의 거대 황금 갑주룡)
   u4_fafnir: {
     modelKey: 'Dragon',
@@ -803,7 +778,7 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     walkAnim: 'Run',
   },
   // 54. 오베론 (숲의 고대수호자 오베론) - 4코 Elven Sylvan / Vanguard / Paladin (고대 요정왕 수호 기사)
-  u4_diablo: {
+  u4_ursa: {
     modelKey: 'Elf',
     scale: 1.32,
     primaryColor: 0x065f46,
@@ -857,16 +832,6 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     aura: 'ARCANE_BLUE',
   },
   // 58. 크로노스 (시간의 지배자 크로노스) - 5코 전설 Arcane Tower / Archmage / Undead Scourge (시공간 차원 지배신)
-  u5_chronos: {
-    modelKey: 'Mage',
-    scale: 1.30,
-    primaryColor: 0x1e3a8a,
-    emissiveColor: 0x38bdf8,
-    attackAnim: 'Spellcast_Shoot',
-    skillAnim: 'Spellcast_Long',
-    stunAnim: 'Lie_Idle',
-    aura: 'ARCANE_BLUE',
-  },
   // 59. 릴리스 (심연의 여왕 릴리스) - 5코 전설 Abyssal Demon / Shadow Assassin / Berserker (피의 지옥 심연 여왕)
   u5_lilith: {
     modelKey: 'Kimono_Female',

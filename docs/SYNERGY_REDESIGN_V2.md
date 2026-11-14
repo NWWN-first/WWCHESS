@@ -1,6 +1,6 @@
 # WWCHESS 시너지·기물 재기획 V2.1
 
-> 상태: **기획안 (코드 미적용)** · 개정: 시너지 3개 유닛을 TFT처럼 의도적으로 포함
+> 상태: **V2.1 코드 적용 중** · 개정: 시너지 3개 유닛을 TFT처럼 의도적으로 포함
 >
 > 전체 챔피언·스킬·시너지 목록: [`SYNERGY_ROSTER_CATALOG_V21.md`](./SYNERGY_ROSTER_CATALOG_V21.md)  
 > 기준: TFT Set 14 구조 규칙 + 현 WWCHESS 60챔프 규모  

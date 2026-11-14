@@ -7,7 +7,7 @@ import { DopamineEngine, LootOrb } from './DopamineEngine';
 import {
   AugmentDefinition,
   AugmentTier,
-  BASE_ITEM_IDS,
+  STANDARD_BASE_ITEM_IDS,
   CompletedItemId,
   ITEM_DEFINITIONS,
   ItemId,
@@ -514,14 +514,14 @@ export class GameLoopManager {
     const isLateStage = this.stage >= 4;
 
     const completedItems = Object.values(ITEM_DEFINITIONS).filter(
-      (i) => i.isCompleted
+      (i) => i.isCompleted && !i.grantsTrait
     );
     const randomCompleted =
       completedItems[Math.floor(Math.random() * completedItems.length)];
     const randomBaseA =
-      BASE_ITEM_IDS[Math.floor(Math.random() * BASE_ITEM_IDS.length)];
+      STANDARD_BASE_ITEM_IDS[Math.floor(Math.random() * STANDARD_BASE_ITEM_IDS.length)];
     const randomBaseB =
-      BASE_ITEM_IDS.find((b) => b !== randomBaseA) ?? BASE_ITEM_IDS[0];
+      STANDARD_BASE_ITEM_IDS.find((b) => b !== randomBaseA) ?? STANDARD_BASE_ITEM_IDS[0];
 
     const targetCost = isLateStage ? 5 : this.stage === 3 ? 4 : 3;
     const unitPool = UNITS_BY_COST[targetCost];
@@ -572,7 +572,7 @@ export class GameLoopManager {
     for (const p of this.participants) {
       if (p.isAI && !p.isEliminated) {
         const botItem =
-          BASE_ITEM_IDS[Math.floor(Math.random() * BASE_ITEM_IDS.length)];
+          STANDARD_BASE_ITEM_IDS[Math.floor(Math.random() * STANDARD_BASE_ITEM_IDS.length)];
         p.addItemToBench(botItem);
         p.gold += 4;
       }

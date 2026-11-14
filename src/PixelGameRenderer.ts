@@ -64,6 +64,42 @@ export interface UnitPixelArtSpec {
 }
 
 export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
+  u1_fang: {
+    primaryArmor: '#7c2d12',
+    secondaryArmor: '#c2410c',
+    trimGold: '#fbbf24',
+    skinOrFace: '#fdba74',
+    eyeGlow: '#fecaca',
+    weaponColor: '#e2e8f0',
+    weaponGlow: '#f97316',
+    headgear: 'SKULL',
+    weapon: 'GREATSWORD',
+    wings: 'NONE',
+  },
+  u2_claw: {
+    primaryArmor: '#3f2a1d',
+    secondaryArmor: '#a0522d',
+    trimGold: '#d2b48c',
+    skinOrFace: '#e7c6a0',
+    eyeGlow: '#fbbf24',
+    weaponColor: '#cbd5e1',
+    weaponGlow: '#f59e0b',
+    headgear: 'HOOD',
+    weapon: 'DUAL_DAGGERS',
+    wings: 'NONE',
+  },
+  u3_pack: {
+    primaryArmor: '#365314',
+    secondaryArmor: '#4d7c0f',
+    trimGold: '#a3e635',
+    skinOrFace: '#d9f99d',
+    eyeGlow: '#ecfccb',
+    weaponColor: '#a3a3a3',
+    weaponGlow: '#84cc16',
+    headgear: 'ELVEN_CIRCLET',
+    weapon: 'BOW',
+    wings: 'CAPE',
+  },
   // --------------------------------------------------------------------------
   // 1코스트 (14종)
   // --------------------------------------------------------------------------
@@ -187,7 +223,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'DUAL_DAGGERS',
     wings: 'NONE',
   },
-  u1_chrona: {
+  u4_chrona: {
     primaryArmor: '#0f172a',
     secondaryArmor: '#0284c7',
     trimGold: '#38bdf8',
@@ -199,7 +235,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'SWORD_SHIELD',
     wings: 'CAPE',
   },
-  u1_snatch: {
+  u4_snatch: {
     primaryArmor: '#713f12',
     secondaryArmor: '#ca8a04',
     trimGold: '#facc15',
@@ -211,7 +247,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'SPEAR',
     wings: 'NONE',
   },
-  u1_shieldmaiden: {
+  u1_tusk: {
     primaryArmor: '#1e40af',
     secondaryArmor: '#93c5fd',
     trimGold: '#f59e0b',
@@ -371,7 +407,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'GREATSWORD',
     wings: 'NONE',
   },
-  u2_boneknight: {
+  u4_bone: {
     primaryArmor: '#1e1b4b',
     secondaryArmor: '#6366f1',
     trimGold: '#2dd4bf',
@@ -383,7 +419,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'SWORD_SHIELD',
     wings: 'CAPE',
   },
-  u2_malice: {
+  u2_howl: {
     primaryArmor: '#581c87',
     secondaryArmor: '#a855f7',
     trimGold: '#f43f5e',
@@ -435,7 +471,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'NATURE_STAFF',
     wings: 'CAPE',
   },
-  u3_vlad: {
+  u3_bramble: {
     primaryArmor: '#450a0a',
     secondaryArmor: '#dc2626',
     trimGold: '#f87171',
@@ -483,19 +519,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'DUAL_DAGGERS',
     wings: 'NONE',
   },
-  u3_malakor: {
-    primaryArmor: '#10002b',
-    secondaryArmor: '#3c096c',
-    trimGold: '#00f5d4',
-    skinOrFace: '#dee2e6',
-    eyeGlow: '#00f5d4',
-    weaponColor: '#5a189a',
-    weaponGlow: '#00f5d4',
-    headgear: 'SKULL',
-    weapon: 'SCYTHE',
-    wings: 'CAPE',
-  },
-  u3_seraphina: {
+  u4_celeste: {
     primaryArmor: '#1e3a8a',
     secondaryArmor: '#bfdbfe',
     trimGold: '#fde047',
@@ -583,7 +607,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'ARCHMAGE_ORB',
     wings: 'CAPE',
   },
-  u4_thanatos: {
+  u5_kairos: {
     primaryArmor: '#090d16',
     secondaryArmor: '#581c87',
     trimGold: '#2dd4bf',
@@ -619,7 +643,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'GREATSWORD',
     wings: 'DEMON_WINGS',
   },
-  u4_velkora: {
+  u3_quartz: {
     primaryArmor: '#3a0ca3',
     secondaryArmor: '#7209b7',
     trimGold: '#4cc9f0',
@@ -630,18 +654,6 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     headgear: 'WIZARD_HAT',
     weapon: 'ARCHMAGE_ORB',
     wings: 'CAPE',
-  },
-  u4_valkyrie: {
-    primaryArmor: '#d97706',
-    secondaryArmor: '#fef3c7',
-    trimGold: '#fde047',
-    skinOrFace: '#fffbeb',
-    eyeGlow: '#38bdf8',
-    weaponColor: '#fef08a',
-    weaponGlow: '#ffffff',
-    headgear: 'HALO_HELM',
-    weapon: 'SPEAR',
-    wings: 'ANGEL_WINGS',
   },
   u4_fafnir: {
     primaryArmor: '#b45309',
@@ -691,7 +703,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weapon: 'BOW',
     wings: 'DRAGON_WINGS',
   },
-  u4_diablo: {
+  u4_ursa: {
     primaryArmor: '#14532d',
     secondaryArmor: '#22c55e',
     trimGold: '#fde047',
@@ -766,18 +778,6 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     headgear: 'DRAGON_HORNS',
     weapon: 'ARCHMAGE_ORB',
     wings: 'DRAGON_WINGS',
-  },
-  u5_chronos: {
-    primaryArmor: '#0f172a',
-    secondaryArmor: '#0284c7',
-    trimGold: '#facc15',
-    skinOrFace: '#e0f2fe',
-    eyeGlow: '#fef08a',
-    weaponColor: '#facc15',
-    weaponGlow: '#38bdf8',
-    headgear: 'CROWN',
-    weapon: 'ARCHMAGE_ORB',
-    wings: 'ANGEL_WINGS',
   },
   u5_lilith: {
     primaryArmor: '#4c0519',

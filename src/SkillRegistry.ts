@@ -94,6 +94,10 @@ export interface CombatUnit {
   enableSkillCrit: boolean;
   trueDamageBonusRatio: number;
   damageReductionRatio: number;
+  /** 전술가 등 상시 피해 감소 (개전 감피해와 별개) */
+  durableDamageReduction: number;
+  /** 전술가 후열 등 출구 딜증 */
+  outgoingDamageAmp: number;
   ccDurationReduction: number;
 
   stunTimerMs: number;

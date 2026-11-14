@@ -4,7 +4,7 @@ import {
   AUGMENT_DEFINITIONS,
   AugmentDefinition,
   AugmentTier,
-  BASE_ITEM_IDS,
+  STANDARD_BASE_ITEM_IDS,
   CompletedItemId,
   CostTier,
   ITEM_DEFINITIONS,
@@ -37,7 +37,7 @@ export interface LootOrb {
 }
 
 const COMPLETED_ITEM_IDS: CompletedItemId[] = Object.values(ITEM_DEFINITIONS)
-  .filter((item) => item.isCompleted)
+  .filter((item) => item.isCompleted && !item.grantsTrait)
   .map((item) => item.id as CompletedItemId);
 
 let globalOrbCounter = 1;
@@ -434,8 +434,8 @@ export class DopamineEngine {
   }
 
   private static randomBaseItem(): ItemId {
-    const idx = Math.floor(Math.random() * BASE_ITEM_IDS.length);
-    return BASE_ITEM_IDS[idx];
+    const idx = Math.floor(Math.random() * STANDARD_BASE_ITEM_IDS.length);
+    return STANDARD_BASE_ITEM_IDS[idx];
   }
 
   private static randomCompletedItem(): CompletedItemId {

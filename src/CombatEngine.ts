@@ -1,6 +1,11 @@
 // src/CombatEngine.ts
 
-import { ITEM_DEFINITIONS, TraitId, UNIT_TEMPLATES } from './GameData';
+import {
+  ITEM_DEFINITIONS,
+  TraitId,
+  UNIT_TEMPLATES,
+  getEffectiveUnitTraits,
+} from './GameData';
 import { HexGridMath } from './HexGridMath';
 import { Participant, UnitInstance } from './Participant';
 import {
@@ -223,7 +228,7 @@ export class CombatEngine implements SkillCombatContext {
       team,
       cost: source.cost,
       starLevel: source.starLevel,
-      traits: [...source.traits],
+      traits: getEffectiveUnitTraits(source.traits, source.items),
       icon: source.icon,
       items: [...source.items],
       row,
@@ -250,6 +255,8 @@ export class CombatEngine implements SkillCombatContext {
       enableSkillCrit: false,
       trueDamageBonusRatio: 0,
       damageReductionRatio: 0,
+      durableDamageReduction: 0,
+      outgoingDamageAmp: 0,
       ccDurationReduction: 0,
       stunTimerMs: 0,
       manaLockTimerMs: 0,
@@ -590,9 +597,9 @@ export class CombatEngine implements SkillCombatContext {
       cu.atkSpeed = Number((cu.atkSpeed + 0.15).toFixed(2));
       cu.omnivamp = Number((cu.omnivamp + 0.22).toFixed(2));
     }
-    if (cu.unitId === 'u3_malakor' && owner.augments.includes('AUG_HERO_MALAKOR')) {
+    if (cu.unitId === 'u4_lichking' && owner.augments.includes('AUG_HERO_MALAKOR')) {
       cu.spellPower = Number((cu.spellPower + 0.5).toFixed(2));
-      cu.currentMana = cu.maxMana; // 전투 시작 즉시 광역 마나 강탈 스킬 발사!
+      cu.currentMana = cu.maxMana;
     }
 
 
@@ -605,11 +612,21 @@ export class CombatEngine implements SkillCombatContext {
       cu.baseDef += empire.bonusDef;
     }
 
-    // - 심연의 악마(ABYSSAL_DEMON): 고정 피해 및 모든 피해 흡혈
+    // - 심연의 악마(ABYSSAL_DEMON): 추가 고정 피해만 (흡혈은 야수혈족으로 이관)
     const demon = synergyMap.get('ABYSSAL_DEMON')?.activeEffect;
     if (demon && cu.traits.includes('ABYSSAL_DEMON')) {
       cu.trueDamageBonusRatio += demon.trueDamageRatio ?? 0;
-      cu.omnivamp += demon.omnivamp ?? 0;
+    }
+
+    // - 야수혈족(BEASTKIN): 최대 체력% + 흡혈
+    const beast = synergyMap.get('BEASTKIN')?.activeEffect;
+    if (beast && cu.traits.includes('BEASTKIN')) {
+      if (beast.maxHpBonusRatio) {
+        const bonusHp = Math.round(cu.maxHp * beast.maxHpBonusRatio);
+        cu.maxHp += bonusHp;
+        cu.currentHp += bonusHp;
+      }
+      cu.omnivamp = Number((cu.omnivamp + (beast.omnivamp ?? 0)).toFixed(2));
     }
 
     // - 용족(DRAGONKIN): 스킬 치명타 활성화 및 치명타 피해 증가
@@ -664,6 +681,19 @@ export class CombatEngine implements SkillCombatContext {
     const paladin = synergyMap.get('PALADIN')?.activeEffect;
     if (paladin && paladin.ccDurationReduction) {
       cu.ccDurationReduction = paladin.ccDurationReduction;
+    }
+
+    // - 전술가(STRATEGIST): 후열 딜증 / 전열 내구 (전술가 본인 ×3)
+    const strategist = synergyMap.get('STRATEGIST')?.activeEffect;
+    if (strategist) {
+      const selfMult = cu.traits.includes('STRATEGIST') ? 3 : 1;
+      const isBackline = cu.range >= 3;
+      if (isBackline && strategist.backlineDamageAmp) {
+        cu.outgoingDamageAmp += strategist.backlineDamageAmp * selfMult;
+      }
+      if (!isBackline && strategist.frontlineDurability) {
+        cu.durableDamageReduction += strategist.frontlineDurability * selfMult;
+      }
     }
 
     return cu;
@@ -733,7 +763,49 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // 4. 5코스트 3성 황금 고블린 왕 골드투스(u5_goldtooth) 개전 즉시 권능 발동!
+    // 4. 기술자(ARTIFICER): 전열 임시 보호막 + (4+) 소형 포탑 개전 일격
+    const artificer = synergyMap.get('ARTIFICER')?.activeEffect;
+    if (artificer) {
+      const artCaster = teamUnits.find((u) => u.traits.includes('ARTIFICER'));
+      if (artCaster && artificer.artificerShieldRatio) {
+        for (const u of teamUnits) {
+          if (u.range <= 1) {
+            const shieldAmt = Math.round(u.maxHp * artificer.artificerShieldRatio);
+            this.addShield(artCaster, u, shieldAmt);
+          }
+        }
+      }
+      if (artCaster && artificer.artificerTurretDamage) {
+        const nearest = enemyUnits
+          .slice()
+          .sort(
+            (a, b) =>
+              this.chebyshevDistance(artCaster.row, artCaster.col, a.row, a.col) -
+              this.chebyshevDistance(artCaster.row, artCaster.col, b.row, b.col)
+          )[0];
+        if (nearest) {
+          this.dealDamage(
+            artCaster,
+            nearest,
+            artificer.artificerTurretDamage,
+            'MAGICAL',
+            false,
+            true
+          );
+          this.emitEvent({
+            type: 'SKILL_CAST',
+            tick: this.currentTick,
+            sourceId: artCaster.instanceId,
+            team: artCaster.team,
+            unitId: artCaster.unitId,
+            skillName: '기술자 포탑',
+            message: `🔧 기술자 포탑이 ${artificer.artificerTurretDamage} 피해!`,
+          });
+        }
+      }
+    }
+
+    // 5. 5코스트 3성 황금 고블린 왕 골드투스(u5_goldtooth) 개전 즉시 권능 발동!
     for (const u of teamUnits) {
       if (u.unitId === 'u5_goldtooth' && u.starLevel === 3 && u.currentHp > 0) {
         const aliveEnemies = this.units.filter(
@@ -1282,8 +1354,8 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // [영웅] 파멸의 영혼 군주 말라코르: 모든 적 치유 감소 60% 및 전원 마나 5씩 강탈
-    if (unit.unitId === 'u3_malakor' && owner?.augments.includes('AUG_HERO_MALAKOR')) {
+    // [영웅] 리치왕: 전원 마나 강탈 + 추가 마법 피해
+    if (unit.unitId === 'u4_lichking' && owner?.augments.includes('AUG_HERO_MALAKOR')) {
       const allEnemies = this.units.filter(
         (e) => e.team !== unit.team && e.currentHp > 0 && !e.isReviving
       );
@@ -1483,6 +1555,11 @@ export class CombatEngine implements SkillCombatContext {
 
     let modifiedRaw = Math.max(1, rawAmount);
 
+    // 전술가 후열 딜증 등
+    if (attacker.outgoingDamageAmp > 0) {
+      modifiedRaw *= 1 + attacker.outgoingDamageAmp;
+    }
+
     // 거인 학살자(GIANT_SLAYER): 대상 최대 체력 1300 이상일 때 피해량 +35%
     if (
       target.maxHp >= 1300 &&
@@ -1513,6 +1590,10 @@ export class CombatEngine implements SkillCombatContext {
     // 선봉대(VANGUARD) 개전 8초간 피해 감소 적용
     if (target.damageReductionRatio > 0 && damageType !== 'TRUE') {
       mitigatedDamage *= 1 - target.damageReductionRatio;
+    }
+    // 전술가 전열 내구 등 상시 피해 감소
+    if (target.durableDamageReduction > 0 && damageType !== 'TRUE') {
+      mitigatedDamage *= 1 - Math.min(0.5, target.durableDamageReduction);
     }
 
     // 심연의 악마(ABYSSAL_DEMON) 추가 고정 피해 합산

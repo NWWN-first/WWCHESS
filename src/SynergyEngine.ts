@@ -6,6 +6,7 @@ import {
   TraitEffectTier,
   TraitId,
   UNIT_TEMPLATES,
+  getEffectiveUnitTraits,
 } from './GameData';
 import { Participant, UnitInstance } from './Participant';
 
@@ -69,7 +70,8 @@ export class SynergyEngine {
 
         uniqueBoardUnitIds.add(unit.unitId);
         const template = UNIT_TEMPLATES[unit.unitId];
-        const traits = template ? template.traits : unit.traits;
+        const baseTraits = template ? template.traits : unit.traits;
+        const traits = getEffectiveUnitTraits(baseTraits, unit.items);
 
         for (const traitId of traits) {
           traitCounts.set(traitId, (traitCounts.get(traitId) ?? 0) + 1);
@@ -188,7 +190,7 @@ export class SynergyEngine {
     for (const u of units) {
       if (uniqueIds.has(u.unitId)) continue;
       uniqueIds.add(u.unitId);
-      for (const t of u.traits) {
+      for (const t of getEffectiveUnitTraits(u.traits, u.items)) {
         counts.set(t, (counts.get(t) ?? 0) + 1);
       }
     }

@@ -5,6 +5,9 @@ import {
   BaseItemId,
   CompletedItemId,
   combineBaseItems,
+  getEffectiveUnitTraits,
+  STANDARD_BASE_ITEM_IDS,
+  traitIdToEmblemItem,
   CostTier,
   COST_COMBAT_BALANCE,
   ITEM_DEFINITIONS,
@@ -928,7 +931,7 @@ export class Participant implements PoolParticipant {
         if (!unit || seenUnitIds.has(unit.unitId)) continue;
         seenUnitIds.add(unit.unitId);
 
-        for (const traitId of unit.traits) {
+        for (const traitId of getEffectiveUnitTraits(unit.traits, unit.items)) {
           counts.set(traitId, (counts.get(traitId) ?? 0) + 1);
         }
       }
@@ -978,13 +981,13 @@ export class Participant implements PoolParticipant {
 
   private randomCompletedItemId(): CompletedItemId {
     const ids = Object.values(ITEM_DEFINITIONS)
-      .filter((d) => d.isCompleted)
+      .filter((d) => d.isCompleted && !d.grantsTrait)
       .map((d) => d.id as CompletedItemId);
     return ids[Math.floor(Math.random() * ids.length)];
   }
 
   private randomBaseItemId(): BaseItemId {
-    const ids: BaseItemId[] = ['SWORD', 'BOW', 'ROD', 'TEAR', 'ARMOR'];
+    const ids = STANDARD_BASE_ITEM_IDS;
     return ids[Math.floor(Math.random() * ids.length)];
   }
 
@@ -1033,12 +1036,16 @@ export class Participant implements PoolParticipant {
       }
     }
     if (aug.bonusTrait && aug.bonusTraitCount) {
-      const prev = this.bonusTraits.get(aug.bonusTrait) ?? 0;
-      this.bonusTraits.set(aug.bonusTrait, prev + aug.bonusTraitCount);
-    }
-    if (aug.effectKey === 'ARCANE_CREST') {
-      const prevArchmage = this.bonusTraits.get('ARCHMAGE') ?? 0;
-      this.bonusTraits.set('ARCHMAGE', prevArchmage + 1);
+      // V2.1: invisible +N 대신 상징 아이템 지급 (장착해야 카운트)
+      const emblem = traitIdToEmblemItem(aug.bonusTrait);
+      if (emblem) {
+        for (let i = 0; i < aug.bonusTraitCount; i++) {
+          this.addItemToBench(emblem);
+        }
+      } else {
+        const prev = this.bonusTraits.get(aug.bonusTrait) ?? 0;
+        this.bonusTraits.set(aug.bonusTrait, prev + aug.bonusTraitCount);
+      }
     }
     if (aug.effectKey === 'TINY_TITANS') {
       this.maxHp = 130;
