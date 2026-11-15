@@ -576,8 +576,12 @@ class FantasyAutoBattlerApp {
         });
         return;
       }
+      // 전투 중 빈 땅: 기물 툴팁 없이 지휘관 자유 이동
       this.selectedUnitInstanceId = null;
       document.getElementById('tap-tooltip-bar')?.classList.add('hidden');
+      if (viewed.id === this.game.player.id) {
+        this.beginFieldAvatarPointer(e, px, py);
+      }
       return;
     }
 
@@ -722,13 +726,34 @@ class FantasyAutoBattlerApp {
       }
     }
 
-    // 4. 빈 곳 터치 시: 선택 해제 및 탭 완료(handlePointerUp) 시 이동하도록 후보 좌표만 저장
+    // 4. 빈 곳 터치 시: 선택 해제 + 탭 완료 시 지휘관 자유 이동
+    //    (아이템/상자 탭과 별개 — 전장 아무 곳이나 걸어다닐 수 있어야 함)
     this.selectedUnitInstanceId = null;
     document.getElementById('tap-tooltip-bar')?.classList.add('hidden');
 
     if (viewed.id === this.game.player.id) {
-      this.pendingAvatarMove = { px, py };
+      this.beginFieldAvatarPointer(e, px, py);
     }
+  }
+
+  /**
+   * 빈 필드 탭용 포인터 추적.
+   * startPointerInteraction은 tapCallback이 있으면 pointerup에서 아바타 이동보다 먼저 return 하므로,
+   * 자유 이동은 activePointerId만 잡고 tapCallback=null 로 둔다.
+   */
+  private beginFieldAvatarPointer(
+    e: PointerEvent,
+    px: number,
+    py: number
+  ): void {
+    this.activePointerId = e.pointerId;
+    this.pointerDownTime = performance.now();
+    this.pointerStartX = px;
+    this.pointerStartY = py;
+    this.isDragging = false;
+    this.dragPayload = null;
+    this.tapCallback = null;
+    this.pendingAvatarMove = { px, py };
   }
 
   private startPointerInteraction(
