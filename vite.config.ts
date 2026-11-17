@@ -9,5 +9,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     target: 'es2020',
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/three')) return 'vendor-three';
+          if (id.includes('node_modules/pixi.js')) return 'vendor-pixi';
+          if (id.includes('node_modules/onnxruntime-web')) return 'vendor-onnx';
+        },
+      },
+    },
   },
 });

@@ -12,6 +12,10 @@ const GAMES = parseInt(process.env.GAMES ?? '1000', 10);
 const TICK_MS = 200;
 const ROUND_CAP = 70;
 
+/** CI: SIM_KPI=1 enforces hard gates (see README). Soft metrics are logged only. */
+const KPI_GATE = process.env.SIM_KPI === '1' || process.env.SIM_KPI === 'true';
+const KPI_MAX_BENCH_FULL_RATE = parseFloat(process.env.KPI_MAX_BENCH_FULL_RATE ?? '0.05');
+
 interface Agg {
   matches: number;
   wins: number;
@@ -582,3 +586,22 @@ const sortedR = [...roundsPerGame].sort((a, b) => a - b);
 console.log(`  평균 라운드 ${avg(roundsPerGame).toFixed(1)} (최소 ${sortedR[0]}, 중앙 ${sortedR[Math.floor(sortedR.length / 2)]}, 최대 ${sortedR[sortedR.length - 1]})`);
 const combatSec = combatTickN ? (combatTickSum / combatTickN) * 0.05 : 0;
 console.log(`  평균 플레이타임(정비 타이머+전투 ${combatSec.toFixed(1)}초/1x 가정 포함): 정비·정산 ${(avg(playSecPerGame) / 60).toFixed(1)}분 + 전투 ${((combatSec * avg(roundsPerGame)) / 60).toFixed(1)}분 = 약 ${((avg(playSecPerGame) + combatSec * avg(roundsPerGame)) / 60).toFixed(1)}분/판`);
+
+const benchFullRate = flaws.prepEnds > 0 ? flaws.benchFullAtCombat / flaws.prepEnds : 0;
+if (KPI_GATE) {
+  console.log('\n[KPI GATE] hard thresholds');
+  const violations: string[] = [];
+  if (crashed !== 0) violations.push(`game crashes=${crashed} (required 0)`);
+  if (deadlocks !== 0) violations.push(`deadlocks=${deadlocks} (required 0)`);
+  if (benchFullRate > KPI_MAX_BENCH_FULL_RATE) {
+    violations.push(
+      `bench-full before combat ${(benchFullRate * 100).toFixed(2)}% (max ${(KPI_MAX_BENCH_FULL_RATE * 100).toFixed(0)}%)`
+    );
+  }
+  if (violations.length > 0) {
+    console.error('[KPI GATE] FAILED');
+    for (const v of violations) console.error(`  - ${v}`);
+    process.exit(1);
+  }
+  console.log('[KPI GATE] PASSED (crashes/deadlocks 0, bench-full within limit)');
+}

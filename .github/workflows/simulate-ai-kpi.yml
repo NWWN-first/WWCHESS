@@ -1,0 +1,51 @@
+name: Simulate AI KPI (headless)
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'cursor/**'
+    paths:
+      - 'src/AIBotController.ts'
+      - 'src/NeuralBotEngine.ts'
+      - 'src/NeuralWeights.ts'
+      - 'src/Participant.ts'
+      - 'scripts/simulate1000.ts'
+      - 'public/models/wwchess_bot.onnx'
+      - 'public/models/wwchess_bot.onnx.data'
+      - '.github/workflows/simulate-ai-kpi.yml'
+  workflow_dispatch:
+    inputs:
+      games:
+        description: Number of headless games
+        required: false
+        default: '500'
+        type: string
+
+jobs:
+  simulate-ai-kpi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Typecheck and build
+        run: npm run build
+
+      - name: Headless simulate (GAMES=200, KPI gate)
+        env:
+          GAMES: ${{ github.event_name == 'workflow_dispatch' && inputs.games || '200' }}
+          SIM_KPI: '1'
+          KPI_MAX_BENCH_FULL_RATE: '0.05'
+        run: npm run simulate
