@@ -40,6 +40,8 @@ export interface CombatEvent {
   team?: CombatTeam;
   unitId?: string;
   skillName?: string;
+  /** SkillRegistry handler key for VFX routing (from unit template skill.skillType). */
+  skillType?: SkillType;
   fromRow?: number;
   fromCol?: number;
   toRow?: number;

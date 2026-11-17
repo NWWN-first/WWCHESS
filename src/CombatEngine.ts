@@ -983,6 +983,7 @@ export class CombatEngine implements SkillCombatContext {
       team: unit.team,
       unitId: unit.unitId,
       skillName,
+      skillType: template?.skill.skillType,
       fromRow: unit.row,
       fromCol: unit.col,
       toRow: target.row,
