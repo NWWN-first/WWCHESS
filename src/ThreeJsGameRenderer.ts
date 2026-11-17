@@ -404,8 +404,8 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   u2_elowen: {
     modelKey: 'Mage',
     scale: 1.08,
-    primaryColor: 0xf0fdf4,
-    emissiveColor: 0x10b981,
+    primaryColor: 0x166534,
+    emissiveColor: 0x34d399,
     attackAnim: 'Spellcast_Shoot',
     skillAnim: 'Spellcast_Long',
     stunAnim: 'Lie_Idle',
