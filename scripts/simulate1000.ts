@@ -173,8 +173,12 @@ function runOneGame(): void {
         let reason: 'goldFloor' | 'rerollCap' | 'ok' = 'ok';
         if (due) {
           const cost = p.freeRerolls > 0 ? 0 : 2;
+          const effFloor =
+            typeof ai.resolveEffectiveGoldFloor === 'function'
+              ? ai.resolveEffectiveGoldFloor(p, brain)
+              : brain.targetGoldFloorThisRound;
           if (brain.rerollsExecutedThisRound >= brain.maxRerollsAllowedThisRound) reason = 'rerollCap';
-          else if (p.gold - cost < brain.targetGoldFloorThisRound) reason = 'goldFloor';
+          else if (p.gold - cost < effFloor) reason = 'goldFloor';
         }
         const wasRolldown = brain.isRolldownActive;
         let acted = false;
