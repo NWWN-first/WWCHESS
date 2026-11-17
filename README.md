@@ -27,8 +27,19 @@ npm run preview
 
 ```bash
 npm run simulate
-# 빠른 스모크: GAMES=200 npm run simulate
+# CI 스모크 (기본 50판): GAMES=50 npm run simulate
+# AI KPI (200판 + 게이트): GAMES=200 SIM_KPI=1 npm run simulate
 ```
+
+### 시뮬 KPI (SIM_KPI=1)
+
+| 지표 | 임계값 |
+|------|--------|
+| 게임 크래시 | 0 |
+| 데드락 / 라운드캡 중단 | 0 |
+| 대기석 가득 찬 채 전투 진입 비율 | ≤ 5% (`KPI_MAX_BENCH_FULL_RATE`, 기본 `0.05`) |
+
+매크로 분포·APM 등은 로그만 출력하며 첫 CI 반복에서는 실패 조건에 넣지 않습니다.
 
 ## Android APK
 
@@ -59,4 +70,10 @@ CAPACITOR_DEBUG=1 npx cap sync android
 
 ## CI
 
-`main` 푸시 시 GitHub Actions가 APK를 빌드하고 `apk-<run>-<sha>` 태그로 Release에 올립니다.
+| 워크플로 | 트리거 | 시뮬 |
+|---------|--------|------|
+| `simulate-smoke.yml` | PR·push (`main`, `cursor/**`) | `GAMES=50` — 크래시·데드락만 관찰 (하드 게이트 없음) |
+| `simulate-ai-kpi.yml` | PR (봇/AI 경로 변경) · `workflow_dispatch` | `GAMES=200` + `SIM_KPI=1` (위 KPI 표) |
+| `build-apk.yml` | `main` 푸시 | APK 빌드 · Release 태그 `apk-<run>-<sha>` |
+
+수동 장회: Actions → **Simulate AI KPI** → `games` 입력 (기본 500).
