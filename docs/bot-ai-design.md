@@ -7,7 +7,8 @@
 | 환경 | 동작 |
 |------|------|
 | 브라우저(WebView) | `NeuralBotEngine.tryInitOnnx()` → 세션 준비 시 `predictONNX`, 실패·대기 중 `predictSync` |
-| Node 시뮬 | `window` 없음 → 항상 `predictSync` (가중치는 ONNX와 동일 export) |
+| Node 시뮬 (기본) | `window` 없음 → `predictSync` (가중치는 ONNX export와 동일) |
+| Node 시뮬 (`USE_ONNX_SIM=1`) | 시작 시 ONNX·SYNC 패리티 검증 → 게임 본문 SYNC |
 
 `AIBotController.runNeuralInferenceForBrain()`:
 
@@ -56,7 +57,7 @@
 | TEMPO_LEVEL 매크로 비중 | **0%** | **1~4%** (페르소나별, `[1-C2]`) |
 | 올인 리롤 실행률 | ~9.9% | ~8.9% |
 
-> **ONNX:** 시뮬은 SYNC만. 브라우저는 게임 시작 후 봇당 1줄 debug 로그로 백엔드 확인.
+> **ONNX:** KPI·기본 시뮬은 SYNC. `USE_ONNX_SIM=1`로 헤드레스 ONNX 패리티 검증 가능. 브라우저는 게임당 봇 1줄 debug 로그.
 
 ## 다음 반복 (Phase 2+)
 

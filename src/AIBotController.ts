@@ -194,7 +194,7 @@ const PERSONA_WEIGHT_TABLE: ReadonlyArray<{ persona: AIPersona; weight: number }
   { persona: 'FLEX_BALANCED', weight: 1 },
 ];
 
-function rollWeightedPersona(rng: () => number = Math.random): AIPersona {
+export function rollWeightedPersona(rng: () => number = Math.random): AIPersona {
   const total = PERSONA_WEIGHT_TABLE.reduce((s, e) => s + e.weight, 0);
   let roll = rng() * total;
   for (const entry of PERSONA_WEIGHT_TABLE) {
@@ -464,7 +464,11 @@ export class AIBotController {
     this.applyNeuralMacroToBrain(bot, brain, neuralResult, currentRound, aiParams);
     this.logInferenceBackendOnce(bot, brain, neuralResult.backend);
 
-    if (brain.preferOnnxBackend && engine.isOnnxSessionReady()) {
+    if (
+      !engine.useHeadlessOnnxInference() &&
+      brain.preferOnnxBackend &&
+      engine.isOnnxSessionReady()
+    ) {
       void engine.predictONNX(stateTensor.features, predictOpts).then((rawOnnx) => {
         if (rawOnnx.backend !== 'ONNX_RUNTIME') return;
         const onnxResult = this.refineMacroForVisibleTempo(
@@ -548,6 +552,12 @@ export class AIBotController {
     if (persona === 'GOBLIN_GAMBLER') {
       return Math.max(baseFloor, Math.min(cap, 40));
     }
+    if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
+      return Math.max(baseFloor, Math.min(cap, 12 + bot.level));
+    }
+    if (persona === 'FLEX_MASTER' || persona === 'FLEX_BALANCED') {
+      return Math.max(baseFloor, Math.min(cap, 20 + Math.floor(bot.level / 2)));
+    }
     return Math.max(baseFloor, Math.min(cap, 12 + bot.level * 2));
   }
 
@@ -590,7 +600,14 @@ export class AIBotController {
       bot.level >= 5 &&
       bot.level <= 7
     ) {
-      floor = Math.min(floor, macro === 'SAVE_INTEREST' ? 14 : 16);
+      floor = Math.min(floor, macro === 'SAVE_INTEREST' ? 10 : 14);
+    }
+    if (
+      macro === 'STABILIZE_REROLL' &&
+      (brain.persona === 'FLEX_MASTER' || brain.persona === 'FLEX_BALANCED') &&
+      bot.gold >= 22
+    ) {
+      floor = Math.min(floor, 8);
     }
     if (macro === 'TEMPO_LEVEL' && bot.level < 9) {
       floor = Math.min(floor, 10);

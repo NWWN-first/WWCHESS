@@ -29,7 +29,11 @@ npm run preview
 npm run simulate
 # CI 스모크 (기본 50판): GAMES=50 npm run simulate
 # AI KPI (200판 + 게이트): GAMES=200 SIM_KPI=1 npm run simulate
+# ONNX parity (optional, onnxruntime-node): USE_ONNX_SIM=1 GAMES=50 npm run simulate
+# 또는: npm run simulate:onnx
 ```
+
+기본 시뮬·KPI CI는 **SYNC** (`predictSync`)만 사용합니다. `USE_ONNX_SIM=1`이면 시작 시 `onnxruntime-node`로 ONNX·SYNC 로짓 패리티를 검증한 뒤, 게임 본문은 SYNC로 진행합니다(성능·CI 시간). 선택 워크플로: `simulate-onnx-parity.yml`.
 
 ### 시뮬 KPI (SIM_KPI=1)
 
@@ -74,6 +78,7 @@ CAPACITOR_DEBUG=1 npx cap sync android
 |---------|--------|------|
 | `simulate-smoke.yml` | PR·push (`main`, `cursor/**`) | `GAMES=50` — 크래시·데드락만 관찰 (하드 게이트 없음) |
 | `simulate-ai-kpi.yml` | PR (봇/AI 경로 변경) · `workflow_dispatch` | `GAMES=200` + `SIM_KPI=1` (위 KPI 표) |
+| `simulate-onnx-parity.yml` | PR (봇/ONNX 경로) · `workflow_dispatch` | `GAMES=50` + `USE_ONNX_SIM=1` (KPI 게이트 없음) |
 | `build-apk.yml` | `main` 푸시 | APK 빌드 · Release 태그 `apk-<run>-<sha>` |
 
 수동 장회: Actions → **Simulate AI KPI** → `games` 입력 (기본 500).
