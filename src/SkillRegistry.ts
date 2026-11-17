@@ -1,6 +1,14 @@
 // src/SkillRegistry.ts
 
-import { CostTier, ItemId, SkillType, StarLevel, TraitId, UNIT_TEMPLATES } from './GameData';
+import {
+  CostTier,
+  ItemId,
+  SkillType,
+  StarLevel,
+  STAR_STAT_MULTIPLIER,
+  TraitId,
+  UNIT_TEMPLATES,
+} from './GameData';
 import { HexGridMath } from './HexGridMath';
 
 export type CombatTeam = 'HOME' | 'AWAY';
@@ -161,18 +169,27 @@ function chebyshevDist(
   return HexGridMath.hexDistance(r1, c1, r2, c2);
 }
 
+function getStarSkillMult(caster: CombatUnit): number {
+  const template = UNIT_TEMPLATES[caster.unitId];
+  if (!template) return 1;
+  const star = Math.max(1, Math.min(3, caster.starLevel)) as StarLevel;
+  return STAR_STAT_MULTIPLIER[template.cost][star].skillMult;
+}
+
 function getSkillPrimaryValue(caster: CombatUnit): number {
   const template = UNIT_TEMPLATES[caster.unitId];
   if (!template) return 200;
   const idx = Math.max(0, Math.min(2, caster.starLevel - 1));
-  return template.skill.baseValueByStar[idx] * caster.spellPower;
+  return (
+    template.skill.baseValueByStar[idx] * caster.spellPower * getStarSkillMult(caster)
+  );
 }
 
 function getSkillSecondaryValue(caster: CombatUnit): number {
   const template = UNIT_TEMPLATES[caster.unitId];
   if (!template || !template.skill.secondaryValueByStar) return 0;
   const idx = Math.max(0, Math.min(2, caster.starLevel - 1));
-  return template.skill.secondaryValueByStar[idx];
+  return template.skill.secondaryValueByStar[idx] * getStarSkillMult(caster);
 }
 
 // ============================================================================
@@ -731,7 +748,7 @@ const UNIT_SKILL_HANDLERS: Record<string, SkillHandler> = {
     for (const enemy of enemies) {
       ctx.dealDamage(caster, enemy, damage, 'MAGICAL', caster.enableSkillCrit, true);
       if (enemy.currentHp > 0) {
-        ctx.applyStun(caster, enemy, 1800);
+        ctx.applyStun(caster, enemy, 2100);
       }
     }
   },

@@ -77,7 +77,7 @@ export const STAR_STAT_MULTIPLIER: Record<
   },
   5: {
     1: { hpMult: 1.0, atkMult: 1.0, skillMult: 1.0 },
-    2: { hpMult: 1.75, atkMult: 1.75, skillMult: 1.0 }, // 5코 2성 미세 완만화
+    2: { hpMult: 1.85, atkMult: 1.85, skillMult: 1.0 }, // 5코 2성: 타 코스트 2성과 동등 (v2)
     3: { hpMult: 4.0, atkMult: 3.5, skillMult: 20.0 }, // 5코 3성은 여전히 전장 즉사급
   },
 };
