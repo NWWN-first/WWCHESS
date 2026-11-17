@@ -61,6 +61,19 @@ export interface UnitPixelArtSpec {
   wings: WingKind;
 }
 
+/** 엘프 숲(ELVEN_SYLVAN) 유닛 — 도트 실루엣/테두리 대비 강화용 */
+export const ELVEN_SYLVAN_UNIT_IDS = new Set([
+  'u1_aria',
+  'u1_thorn',
+  'u2_ent',
+  'u2_elowen',
+  'u3_sylphie',
+  'u3_kazu',
+  'u4_sylph',
+  'u4_diablo',
+  'u5_yggdrasil',
+]);
+
 export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
   // --------------------------------------------------------------------------
   // 1코스트 (14종)
@@ -151,11 +164,11 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
   },
   u1_thorn: {
     primaryArmor: '#14532d',
-    secondaryArmor: '#16a34a',
-    trimGold: '#a3e635',
-    skinOrFace: '#86efac',
+    secondaryArmor: '#15803d',
+    trimGold: '#84cc16',
+    skinOrFace: '#c4a77d',
     eyeGlow: '#fef08a',
-    weaponColor: '#65a30d',
+    weaponColor: '#3f6212',
     weaponGlow: '#4ade80',
     headgear: 'GOLEM_CORE',
     weapon: 'SWORD_SHIELD',
@@ -422,13 +435,13 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     wings: 'DRAGON_WINGS',
   },
   u3_sylphie: {
-    primaryArmor: '#065f46',
-    secondaryArmor: '#34d399',
-    trimGold: '#a7f3d0',
-    skinOrFace: '#ecfdf5',
-    eyeGlow: '#6ee7b7',
-    weaponColor: '#10b981',
-    weaponGlow: '#a7f3d0',
+    primaryArmor: '#064e3b',
+    secondaryArmor: '#059669',
+    trimGold: '#6ee7b7',
+    skinOrFace: '#c9e4ca',
+    eyeGlow: '#34d399',
+    weaponColor: '#047857',
+    weaponGlow: '#6ee7b7',
     headgear: 'ELVEN_CIRCLET',
     weapon: 'NATURE_STAFF',
     wings: 'CAPE',
@@ -595,12 +608,12 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
   },
   u4_sylph: {
     primaryArmor: '#1b4332',
-    secondaryArmor: '#52b788',
-    trimGold: '#ffd166',
-    skinOrFace: '#fff1e6',
-    eyeGlow: '#b7e4c7',
-    weaponColor: '#ffd166',
-    weaponGlow: '#95d5b2',
+    secondaryArmor: '#2d6a4f',
+    trimGold: '#f4d35e',
+    skinOrFace: '#e0b992',
+    eyeGlow: '#74c69d',
+    weaponColor: '#d4a05a',
+    weaponGlow: '#52b788',
     headgear: 'ELVEN_CIRCLET',
     weapon: 'BOW',
     wings: 'CAPE',
@@ -691,12 +704,12 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
   },
   u4_diablo: {
     primaryArmor: '#14532d',
-    secondaryArmor: '#22c55e',
-    trimGold: '#fde047',
-    skinOrFace: '#dcfce7',
-    eyeGlow: '#86efac',
-    weaponColor: '#4ade80',
-    weaponGlow: '#fef08a',
+    secondaryArmor: '#166534',
+    trimGold: '#facc15',
+    skinOrFace: '#9dc49a',
+    eyeGlow: '#4ade80',
+    weaponColor: '#15803d',
+    weaponGlow: '#fde047',
     headgear: 'ELVEN_CIRCLET',
     weapon: 'NATURE_STAFF',
     wings: 'CAPE',
@@ -791,12 +804,12 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
   },
   u5_yggdrasil: {
     primaryArmor: '#064e3b',
-    secondaryArmor: '#10b981',
-    trimGold: '#fde047',
-    skinOrFace: '#a7f3d0',
+    secondaryArmor: '#047857',
+    trimGold: '#facc15',
+    skinOrFace: '#6b9e7a',
     eyeGlow: '#fef08a',
-    weaponColor: '#fde047',
-    weaponGlow: '#34d399',
+    weaponColor: '#ca8a04',
+    weaponGlow: '#22c55e',
     headgear: 'CROWN',
     weapon: 'NATURE_STAFF',
     wings: 'ANGEL_WINGS',
@@ -3189,7 +3202,9 @@ export class PixelGameRenderer {
     ) {
       const wingColor =
         spec.wings === 'ANGEL_WINGS'
-          ? '#ffffff'
+          ? ELVEN_SYLVAN_UNIT_IDS.has(unitId)
+            ? spec.secondaryArmor
+            : '#ffffff'
           : spec.wings === 'DRAGON_WINGS'
           ? spec.secondaryArmor
           : '#5a189a';
@@ -3259,8 +3274,10 @@ export class PixelGameRenderer {
       setPx(20, 2 + dy, spec.weaponGlow);
     } else if (spec.headgear === 'ELVEN_CIRCLET') {
       fillRectPx(9, 6 + dy, 10, 2, spec.trimGold);
+      fillRectPx(9, 7 + dy, 10, 1, spec.primaryArmor);
       setPx(14, 5 + dy, spec.eyeGlow);
       fillRectPx(8, 8 + dy, 2, 5, spec.secondaryArmor);
+      fillRectPx(18, 8 + dy, 2, 5, spec.secondaryArmor);
     } else if (spec.headgear === 'HOOD') {
       fillRectPx(9, 5 + dy, 10, 5, spec.primaryArmor);
       fillRectPx(11, 8 + dy, 6, 3, '#111111');
@@ -3325,11 +3342,16 @@ export class PixelGameRenderer {
       setPx(25, 16 + dy, '#ffea00');
     }
 
+    const isElvenUnit = ELVEN_SYLVAN_UNIT_IDS.has(unitId);
     const outlineColor =
       starLevel === 3
         ? '#ffd700'
         : starLevel === 2
-        ? '#e2e8f0'
+        ? isElvenUnit
+          ? '#166534'
+          : '#e2e8f0'
+        : isElvenUnit
+        ? '#0b2e1a'
         : '#05070d';
 
     for (let y = 0; y < size; y++) {
