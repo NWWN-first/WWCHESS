@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
-    "simulate": "esbuild scripts/simulate1000.ts --bundle --platform=node --format=esm --outfile=/tmp/sim1000.mjs --log-level=warning && node /tmp/sim1000.mjs"
+    "simulate": "esbuild scripts/simulate1000.ts --bundle --platform=node --format=esm --outfile=/tmp/sim1000.mjs --log-level=warning && node /tmp/sim1000.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@capacitor/android": "^6.0.0",
@@ -23,6 +24,7 @@
     "@types/three": "^0.187.0",
     "gh-pages": "^6.3.0",
     "typescript": "^5.4.5",
-    "vite": "^5.2.11"
+    "vite": "^5.2.11",
+    "vitest": "^3.0.5"
   }
 }
