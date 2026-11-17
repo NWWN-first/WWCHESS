@@ -31,6 +31,13 @@ const MACRO_ACTIONS: NeuralMacroAction[] = [
   'STABILIZE_REROLL',
 ];
 
+function headlessOnnxSimRequested(): boolean {
+  return (
+    typeof process !== 'undefined' &&
+    (process.env.USE_ONNX_SIM === '1' || process.env.USE_ONNX_SIM === 'true')
+  );
+}
+
 function pickMacroFromLogits(
   policyLogits: number[],
   temperature: number,
@@ -111,14 +118,21 @@ function matmul(vec: number[], weights: number[][], bias: number[]): number[] {
   return out;
 }
 
+type OnnxRuntimeKind = 'web' | 'node' | null;
+
 export class NeuralBotEngine {
   private static instance: NeuralBotEngine | null = null;
   private weights: NeuralNetworkWeights = TRAINED_NEURAL_WEIGHTS;
   private onnxSession: any = null;
   private isOnnxReady = false;
+  private onnxRuntime: OnnxRuntimeKind = null;
+  private headlessOnnxInit: Promise<void> | null = null;
 
   private constructor() {
-    this.tryInitOnnx();
+    void this.tryInitOnnxWeb();
+    if (headlessOnnxSimRequested()) {
+      this.headlessOnnxInit = this.tryInitOnnxNode();
+    }
   }
 
   public static getInstance(): NeuralBotEngine {
@@ -128,29 +142,105 @@ export class NeuralBotEngine {
     return NeuralBotEngine.instance;
   }
 
-  /** 웹 클라이언트에서 ONNX Runtime 세션이 준비되었는지 (Node 시뮬·세션 미로드 시 false) */
+  /** 웹 또는 헤드레스 Node ONNX 세션이 준비되었는지 */
   public isOnnxSessionReady(): boolean {
     return this.isOnnxReady && this.onnxSession != null;
   }
 
-  /**
-   * onnxruntime-web 비동기 세션 초기화 시도
-   * (웹뷰 오프라인 또는 환경에 따라 실패해도 Direct Matrix로 100% 정상 작동)
-   */
-  private async tryInitOnnx(): Promise<void> {
+  /** `USE_ONNX_SIM=1` + onnxruntime-node 세션 활성 시 true */
+  public useHeadlessOnnxInference(): boolean {
+    return headlessOnnxSimRequested() && this.isOnnxReady && this.onnxRuntime === 'node';
+  }
+
+  /** 시뮬 시작 시 한 번 호출 (USE_ONNX_SIM) */
+  public async ensureHeadlessOnnxReady(): Promise<boolean> {
+    if (!headlessOnnxSimRequested()) return false;
+    if (!this.headlessOnnxInit) {
+      this.headlessOnnxInit = this.tryInitOnnxNode();
+    }
+    await this.headlessOnnxInit;
+    return this.useHeadlessOnnxInference();
+  }
+
+  private async tryInitOnnxWeb(): Promise<void> {
     try {
       if (typeof window !== 'undefined') {
         const ort = await import('onnxruntime-web');
-        // wasm 경로 설정 및 로드
         ort.env.wasm.numThreads = 1;
         this.onnxSession = await ort.InferenceSession.create('./models/wwchess_bot.onnx');
         this.isOnnxReady = true;
+        this.onnxRuntime = 'web';
         console.log('[NeuralBotEngine] ONNX Runtime Web session initialized successfully.');
       }
-    } catch (e) {
-      // Direct Neural Matrix가 항상 즉시 폴백 대기
+    } catch {
       this.isOnnxReady = false;
+      this.onnxRuntime = null;
     }
+  }
+
+  private async tryInitOnnxNode(): Promise<void> {
+    if (typeof window !== 'undefined') return;
+    try {
+      const path = await import('node:path');
+      const ort = await import('onnxruntime-node');
+      const modelPath =
+        process.env.WWCHESS_ONNX_MODEL ??
+        path.resolve(process.cwd(), 'public/models/wwchess_bot.onnx');
+      this.onnxSession = await ort.InferenceSession.create(modelPath);
+      this.isOnnxReady = true;
+      this.onnxRuntime = 'node';
+      console.log(`[NeuralBotEngine] ONNX Runtime Node session initialized (${modelPath}).`);
+    } catch (e) {
+      this.isOnnxReady = false;
+      this.onnxRuntime = null;
+      console.warn(
+        '[NeuralBotEngine] Headless ONNX unavailable; sim uses SYNC.',
+        e instanceof Error ? e.message : e
+      );
+    }
+  }
+
+  private async runOnnxNodeSession(
+    features: number[],
+    options?: NeuralPredictOptions
+  ): Promise<NeuralInferenceResult> {
+    const ort = await import('onnxruntime-node');
+    const tensor = new ort.Tensor('float32', new Float32Array(features), [1, features.length]);
+    const results = await this.onnxSession.run({ state_vector: tensor });
+
+    const vArr = results.value_score.data as Float32Array;
+    const pArr = results.policy_logits.data as Float32Array;
+    const uArr = results.item_urgency.data as Float32Array;
+
+    return buildNeuralResult(vArr[0], Array.from(pArr), uArr[0], 'ONNX_RUNTIME', options);
+  }
+
+  /** 헤드레스 시뮬: SYNC vs ONNX 로짓 패리티 (게임플레이는 SYNC 유지) */
+  public async verifyHeadlessOnnxParity(samples = 24): Promise<void> {
+    if (!this.useHeadlessOnnxInference()) return;
+    let worst = 0;
+    for (let i = 0; i < samples; i++) {
+      const features = Array.from({ length: 11 }, (_, j) => {
+        const t = i * 0.17 + j * 0.09;
+        return Math.max(0, Math.min(1, (Math.sin(t) + 1) * 0.5));
+      });
+      const sync = this.predictSync(features);
+      const onnx = await this.runOnnxNodeSession(features);
+      for (let k = 0; k < sync.policyLogits.length; k++) {
+        worst = Math.max(worst, Math.abs(sync.policyLogits[k] - onnx.policyLogits[k]));
+      }
+      const valueDelta = Math.abs(sync.valueScore - onnx.valueScore);
+      worst = Math.max(worst, valueDelta);
+    }
+    const limit = parseFloat(process.env.ONNX_PARITY_MAX_DELTA ?? '0.02');
+    if (worst > limit) {
+      throw new Error(
+        `[NeuralBotEngine] ONNX parity failed: max delta ${worst.toFixed(4)} > ${limit}`
+      );
+    }
+    console.log(
+      `[NeuralBotEngine] ONNX parity OK (max logit/value delta ${worst.toFixed(4)} ≤ ${limit})`
+    );
   }
 
   /**
@@ -160,20 +250,16 @@ export class NeuralBotEngine {
   public predictSync(features: number[], options?: NeuralPredictOptions): NeuralInferenceResult {
     const w = this.weights;
 
-    // Backbone: fc1 (11 -> 32) -> relu -> fc2 (32 -> 32) -> relu
     const h1 = relu(matmul(features, w.fc1_w, w.fc1_b));
     const h2 = relu(matmul(h1, w.fc2_w, w.fc2_b));
 
-    // Value Head (순위 기대치 0~1)
     const v_h = relu(matmul(h2, w.val_fc_w, w.val_fc_b));
     const v_out = matmul(v_h, w.val_out_w, w.val_out_b)[0];
     const valueScore = sigmoid(v_out);
 
-    // Policy Head (4종 매크로 행동 로짓)
     const p_h = relu(matmul(h2, w.pol_fc_w, w.pol_fc_b));
     const policyLogits = matmul(p_h, w.pol_out_w, w.pol_out_b);
 
-    // Item Urgency Head (0~1)
     const u_h = relu(matmul(h2, w.urg_fc_w, w.urg_fc_b));
     const u_out = matmul(u_h, w.urg_out_w, w.urg_out_b)[0];
     const itemUrgency = sigmoid(u_out);
@@ -182,7 +268,7 @@ export class NeuralBotEngine {
   }
 
   /**
-   * ONNX 모델 비동기 추론 (ONNX 세션 활성화 시)
+   * ONNX 모델 비동기 추론 (ONNX 세션 활성 시)
    */
   public async predictONNX(
     features: number[],
@@ -193,6 +279,9 @@ export class NeuralBotEngine {
     }
 
     try {
+      if (this.onnxRuntime === 'node' && this.onnxSession) {
+        return await this.runOnnxNodeSession(features, options);
+      }
       const ort = await import('onnxruntime-web');
       const tensor = new ort.Tensor('float32', new Float32Array(features), [1, features.length]);
       const results = await this.onnxSession.run({ state_vector: tensor });
@@ -201,15 +290,8 @@ export class NeuralBotEngine {
       const pArr = results.policy_logits.data as Float32Array;
       const uArr = results.item_urgency.data as Float32Array;
 
-      const policyLogits = Array.from(pArr);
-      return buildNeuralResult(
-        vArr[0],
-        policyLogits,
-        uArr[0],
-        'ONNX_RUNTIME',
-        options
-      );
-    } catch (_) {
+      return buildNeuralResult(vArr[0], Array.from(pArr), uArr[0], 'ONNX_RUNTIME', options);
+    } catch {
       return this.predictSync(features, options);
     }
   }
