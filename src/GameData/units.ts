@@ -1323,15 +1323,15 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
       def: 70,
       atkSpeed: 0.82,
       range: 2,
-      startMana: 45,
-      maxMana: 90,
+      startMana: 35,
+      maxMana: 82,
     },
     skill: {
       name: '황금 제국의 금고 폭격',
       description:
         '하늘에서 거대한 황금 금고 폭격을 내려 적 전체를 기절시키고, 전투마다 골드와 보물을 생성합니다. (3성 달성 시: 전투 시작과 동시에 적 전체 99,999 피해 및 매 라운드 50골드 지급!)',
       skillType: 'GOLDEN_VAULT_BOMBARD',
-      baseValueByStar: [480, 880, 99999],
+      baseValueByStar: [480, 990, 99999],
       secondaryValueByStar: [3, 6, 50],
       manaLockMs: 1100,
     },
