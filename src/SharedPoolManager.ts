@@ -133,6 +133,26 @@ export class SharedPoolManager {
   }
 
   /**
+   * 참가자가 3성 미보유·풀 잔여 3장 이상인 기물 중 가중 랜덤 1종을 2성(3장) 분량으로 인출한다.
+   */
+  public pullRandomTwoStarUnitForParticipant(participant: PoolParticipant): string | null {
+    const neededCopies = SharedPoolManager.getCopiesCountForStar(2);
+    const candidates = ALL_UNIT_LIST.filter(
+      (u) =>
+        this.getRemainingCount(u.id) >= neededCopies &&
+        !participant.hasThreeStarUnit(u.id)
+    );
+
+    if (candidates.length === 0) return null;
+
+    const chosen = this.pickWeightedByRemaining(candidates);
+    if (chosen && this.tryTakeUnitFromPool(chosen.id, neededCopies)) {
+      return chosen.id;
+    }
+    return null;
+  }
+
+  /**
    * 참가자의 현재 상점 슬롯에 남아있는 미구매 기물들을 모두 공유 풀로 반환(+1)하고 슬롯을 비운다.
    */
   public releaseShopToPool(participant: PoolParticipant): void {

@@ -1183,7 +1183,7 @@ export class GameLoopManager {
         maxStreak >= 5 ? 3 : maxStreak >= 4 ? 2 : maxStreak >= 2 ? 1 : 0;
 
       p.gold += baseGold + interestGold + streakGold;
-      p.addXp(2);
+      p.addXp(2, this.sharedPool);
 
       if (!p.isShopLocked) {
         this.sharedPool.drawShopForParticipant(p);

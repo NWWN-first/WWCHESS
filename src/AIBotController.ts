@@ -657,7 +657,7 @@ export class AIBotController {
       aiParams,
       scouting
     );
-    this.performPersonaLevelUpStep(bot, brain, currentRound);
+    this.performPersonaLevelUpStep(bot, brain, currentRound, sharedPool);
     this.tryUseBotDuplicators(bot, brain, sharedPool);
 
     this.optimizeBoardAndItems(bot, brain, allParticipants, sharedPool, aiParams);
@@ -714,7 +714,7 @@ export class AIBotController {
     brain.nextActionDelayMs = this.computeNextBotActionDelayMs(brain.isRolldownActive);
 
     // 1. 레벨업 체크
-    this.performPersonaLevelUpStep(bot, brain, currentRound);
+    this.performPersonaLevelUpStep(bot, brain, currentRound, sharedPool);
 
     const scouting = this.analyzeScoutingContext(bot, allParticipants);
 
@@ -760,7 +760,8 @@ export class AIBotController {
   private performPersonaLevelUpStep(
     bot: Participant,
     brain: BotBrainState,
-    currentRound: string
+    currentRound: string,
+    sharedPool?: SharedPoolManager
   ): void {
     const persona = brain.persona;
     const tempoBoost = brain.lastNeuralResult?.macroAction === 'TEMPO_LEVEL';
@@ -774,7 +775,7 @@ export class AIBotController {
         Math.max(bot.level + 1, parseInt(currentRound.split('-')[0] || '2', 10) + 2)
       );
       while (bot.gold - 4 >= xpGoldFloor && bot.level < tempoTarget) {
-        if (!bot.buyXp()) break;
+        if (!bot.buyXp(sharedPool)) break;
       }
     }
 
@@ -782,18 +783,18 @@ export class AIBotController {
       const threeStarCount = this.countTotalThreeStarUnits(bot);
       if ((bot.level < 5 || threeStarCount >= 2) && bot.level < 10) {
         if (bot.gold - 4 >= xpGoldFloor && bot.level < 9) {
-          bot.buyXp();
+          bot.buyXp(sharedPool);
         }
       }
     } else if (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') {
       while (bot.gold - 4 >= xpGoldFloor && bot.level < 10) {
-        if (!bot.buyXp()) break;
+        if (!bot.buyXp(sharedPool)) break;
       }
     } else if (persona === 'GOBLIN_GAMBLER') {
       const isGoblinCashoutTurn = bot.hp <= 35 || bot.goblinVaultStacks >= 55;
       const desiredLevel = isGoblinCashoutTurn ? 9 : tempoBoost ? 8 : 6;
       if (bot.gold - 4 >= xpGoldFloor && bot.level < desiredLevel) {
-        bot.buyXp();
+        bot.buyXp(sharedPool);
       }
     } else {
       const stageNum = parseInt(currentRound.split('-')[0] || '2', 10);
@@ -805,7 +806,7 @@ export class AIBotController {
         bot.gold - 4 >= xpGoldFloor &&
         bot.level < standardTargetLevel
       ) {
-        if (!bot.buyXp()) break;
+        if (!bot.buyXp(sharedPool)) break;
       }
     }
   }
@@ -1431,20 +1432,20 @@ export class AIBotController {
       const threeStarCount = this.countTotalThreeStarUnits(bot);
       if ((bot.level < 5 || threeStarCount >= 2) && bot.level < 10) {
         while (bot.gold - 4 >= targetGoldFloor && bot.level < 9) {
-          if (!bot.buyXp()) break;
+          if (!bot.buyXp(sharedPool)) break;
         }
       }
     } else if (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') {
       // 고밸류 운영러: 50골드(또는 사악한 금융 70골드) 칼이자를 지키며 남는 골드로 9~10레벨 직행
       while (bot.gold - 4 >= targetGoldFloor && bot.level < 10) {
-        if (!bot.buyXp()) break;
+        if (!bot.buyXp(sharedPool)) break;
       }
     } else if (persona === 'GOBLIN_GAMBLER') {
       // 황금 고블린 코인충: 평상시에는 50골드를 모으면서 천천히 레벨업,
       // 체력 35 이하 또는 금고 55스택 이상 도달 시 골드를 전부 털어 레벨업+폭풍 리롤!
       const desiredLevel = isGoblinCashoutTurn ? 9 : 6;
       while (bot.gold - 4 >= targetGoldFloor && bot.level < desiredLevel) {
-        if (!bot.buyXp()) break;
+        if (!bot.buyXp(sharedPool)) break;
       }
     } else {
       // FLEX_MASTER (유연한 정석 밸런스형): 라운드 흐름에 맞춰 정석 레벨업 (후반 Lv.10 도달)
@@ -1454,7 +1455,7 @@ export class AIBotController {
         bot.gold - 4 >= targetGoldFloor &&
         bot.level < standardTargetLevel
       ) {
-        if (!bot.buyXp()) break;
+        if (!bot.buyXp(sharedPool)) break;
       }
     }
 
