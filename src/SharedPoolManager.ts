@@ -43,7 +43,7 @@ export class SharedPoolManager {
   }
 
   /**
-   * 20종 모든 기물의 공유 풀 재고를 초기 최대치(1코 22, 2코 20, 3코 17, 4코 10, 5코 9)로 초기화한다.
+   * 전 챔피언(UNIT_TEMPLATES)의 공유 풀 재고를 POOL_SIZE_BY_COST 최대치로 초기화한다.
    */
   public resetPool(): void {
     this.pool.clear();

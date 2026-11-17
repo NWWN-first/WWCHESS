@@ -37,8 +37,50 @@ export interface BotBrainState {
   targetGoldFloorThisRound: number;
   unitsToDenyCache: Set<string>;
   lastNeuralResult?: NeuralInferenceResult;
+  /** 동일 상태에서도 매크로가 갈라지도록 하는 결정론적 시드 */
+  decisionSeed: number;
+  policyTemperature: number;
+  preferOnnxBackend: boolean;
+  macroPickNonce: number;
+  /** 게임당 1회 DevTools용 추론 백엔드 로그 */
+  inferenceBackendLogged: boolean;
 }
 
+
+/** ONNX Runtime 경로를 우선 시도하는 페르소나 (인라인 행렬과 혼합해 봇 전략 다양화) */
+const ONNX_PREFERRED_PERSONAS: ReadonlySet<AIPersona> = new Set([
+  'GOBLIN_GAMBLER',
+  'HYPER_ROLLER',
+  'FAST_NINE_GREEDY',
+  'LOW_COST_REROLLER',
+]);
+
+const PERSONA_POLICY_TEMPERATURE: Record<AIPersona, number> = {
+  HYPER_ROLLER: 0.95,
+  LOW_COST_REROLLER: 0.88,
+  FAST_NINE_GREEDY: 0.42,
+  FAST_NINE_ECONOMIST: 0.32,
+  GOBLIN_GAMBLER: 1.05,
+  FLEX_MASTER: 0.55,
+  FLEX_BALANCED: 0.62,
+};
+
+function hashBotDecisionSeed(botId: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < botId.length; i++) {
+    h ^= botId.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function createSeededRng(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(1664525, s) + 1013904223) >>> 0;
+    return s / 0x100000000;
+  };
+}
 
 const STANDARD_ORIGIN_TRAITS: TraitId[] = [
   'HOLY_EMPIRE',
@@ -133,13 +175,51 @@ const ITEM_ROLE_AFFINITY: Record<CompletedItemId, Record<UnitRole, number>> = {
 
 const BOT_PRESETS: Array<{ name: string; persona: AIPersona; initialTrait: TraitId }> = [
   { name: '봇1 [도박꾼 잭]', persona: 'HYPER_ROLLER', initialTrait: 'UNDEAD_SCOURGE' },
-  { name: '봇2 [리롤왕 볼트]', persona: 'HYPER_ROLLER', initialTrait: 'ELVEN_SYLVAN' },
+  { name: '봇2 [리롤왕 볼트]', persona: 'LOW_COST_REROLLER', initialTrait: 'ELVEN_SYLVAN' },
   { name: '봇3 [황금충 고블]', persona: 'GOBLIN_GAMBLER', initialTrait: 'GOLDEN_GOBLIN' },
   { name: '봇4 [만수르 골드]', persona: 'FAST_NINE_GREEDY', initialTrait: 'DRAGONKIN' },
-  { name: '봇5 [패스트9 황제]', persona: 'FAST_NINE_GREEDY', initialTrait: 'HOLY_EMPIRE' },
+  { name: '봇5 [이자왕 영희]', persona: 'FAST_NINE_ECONOMIST', initialTrait: 'HOLY_EMPIRE' },
   { name: '봇6 [정석 마스터 린]', persona: 'FLEX_MASTER', initialTrait: 'ARCANE_TOWER' },
-  { name: '봇7 [유연한 카이]', persona: 'FLEX_MASTER', initialTrait: 'ABYSSAL_DEMON' },
+  { name: '봇7 [유연한 카이]', persona: 'FLEX_BALANCED', initialTrait: 'ABYSSAL_DEMON' },
 ];
+
+/** 봇마다 독립 추첨(중복 허용). 가중치는 인구 대표성만 살짝 조정. */
+const PERSONA_WEIGHT_TABLE: ReadonlyArray<{ persona: AIPersona; weight: number }> = [
+  { persona: 'HYPER_ROLLER', weight: 1.1 },
+  { persona: 'LOW_COST_REROLLER', weight: 1.1 },
+  { persona: 'FAST_NINE_GREEDY', weight: 1 },
+  { persona: 'FAST_NINE_ECONOMIST', weight: 1 },
+  { persona: 'GOBLIN_GAMBLER', weight: 1 },
+  { persona: 'FLEX_MASTER', weight: 1 },
+  { persona: 'FLEX_BALANCED', weight: 1 },
+];
+
+function rollWeightedPersona(rng: () => number = Math.random): AIPersona {
+  const total = PERSONA_WEIGHT_TABLE.reduce((s, e) => s + e.weight, 0);
+  let roll = rng() * total;
+  for (const entry of PERSONA_WEIGHT_TABLE) {
+    roll -= entry.weight;
+    if (roll <= 0) return entry.persona;
+  }
+  return PERSONA_WEIGHT_TABLE[PERSONA_WEIGHT_TABLE.length - 1]!.persona;
+}
+
+function pickInitialTraitForPersona(
+  persona: AIPersona,
+  rng: () => number = Math.random
+): TraitId {
+  if (persona === 'GOBLIN_GAMBLER') return 'GOLDEN_GOBLIN';
+  const idx = Math.floor(rng() * STANDARD_ORIGIN_TRAITS.length);
+  return STANDARD_ORIGIN_TRAITS[idx] ?? 'HOLY_EMPIRE';
+}
+
+function lobbyNameForPersona(persona: AIPersona, botIndex: number): string {
+  const preset = BOT_PRESETS.find((p) => p.persona === persona);
+  if (preset) {
+    return preset.name.replace(/봇\d+/, `봇${botIndex}`);
+  }
+  return `봇${botIndex} [${persona}]`;
+}
 
 const DEFENSIVE_ITEM_IDS = new Set<ItemId>([
   'ARMOR',
@@ -158,44 +238,44 @@ export class AIBotController {
   }
 
   /**
-   * 게임 시작 시 7명의 AI 봇 참가자를 생성하고 4가지 인간형 페르소나를 골고루 배정한다.
+   * 게임 시작 시 7명 AI 봇을 만들고, 봇마다 독립 가중 랜덤으로 페르소나를 배정한다(중복·전원 동일 허용).
    */
   public createSevenAIBots(): Participant[] {
     this.botBrains.clear();
-    // 매 게임마다 프리셋 순서를 약간 섞어 다양한 봇 매치업 유도
-    const shuffledPresets = [...BOT_PRESETS].sort(() => Math.random() - 0.5);
 
-    return shuffledPresets.map((preset, idx) => {
+    return Array.from({ length: 7 }, (_, idx) => {
       const botId = `ai_bot_${idx + 1}`;
-      const bot = new Participant(botId, preset.name, true, preset.persona);
-      this.initializeBotBrain(bot, preset.persona, preset.initialTrait);
+      const persona = rollWeightedPersona();
+      const bot = new Participant(
+        botId,
+        lobbyNameForPersona(persona, idx + 1),
+        true,
+        persona
+      );
+      this.initializeBotBrain(
+        bot,
+        persona,
+        pickInitialTraitForPersona(persona)
+      );
       return bot;
     });
   }
 
   /**
-   * 이미 생성된 7명의 AI 봇 배열에 페르소나와 초기 두뇌 상태를 배정한다.
+   * 이미 생성된 AI 봇 배열에 봇마다 독립 가중 랜덤 페르소나를 다시 배정한다.
    */
   public assignPersonasToBots(bots: Participant[]): void {
     this.botBrains.clear();
-    const personas: AIPersona[] = [
-      'HYPER_ROLLER',
-      'HYPER_ROLLER',
-      'FAST_NINE_GREEDY',
-      'FAST_NINE_GREEDY',
-      'GOBLIN_GAMBLER',
-      'FLEX_MASTER',
-      'FLEX_MASTER',
-    ];
 
     bots.forEach((bot, idx) => {
-      const persona = personas[idx % personas.length];
+      const persona = rollWeightedPersona();
       bot.persona = persona;
-      const initialTrait: TraitId =
-        persona === 'GOBLIN_GAMBLER'
-          ? 'GOLDEN_GOBLIN'
-          : STANDARD_ORIGIN_TRAITS[idx % STANDARD_ORIGIN_TRAITS.length];
-      this.initializeBotBrain(bot, persona, initialTrait);
+      bot.name = lobbyNameForPersona(persona, idx + 1);
+      this.initializeBotBrain(
+        bot,
+        persona,
+        pickInitialTraitForPersona(persona)
+      );
     });
   }
 
@@ -217,6 +297,12 @@ export class AIBotController {
         ? 'BERSERKER'
         : 'PALADIN';
 
+    const decisionSeed = hashBotDecisionSeed(bot.id);
+    const policyTemperature =
+      PERSONA_POLICY_TEMPERATURE[persona] + (decisionSeed % 23) * 0.008;
+    const preferOnnxBackend =
+      ONNX_PREFERRED_PERSONAS.has(persona) || decisionSeed % 5 === 0;
+
     const state: BotBrainState = {
       botId: bot.id,
       persona,
@@ -230,6 +316,11 @@ export class AIBotController {
       maxRerollsAllowedThisRound: 6,
       targetGoldFloorThisRound: 20,
       unitsToDenyCache: new Set<string>(),
+      decisionSeed,
+      policyTemperature,
+      preferOnnxBackend,
+      macroPickNonce: 0,
+      inferenceBackendLogged: false,
     };
     this.botBrains.set(bot.id, state);
     return state;
@@ -244,6 +335,273 @@ export class AIBotController {
       brain = this.initializeBotBrain(bot, persona, trait);
     }
     return brain;
+  }
+
+  private applyNeuralMacroToBrain(
+    bot: Participant,
+    brain: BotBrainState,
+    neuralResult: NeuralInferenceResult,
+    currentRound: string,
+    aiParams: AISkillParameters
+  ): void {
+    const persona = brain.persona;
+    const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
+    const isEmergencySurvival = bot.hp <= 30;
+    const isGoblinCashoutTurn =
+      persona === 'GOBLIN_GAMBLER' &&
+      (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
+    const isHighStageAllIn =
+      (stageNum >= 4 && bot.gold >= 40) || bot.gold >= 50;
+
+    brain.isRolldownActive =
+      isEmergencySurvival ||
+      isGoblinCashoutTurn ||
+      isHighStageAllIn ||
+      neuralResult.macroAction === 'ROLLDOWN' ||
+      neuralResult.macroAction === 'STABILIZE_REROLL';
+
+    brain.targetGoldFloorThisRound = this.getPersonaGoldFloor(
+      bot,
+      persona,
+      isEmergencySurvival,
+      isGoblinCashoutTurn,
+      aiParams
+    );
+
+    if (neuralResult.macroAction === 'SAVE_INTEREST') {
+      brain.targetGoldFloorThisRound = this.getSaveInterestGoldFloor(
+        bot,
+        persona,
+        brain.targetGoldFloorThisRound
+      );
+    } else if (neuralResult.macroAction === 'ROLLDOWN' || isEmergencySurvival) {
+      brain.targetGoldFloorThisRound = Math.min(brain.targetGoldFloorThisRound, 6);
+    } else if (neuralResult.macroAction === 'STABILIZE_REROLL') {
+      brain.targetGoldFloorThisRound = Math.min(brain.targetGoldFloorThisRound, 6);
+    } else if (neuralResult.macroAction === 'TEMPO_LEVEL') {
+      brain.targetGoldFloorThisRound = Math.max(4, brain.targetGoldFloorThisRound - 18);
+    }
+
+    if (isEmergencySurvival || isGoblinCashoutTurn) {
+      brain.maxRerollsAllowedThisRound = 20;
+    } else if (brain.isRolldownActive) {
+      brain.maxRerollsAllowedThisRound = 14;
+    } else if (
+      (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') &&
+      bot.level >= 5 &&
+      bot.level <= 6
+    ) {
+      brain.maxRerollsAllowedThisRound = 12;
+    } else if (
+      (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') &&
+      bot.level < 8
+    ) {
+      brain.maxRerollsAllowedThisRound = bot.freeRerolls > 0 ? bot.freeRerolls : 1;
+    } else {
+      brain.maxRerollsAllowedThisRound = 7;
+    }
+  }
+
+  private biasPolicyLogitsForPersona(persona: AIPersona, logits: number[]): number[] {
+    const b = [...logits];
+    if (b.length < 4) return b;
+    if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
+      b[0] -= 1.1;
+      b[2] += 1.4;
+      b[3] += 0.9;
+    } else if (persona === 'FAST_NINE_ECONOMIST') {
+      b[0] += 1.35;
+      b[1] += 0.85;
+      b[2] -= 0.9;
+    } else if (persona === 'FAST_NINE_GREEDY') {
+      b[0] += 0.75;
+      b[1] += 0.55;
+      b[2] -= 0.35;
+    } else if (persona === 'GOBLIN_GAMBLER') {
+      b[2] += 0.65;
+      b[3] += 0.45;
+      b[0] -= 0.35;
+    } else if (persona === 'FLEX_BALANCED') {
+      b[1] += 0.85;
+      b[3] += 0.35;
+    } else {
+      b[1] += 0.45;
+      b[3] += 0.15;
+    }
+    return b;
+  }
+
+  private runNeuralInferenceForBrain(
+    bot: Participant,
+    brain: BotBrainState,
+    allParticipants: Participant[],
+    currentRound: string,
+    aiParams: AISkillParameters
+  ): void {
+    const stateTensor = this.extractAIStateTensor(bot, allParticipants, currentRound);
+    const engine = NeuralBotEngine.getInstance();
+    brain.macroPickNonce += 1;
+    const predictOpts = {
+      temperature: brain.policyTemperature,
+      rng: createSeededRng(
+        brain.decisionSeed ^
+          brain.macroPickNonce ^
+          parseInt(currentRound.replace(/\D/g, '') || '1', 10)
+      ),
+      logitBias: (logits: number[]) =>
+        this.biasPolicyLogitsForPersona(brain.persona, logits),
+    };
+
+    const rawResult = engine.predictSync(stateTensor.features, predictOpts);
+    const neuralResult = this.refineMacroForVisibleTempo(
+      bot,
+      brain,
+      rawResult,
+      currentRound,
+      predictOpts.rng ?? Math.random
+    );
+    brain.lastNeuralResult = neuralResult;
+    this.applyNeuralMacroToBrain(bot, brain, neuralResult, currentRound, aiParams);
+    this.logInferenceBackendOnce(bot, brain, neuralResult.backend);
+
+    if (brain.preferOnnxBackend && engine.isOnnxSessionReady()) {
+      void engine.predictONNX(stateTensor.features, predictOpts).then((rawOnnx) => {
+        if (rawOnnx.backend !== 'ONNX_RUNTIME') return;
+        const onnxResult = this.refineMacroForVisibleTempo(
+          bot,
+          brain,
+          rawOnnx,
+          currentRound,
+          predictOpts.rng ?? Math.random
+        );
+        brain.lastNeuralResult = onnxResult;
+        this.applyNeuralMacroToBrain(bot, brain, onnxResult, currentRound, aiParams);
+        this.logInferenceBackendOnce(bot, brain, onnxResult.backend);
+      });
+    }
+  }
+
+  /**
+   * 학습 가중치상 TEMPO 로짓이 거의 0 → 레벨 괴리가 있을 때 규칙적으로 TEMPO를 승격(가시적 레벨템포).
+   */
+  private refineMacroForVisibleTempo(
+    bot: Participant,
+    brain: BotBrainState,
+    result: NeuralInferenceResult,
+    currentRound: string,
+    rng: () => number
+  ): NeuralInferenceResult {
+    if (result.macroAction === 'ROLLDOWN' || result.macroAction === 'STABILIZE_REROLL') {
+      return result;
+    }
+    if (bot.hp <= 32 || brain.isRolldownActive) return result;
+
+    const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
+    const idealLevel = Math.min(9, Math.max(4, stageNum + 2));
+    const levelBehind = bot.level < idealLevel;
+    const goldForLevel = bot.gold >= 26 && bot.gold <= 62;
+    if (!levelBehind || !goldForLevel) return result;
+
+    const persona = brain.persona;
+    let tempoChance = 0.1;
+    if (persona === 'FAST_NINE_ECONOMIST' || persona === 'FAST_NINE_GREEDY') {
+      tempoChance = 0.32;
+    } else if (persona === 'FLEX_MASTER' || persona === 'FLEX_BALANCED') {
+      tempoChance = 0.22;
+    } else if (persona === 'GOBLIN_GAMBLER') {
+      tempoChance = 0.12;
+    } else if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
+      tempoChance = 0.08;
+    }
+
+    if (rng() < tempoChance) {
+      return { ...result, macroAction: 'TEMPO_LEVEL' };
+    }
+    return result;
+  }
+
+  private logInferenceBackendOnce(
+    bot: Participant,
+    brain: BotBrainState,
+    backend: NeuralInferenceResult['backend']
+  ): void {
+    if (brain.inferenceBackendLogged || typeof console === 'undefined') return;
+    brain.inferenceBackendLogged = true;
+    const tag = backend === 'ONNX_RUNTIME' ? 'ONNX' : 'SYNC';
+    console.debug(
+      `[WWCHESS AI] ${bot.name} (${brain.persona}) inference backend: ${tag}`
+    );
+  }
+
+  private getSaveInterestGoldFloor(
+    bot: Participant,
+    persona: AIPersona,
+    baseFloor: number
+  ): number {
+    const cap = bot.getMaxInterestCap() * 10;
+    if (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') {
+      return Math.max(baseFloor, cap);
+    }
+    if (persona === 'FLEX_MASTER' || persona === 'FLEX_BALANCED') {
+      return Math.max(baseFloor, Math.min(cap, 36));
+    }
+    if (persona === 'GOBLIN_GAMBLER') {
+      return Math.max(baseFloor, Math.min(cap, 40));
+    }
+    return Math.max(baseFloor, Math.min(cap, 12 + bot.level * 2));
+  }
+
+  /** 시뮬·텔레메트리: stepBotRealTimeAPM과 동일한 골드 하한 */
+  public resolveEffectiveGoldFloor(bot: Participant, brain: BotBrainState): number {
+    const persona = brain.persona;
+    const isEmergencySurvival = bot.hp <= 30;
+    const isGoblinCashoutTurn =
+      persona === 'GOBLIN_GAMBLER' &&
+      (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
+    return this.getEffectiveGoldFloor(
+      bot,
+      brain,
+      isEmergencySurvival,
+      isGoblinCashoutTurn
+    );
+  }
+
+  private getEffectiveGoldFloor(
+    bot: Participant,
+    brain: BotBrainState,
+    isEmergencySurvival: boolean,
+    isGoblinCashoutTurn: boolean
+  ): number {
+    if (isEmergencySurvival || isGoblinCashoutTurn || brain.isRolldownActive) {
+      return isEmergencySurvival || isGoblinCashoutTurn ? 0 : 6;
+    }
+
+    let floor = brain.targetGoldFloorThisRound;
+    const macro = brain.lastNeuralResult?.macroAction;
+    const benchFull = bot.bench.every((u) => u !== null);
+    const boardGap = bot.level - bot.getBoardUnitCount();
+
+    if (macro === 'STABILIZE_REROLL' || macro === 'ROLLDOWN') {
+      floor = Math.min(floor, 6);
+    }
+    if (
+      !brain.isRolldownActive &&
+      (brain.persona === 'HYPER_ROLLER' || brain.persona === 'LOW_COST_REROLLER') &&
+      bot.level >= 5 &&
+      bot.level <= 7
+    ) {
+      floor = Math.min(floor, macro === 'SAVE_INTEREST' ? 14 : 16);
+    }
+    if (macro === 'TEMPO_LEVEL' && bot.level < 9) {
+      floor = Math.min(floor, 10);
+    }
+    if (benchFull) {
+      floor = Math.min(floor, 4);
+    }
+    if (boardGap > 0) {
+      floor = Math.min(floor, Math.max(4, floor - 6));
+    }
+    return Math.max(0, floor);
   }
 
   /**
@@ -269,59 +627,8 @@ export class AIBotController {
       aiParams
     );
 
-    // 딥러닝 신경망 추론 (상태 텐서 기반 Value, MacroAction, ItemUrgency 산출)
-    const stateTensor = this.extractAIStateTensor(bot, allParticipants, currentRound);
-    const neuralResult = NeuralBotEngine.getInstance().predictSync(stateTensor.features);
-    brain.lastNeuralResult = neuralResult;
-
-    const persona = brain.persona;
-    const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
-    const isEmergencySurvival = bot.hp <= 30;
-    const isGoblinCashoutTurn =
-      persona === 'GOBLIN_GAMBLER' &&
-      (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
-    const isHighStageAllIn =
-      (stageNum >= 4 && bot.gold >= 40) || bot.gold >= 50;
-
-    brain.isRolldownActive =
-      isEmergencySurvival ||
-      isGoblinCashoutTurn ||
-      isHighStageAllIn ||
-      neuralResult.macroAction === 'ROLLDOWN';
     brain.rerollsExecutedThisRound = 0;
-
-    brain.targetGoldFloorThisRound = this.getPersonaGoldFloor(
-      bot,
-      persona,
-      isEmergencySurvival,
-      isGoblinCashoutTurn,
-      aiParams
-    );
-
-    if (neuralResult.macroAction === 'SAVE_INTEREST') {
-      brain.targetGoldFloorThisRound = Math.max(brain.targetGoldFloorThisRound, 50);
-    } else if (neuralResult.macroAction === 'ROLLDOWN' || isEmergencySurvival) {
-      brain.targetGoldFloorThisRound = Math.min(brain.targetGoldFloorThisRound, 10);
-    }
-
-    if (isEmergencySurvival || isGoblinCashoutTurn) {
-      brain.maxRerollsAllowedThisRound = 20;
-    } else if (brain.isRolldownActive) {
-      brain.maxRerollsAllowedThisRound = 14;
-    } else if (
-      (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') &&
-      bot.level >= 5 &&
-      bot.level <= 6
-    ) {
-      brain.maxRerollsAllowedThisRound = 12;
-    } else if (
-      (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') &&
-      bot.level < 8
-    ) {
-      brain.maxRerollsAllowedThisRound = bot.freeRerolls > 0 ? bot.freeRerolls : 1;
-    } else {
-      brain.maxRerollsAllowedThisRound = 7;
-    }
+    this.runNeuralInferenceForBrain(bot, brain, allParticipants, currentRound, aiParams);
 
     // 2. 현재 열린 첫 상점에서 유효 기물 즉시 구매 및 기본 배치 수행
     const scouting = this.analyzeScoutingContext(bot, allParticipants);
@@ -337,6 +644,8 @@ export class AIBotController {
     this.tryUseBotDuplicators(bot, brain, sharedPool);
 
     this.optimizeBoardAndItems(bot, brain, allParticipants, sharedPool, aiParams);
+    this.trimExcessBenchUnits(bot, brain, sharedPool);
+    this.ensureCombatReadyBoard(bot, brain, sharedPool);
 
     // 3. 첫 번째 동적 APM 행동 타이머 설정 (올인 Rolldown: 0.6~1.0초, 평상시: 1.0~5.0초)
     brain.nextActionDelayMs = this.computeNextBotActionDelayMs(brain.isRolldownActive);
@@ -369,16 +678,20 @@ export class AIBotController {
       brain.persona === 'GOBLIN_GAMBLER' &&
       (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
 
+    const macro = brain.lastNeuralResult?.macroAction;
     brain.isRolldownActive =
       isEmergencySurvival ||
       isGoblinCashoutTurn ||
-      (bot.gold >= 50 && bot.level >= 8) ||
-      (stageNum >= 4 && bot.hp <= 40);
+      macro === 'ROLLDOWN' ||
+      macro === 'STABILIZE_REROLL' ||
+      (stageNum >= 5 && bot.hp <= 35 && bot.gold >= 28);
 
-    // 올인 상태일 때는 하한선을 비상용 0G 또는 10G로 동적 하향하여 '다다다다' 리롤이 실제로 동작하도록 보장!
-    const effectiveGoldFloor = brain.isRolldownActive
-      ? (isEmergencySurvival || isGoblinCashoutTurn ? 0 : 10)
-      : brain.targetGoldFloorThisRound;
+    const effectiveGoldFloor = this.getEffectiveGoldFloor(
+      bot,
+      brain,
+      isEmergencySurvival,
+      isGoblinCashoutTurn
+    );
 
     // 다음 액션 딜레이 재설정 (올인 타이밍: 600ms~1000ms 초고속 다다다다 리롤, 평상시: 1000ms~5000ms 여유로운 운영)
     brain.nextActionDelayMs = this.computeNextBotActionDelayMs(brain.isRolldownActive);
@@ -413,6 +726,7 @@ export class AIBotController {
     // 3. 복제기 사용 및 실시간 보드 재배치/아이템 장착 갱신
     this.tryUseBotDuplicators(bot, brain, sharedPool);
     this.optimizeBoardAndItems(bot, brain, allParticipants, sharedPool, aiParams);
+    this.trimExcessBenchUnits(bot, brain, sharedPool);
 
     return didAct;
   }
@@ -432,30 +746,49 @@ export class AIBotController {
     currentRound: string
   ): void {
     const persona = brain.persona;
-    const targetGoldFloor = brain.targetGoldFloorThisRound;
+    const tempoBoost = brain.lastNeuralResult?.macroAction === 'TEMPO_LEVEL';
+    const xpGoldFloor = tempoBoost
+      ? Math.max(4, brain.targetGoldFloorThisRound - 14)
+      : brain.targetGoldFloorThisRound;
+
+    if (tempoBoost && bot.level < 9) {
+      const tempoTarget = Math.min(
+        9,
+        Math.max(bot.level + 1, parseInt(currentRound.split('-')[0] || '2', 10) + 2)
+      );
+      while (bot.gold - 4 >= xpGoldFloor && bot.level < tempoTarget) {
+        if (!bot.buyXp()) break;
+      }
+    }
 
     if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
       const threeStarCount = this.countTotalThreeStarUnits(bot);
       if ((bot.level < 5 || threeStarCount >= 2) && bot.level < 10) {
-        if (bot.gold - 4 >= targetGoldFloor && bot.level < 9) {
+        if (bot.gold - 4 >= xpGoldFloor && bot.level < 9) {
           bot.buyXp();
         }
       }
     } else if (persona === 'FAST_NINE_GREEDY' || persona === 'FAST_NINE_ECONOMIST') {
-      while (bot.gold - 4 >= targetGoldFloor && bot.level < 10) {
+      while (bot.gold - 4 >= xpGoldFloor && bot.level < 10) {
         if (!bot.buyXp()) break;
       }
     } else if (persona === 'GOBLIN_GAMBLER') {
       const isGoblinCashoutTurn = bot.hp <= 35 || bot.goblinVaultStacks >= 55;
-      const desiredLevel = isGoblinCashoutTurn ? 9 : 6;
-      if (bot.gold - 4 >= targetGoldFloor && bot.level < desiredLevel) {
+      const desiredLevel = isGoblinCashoutTurn ? 9 : tempoBoost ? 8 : 6;
+      if (bot.gold - 4 >= xpGoldFloor && bot.level < desiredLevel) {
         bot.buyXp();
       }
     } else {
       const stageNum = parseInt(currentRound.split('-')[0] || '2', 10);
-      const standardTargetLevel = Math.min(10, Math.max(4, stageNum + 3));
-      if (bot.gold - 4 >= targetGoldFloor && bot.level < standardTargetLevel) {
-        bot.buyXp();
+      const standardTargetLevel = Math.min(
+        10,
+        Math.max(4, stageNum + (tempoBoost ? 4 : 3))
+      );
+      while (
+        bot.gold - 4 >= xpGoldFloor &&
+        bot.level < standardTargetLevel
+      ) {
+        if (!bot.buyXp()) break;
       }
     }
   }
@@ -482,6 +815,8 @@ export class AIBotController {
       aiParams
     );
 
+    this.runNeuralInferenceForBrain(bot, brain, allParticipants, currentRound, aiParams);
+
     const scouting = this.analyzeScoutingContext(bot, allParticipants);
     this.runEconomyAndShopLoop(
       bot,
@@ -496,8 +831,84 @@ export class AIBotController {
     this.tryUseBotDuplicators(bot, brain, sharedPool);
 
     this.optimizeBoardAndItems(bot, brain, allParticipants, sharedPool, aiParams);
+    this.trimExcessBenchUnits(bot, brain, sharedPool);
+    this.ensureCombatReadyBoard(bot, brain, sharedPool);
   }
 
+  /**
+   * 전투 직전: 보드 인원 미달 시 우선 배치하고, 남는 저가 1성은 매각해 대기석 압력을 줄인다.
+   */
+  public ensureCombatReadyBoard(
+    bot: Participant,
+    brain: BotBrainState,
+    sharedPool: SharedPoolManager
+  ): void {
+    while (bot.getBoardUnitCount() < bot.level) {
+      const benchIdx = bot.bench.findIndex((u) => u !== null && !brain.deniedUnitInstanceIds.has(u.instanceId));
+      if (benchIdx === -1) break;
+
+      let placed = false;
+      for (let r = 0; r < Participant.BOARD_ROWS && !placed; r++) {
+        for (let c = 0; c < Participant.BOARD_COLS && !placed; c++) {
+          if (bot.board[r][c] === null) {
+            bot.board[r][c] = bot.bench[benchIdx]!;
+            bot.bench[benchIdx] = null;
+            placed = true;
+          }
+        }
+      }
+      if (!placed) break;
+    }
+
+    this.trimExcessBenchUnits(bot, brain, sharedPool);
+    if (bot.bench.every((u) => u !== null)) {
+      this.cleanupBenchIfFull(bot, brain, sharedPool);
+    }
+  }
+
+  private trimExcessBenchUnits(
+    bot: Participant,
+    brain: BotBrainState,
+    sharedPool: SharedPoolManager
+  ): void {
+    const emptyBench = bot.bench.filter((s) => s === null).length;
+    if (emptyBench > 0) return;
+
+    const boardCount = bot.getBoardUnitCount();
+    const onBoardIds = new Set<string>();
+    for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+      for (let c = 0; c < Participant.BOARD_COLS; c++) {
+        const u = bot.board[r][c];
+        if (u) onBoardIds.add(u.instanceId);
+      }
+    }
+
+    const sellCandidates: UnitInstance[] = [];
+    for (const u of bot.bench) {
+      if (!u) continue;
+      if (brain.deniedUnitInstanceIds.has(u.instanceId)) continue;
+      if (onBoardIds.has(u.instanceId)) continue;
+      if (u.starLevel >= 2) continue;
+      sellCandidates.push(u);
+    }
+
+    sellCandidates.sort((a, b) => {
+      const score = (x: UnitInstance) =>
+        x.cost * 8 +
+        (x.traits.includes(brain.targetTrait) ? 40 : 0) +
+        bot.getOwnedUnitCopiesCount(x.unitId) * 10;
+      return score(a) - score(b);
+    });
+
+    const excess =
+      bot.bench.filter((u) => u !== null).length -
+      Math.max(0, Participant.BENCH_SIZE - boardCount);
+    const sellCount = Math.min(Math.max(1, excess), sellCandidates.length, 3);
+
+    for (let i = 0; i < sellCount; i++) {
+      bot.sellUnit(sellCandidates[i].instanceId, sharedPool);
+    }
+  }
 
   /**
    * 상대방 7명의 보드 상태(체력 1,300+ 거대 기물, 힐/보호막 시너지, 선봉대, 마법사 수 등)를 종합 정찰(Scouting)한다.
@@ -974,12 +1385,27 @@ export class AIBotController {
     );
 
     // B. 페르소나별 레벨업(buyXp) 의사결정 (Lv.10 확장 지원)
-    const targetGoldFloor = this.getPersonaGoldFloor(
+    brain.targetGoldFloorThisRound = this.getPersonaGoldFloor(
       bot,
       persona,
       isEmergencySurvival,
       isGoblinCashoutTurn,
       aiParams
+    );
+    if (brain.lastNeuralResult) {
+      this.applyNeuralMacroToBrain(
+        bot,
+        brain,
+        brain.lastNeuralResult,
+        currentRound,
+        aiParams
+      );
+    }
+    const targetGoldFloor = this.getEffectiveGoldFloor(
+      bot,
+      brain,
+      isEmergencySurvival,
+      isGoblinCashoutTurn
     );
 
     if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
@@ -1297,7 +1723,7 @@ export class AIBotController {
     sharedPool: SharedPoolManager
   ): void {
     const emptyCount = bot.bench.filter((s) => s === null).length;
-    if (emptyCount > 1) return;
+    if (emptyCount > 2) return;
 
     let worstBenchUnit: UnitInstance | null = null;
     let worstValue = 9999;
@@ -1320,7 +1746,7 @@ export class AIBotController {
     }
 
     // 대기석이 완전히 찼을 때(빈칸 0개)는 worstValue 기준치와 무관하게 2성 미완성 기물 중 가장 점수 낮은 1기를 과감히 매각하여 상점 락 해제!
-    if (worstBenchUnit && (emptyCount === 0 || worstValue < 65)) {
+    if (worstBenchUnit && (emptyCount === 0 || emptyCount === 1 || worstValue < 80)) {
       bot.sellUnit(worstBenchUnit.instanceId, sharedPool);
     }
   }

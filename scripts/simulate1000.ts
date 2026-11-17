@@ -80,6 +80,10 @@ const creepByRound = new Map<string, { total: number; loss: number }>();
 const roundsPerGame: number[] = [];
 const playSecPerGame: number[] = [];
 const placementWinsByPersona = new Map<string, { n: number; sum: number; top1: number }>();
+const macroByPersona = new Map<
+  string,
+  { save: number; tempo: number; roll: number; stabilize: number; onnx: number; sync: number }
+>();
 let roundCapHit = 0;
 let deadlocks = 0;
 let combatTickSum = 0;
@@ -169,8 +173,12 @@ function runOneGame(): void {
         let reason: 'goldFloor' | 'rerollCap' | 'ok' = 'ok';
         if (due) {
           const cost = p.freeRerolls > 0 ? 0 : 2;
+          const effFloor =
+            typeof ai.resolveEffectiveGoldFloor === 'function'
+              ? ai.resolveEffectiveGoldFloor(p, brain)
+              : brain.targetGoldFloorThisRound;
           if (brain.rerollsExecutedThisRound >= brain.maxRerollsAllowedThisRound) reason = 'rerollCap';
-          else if (p.gold - cost < brain.targetGoldFloorThisRound) reason = 'goldFloor';
+          else if (p.gold - cost < effFloor) reason = 'goldFloor';
         }
         const wasRolldown = brain.isRolldownActive;
         let acted = false;
@@ -192,6 +200,29 @@ function runOneGame(): void {
       }
     }
     playSec += game.prepTotalSec;
+
+    for (const p of alive()) {
+      const brain = brainOf(p);
+      if (brain?.lastNeuralResult) {
+        const pk = p.persona ?? 'NONE';
+        const row = macroByPersona.get(pk) ?? {
+          save: 0,
+          tempo: 0,
+          roll: 0,
+          stabilize: 0,
+          onnx: 0,
+          sync: 0,
+        };
+        const m = brain.lastNeuralResult.macroAction;
+        if (m === 'SAVE_INTEREST') row.save++;
+        else if (m === 'TEMPO_LEVEL') row.tempo++;
+        else if (m === 'ROLLDOWN') row.roll++;
+        else row.stabilize++;
+        if (brain.lastNeuralResult.backend === 'ONNX_RUNTIME') row.onnx++;
+        else row.sync++;
+        macroByPersona.set(pk, row);
+      }
+    }
 
     // 전투 직전 AI 결함 지표 수집
     for (const p of alive()) {
@@ -507,9 +538,18 @@ for (const r of itemRows) {
   console.log(`  ${r.name.padEnd(14)} 장착 ${String(r.equips).padStart(4)}회  순방률(TOP4) ${(r.top4Rate * 100).toFixed(1)}%  우승률 ${(r.top1Rate * 100).toFixed(1)}%  평균순위 ${r.avgPlace.toFixed(2)}위  (최다 장착: ${r.topUnit})`);
 }
 
+console.log('\n[1-C2] 페르소나별 신경망 매크로 분포 (정비 종료 시점 샘플)');
+for (const [k, v] of macroByPersona) {
+  const total = v.save + v.tempo + v.roll + v.stabilize;
+  if (total === 0) continue;
+  console.log(
+    `  ${k.padEnd(18)} 이자 ${((v.save / total) * 100).toFixed(0)}%  레벨템포 ${((v.tempo / total) * 100).toFixed(0)}%  롤다운 ${((v.roll / total) * 100).toFixed(0)}%  안정리롤 ${((v.stabilize / total) * 100).toFixed(0)}%  (백엔드 ONNX ${v.onnx} / SYNC ${v.sync})`
+  );
+}
+
 console.log('\n[1-C] 페르소나별 평균 순위 (1위=최고)');
 for (const [k, v] of placementWinsByPersona) {
-  // place는 이미 실제 순위(1=우승)
+  // place는 이미 실제 순위(1=우
   console.log(`  ${k.padEnd(20)} 평균 순위 ${(v.sum / v.n).toFixed(2)}위  1위율 ${pct(v.top1, v.n)}  (${v.n}판 표본)`);
 }
 

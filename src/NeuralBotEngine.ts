@@ -18,6 +18,75 @@ export interface NeuralInferenceResult {
   backend: 'DIRECT_NEURAL_MATRIX' | 'ONNX_RUNTIME';
 }
 
+export interface NeuralPredictOptions {
+  temperature?: number;
+  rng?: () => number;
+  logitBias?: (logits: number[]) => number[];
+}
+
+const MACRO_ACTIONS: NeuralMacroAction[] = [
+  'SAVE_INTEREST',
+  'TEMPO_LEVEL',
+  'ROLLDOWN',
+  'STABILIZE_REROLL',
+];
+
+function pickMacroFromLogits(
+  policyLogits: number[],
+  temperature: number,
+  rng: () => number
+): NeuralMacroAction {
+  if (policyLogits.length === 0) {
+    return 'SAVE_INTEREST';
+  }
+  const temp = Math.max(0.12, temperature);
+  if (temp <= 0.14) {
+    let bestIdx = 0;
+    let maxLogit = -Infinity;
+    for (let i = 0; i < policyLogits.length; i++) {
+      if (policyLogits[i] > maxLogit) {
+        maxLogit = policyLogits[i];
+        bestIdx = i;
+      }
+    }
+    return MACRO_ACTIONS[bestIdx] ?? 'SAVE_INTEREST';
+  }
+
+  const scaled = policyLogits.map((l) => l / temp);
+  const maxL = Math.max(...scaled);
+  const exps = scaled.map((l) => Math.exp(l - maxL));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  let roll = rng() * sum;
+  for (let i = 0; i < exps.length; i++) {
+    roll -= exps[i];
+    if (roll <= 0) {
+      return MACRO_ACTIONS[i] ?? 'SAVE_INTEREST';
+    }
+  }
+  return MACRO_ACTIONS[MACRO_ACTIONS.length - 1];
+}
+
+function buildNeuralResult(
+  valueScore: number,
+  policyLogits: number[],
+  itemUrgency: number,
+  backend: NeuralInferenceResult['backend'],
+  options?: NeuralPredictOptions
+): NeuralInferenceResult {
+  const temperature = options?.temperature ?? 0.45;
+  const rng = options?.rng ?? Math.random;
+  const biasedLogits = options?.logitBias
+    ? options.logitBias([...policyLogits])
+    : policyLogits;
+  return {
+    valueScore: Math.max(0, Math.min(1, valueScore)),
+    macroAction: pickMacroFromLogits(biasedLogits, temperature, rng),
+    policyLogits,
+    itemUrgency: Math.max(0, Math.min(1, itemUrgency)),
+    backend,
+  };
+}
+
 function relu(arr: number[]): number[] {
   return arr.map((x) => (x > 0 ? x : 0));
 }
@@ -59,6 +128,11 @@ export class NeuralBotEngine {
     return NeuralBotEngine.instance;
   }
 
+  /** 웹 클라이언트에서 ONNX Runtime 세션이 준비되었는지 (Node 시뮬·세션 미로드 시 false) */
+  public isOnnxSessionReady(): boolean {
+    return this.isOnnxReady && this.onnxSession != null;
+  }
+
   /**
    * onnxruntime-web 비동기 세션 초기화 시도
    * (웹뷰 오프라인 또는 환경에 따라 실패해도 Direct Matrix로 100% 정상 작동)
@@ -83,7 +157,7 @@ export class NeuralBotEngine {
    * 동기적 초고속(0.001ms) 순전파 추론
    * 실시간 게임 틱 및 1000판 시뮬레이션에서도 딜레이 없이 100% 네이티브 실행
    */
-  public predictSync(features: number[]): NeuralInferenceResult {
+  public predictSync(features: number[], options?: NeuralPredictOptions): NeuralInferenceResult {
     const w = this.weights;
 
     // Backbone: fc1 (11 -> 32) -> relu -> fc2 (32 -> 32) -> relu
@@ -104,38 +178,18 @@ export class NeuralBotEngine {
     const u_out = matmul(u_h, w.urg_out_w, w.urg_out_b)[0];
     const itemUrgency = sigmoid(u_out);
 
-    // Argmax Policy
-    let bestActionIdx = 0;
-    let maxLogit = -Infinity;
-    for (let i = 0; i < policyLogits.length; i++) {
-      if (policyLogits[i] > maxLogit) {
-        maxLogit = policyLogits[i];
-        bestActionIdx = i;
-      }
-    }
-
-    const ACTIONS: NeuralMacroAction[] = [
-      'SAVE_INTEREST',
-      'TEMPO_LEVEL',
-      'ROLLDOWN',
-      'STABILIZE_REROLL',
-    ];
-
-    return {
-      valueScore: Math.max(0, Math.min(1, valueScore)),
-      macroAction: ACTIONS[bestActionIdx] ?? 'SAVE_INTEREST',
-      policyLogits,
-      itemUrgency: Math.max(0, Math.min(1, itemUrgency)),
-      backend: 'DIRECT_NEURAL_MATRIX',
-    };
+    return buildNeuralResult(valueScore, policyLogits, itemUrgency, 'DIRECT_NEURAL_MATRIX', options);
   }
 
   /**
    * ONNX 모델 비동기 추론 (ONNX 세션 활성화 시)
    */
-  public async predictONNX(features: number[]): Promise<NeuralInferenceResult> {
+  public async predictONNX(
+    features: number[],
+    options?: NeuralPredictOptions
+  ): Promise<NeuralInferenceResult> {
     if (!this.isOnnxReady || !this.onnxSession) {
-      return this.predictSync(features);
+      return this.predictSync(features, options);
     }
 
     try {
@@ -148,31 +202,15 @@ export class NeuralBotEngine {
       const uArr = results.item_urgency.data as Float32Array;
 
       const policyLogits = Array.from(pArr);
-      let bestActionIdx = 0;
-      let maxLogit = -Infinity;
-      for (let i = 0; i < policyLogits.length; i++) {
-        if (policyLogits[i] > maxLogit) {
-          maxLogit = policyLogits[i];
-          bestActionIdx = i;
-        }
-      }
-
-      const ACTIONS: NeuralMacroAction[] = [
-        'SAVE_INTEREST',
-        'TEMPO_LEVEL',
-        'ROLLDOWN',
-        'STABILIZE_REROLL',
-      ];
-
-      return {
-        valueScore: Math.max(0, Math.min(1, vArr[0])),
-        macroAction: ACTIONS[bestActionIdx] ?? 'SAVE_INTEREST',
+      return buildNeuralResult(
+        vArr[0],
         policyLogits,
-        itemUrgency: Math.max(0, Math.min(1, uArr[0])),
-        backend: 'ONNX_RUNTIME',
-      };
+        uArr[0],
+        'ONNX_RUNTIME',
+        options
+      );
     } catch (_) {
-      return this.predictSync(features);
+      return this.predictSync(features, options);
     }
   }
 }

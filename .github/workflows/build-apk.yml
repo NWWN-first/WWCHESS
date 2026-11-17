@@ -58,17 +58,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v1.0.0-apk
-          name: "WWCHESS Fantasy AutoBattler - 최신 APK"
+          tag_name: apk-${{ github.run_number }}-${{ github.sha }}
+          name: "WWCHESS Fantasy AutoBattler APK (run ${{ github.run_number }})"
           body: |
-            ## 🎮 WWCHESS Fantasy AutoBattler 최신 모바일 APK
+            ## 🎮 WWCHESS Fantasy AutoBattler 모바일 APK
             
             - **빌드 일시**: ${{ github.event.head_commit.timestamp }}
             - **커밋**: `${{ github.sha }}`
-            - **적용 사항**: 
-              - 13종 판타지 시너지 & 20종 챔피언 & 15종 조합 아이템
-              - 247개 시즌 18 증강체 및 지능형 가치평가(Valuation) AI 시스템 탑재
-              - 모바일 가로모드(Landscape) 최적화
+            - **콘텐츠 (GameData 기준)**: 13종 시너지 · 61종 챔피언 · 15종 완성 아이템 · 약 80종 증강
+            - **AI**: ONNX Runtime + 인라인 신경망 가중치 (`predictSync` / `predictONNX`)
+            - 모바일 가로모드(Landscape) 최적화
             
             ### 📥 다운로드 방법
             아래 Assets의 **`app-debug.apk`**를 클릭하여 스마트폰에 다운로드 후 설치하세요.
