@@ -23,6 +23,18 @@ export interface TraitEffectTier {
   teamManaPerAttack?: number;
   spellPowerBonus?: number;
   goblinStackMultiplier?: number;
+  /** 황금 고블린 (3)/(5)/(7) 전투 보너스 — GOLDEN_GOBLIN trait 유닛만 */
+  goblinCombatBonusHp?: number;
+  goblinCombatBonusAtk?: number;
+  goblinCombatBonusAtkSpeed?: number;
+  goblinCombatDamageReduction?: number;
+  /** (5)(7) 승리 유지 보상 — 보드에 고블린 유닛 있을 때만 */
+  goblinWinGoldMin?: number;
+  goblinWinGoldMax?: number;
+  goblinSmallOrbChanceOnWin?: number;
+  goblinWinStreakForGoldOrb?: number;
+  /** (7) 매 라운드 종료 잭팟 (승패 무관) */
+  goblinPerRoundJackpot?: boolean;
   damageReductionFirst8s?: number;
   berserkAtkMultiplier?: number;
   berserkAtkSpeedMultiplier?: number;
@@ -171,11 +183,40 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     color: '#F1C40F',
     thresholds: [3, 5, 7],
     description:
-      '전투 패배 시 금고 스택이 기하급수적으로 축적됩니다. 전투 승리 시 금고가 폭발(Cash-out)하며 전리품이 쏟아집니다!',
+      '패배 시 금고 스택 → 승리 한방 캐시아웃(3). (5) 승리 유지 보상·전투 강화. (7) 매판 잭팟·전투 폭발!',
     effects: [
-      { threshold: 3, label: '(3) 패배 시 기본 금고 스택 축적 (1.0x), 승리 시 금고 개봉!', goblinStackMultiplier: 1.0 },
-      { threshold: 5, label: '(5) 패배 시 금고 스택 2배 축적 (2.0x), 황금/프리즘 보물 대폭 증가!', goblinStackMultiplier: 2.0 },
-      { threshold: 7, label: '(7) [프리즘/왕관필수] 패배 금고 스택 4.0배 축적, 초호화 대박 보상 확정!', goblinStackMultiplier: 4.0 },
+      {
+        threshold: 3,
+        label: '(3) 패배 금고 스택 (1.0x), 승리 캐시아웃 — 전투는 미미한 체력만',
+        goblinStackMultiplier: 1.0,
+        goblinCombatBonusHp: 80,
+      },
+      {
+        threshold: 5,
+        label: '(5) 스택 2.0x + 승리 골드·구슬 + 전투 HP/ATK/공속',
+        goblinStackMultiplier: 2.0,
+        goblinCombatBonusHp: 120,
+        goblinCombatBonusAtk: 25,
+        goblinCombatBonusAtkSpeed: 0.25,
+        goblinWinGoldMin: 2,
+        goblinWinGoldMax: 4,
+        goblinSmallOrbChanceOnWin: 0.35,
+        goblinWinStreakForGoldOrb: 2,
+      },
+      {
+        threshold: 7,
+        label: '(7) 스택 4.0x + 매판 잭팟 + 승리 대박 + 전투 폭발(피해감소)',
+        goblinStackMultiplier: 4.0,
+        goblinCombatBonusHp: 600,
+        goblinCombatBonusAtk: 50,
+        goblinCombatBonusAtkSpeed: 0.35,
+        goblinCombatDamageReduction: 0.12,
+        goblinPerRoundJackpot: true,
+        goblinWinGoldMin: 4,
+        goblinWinGoldMax: 7,
+        goblinSmallOrbChanceOnWin: 0.45,
+        goblinWinStreakForGoldOrb: 2,
+      },
     ],
   },
 

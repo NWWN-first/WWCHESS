@@ -13,6 +13,7 @@ import {
 } from './GameData';
 import { Participant } from './Participant';
 import { SharedPoolManager } from './SharedPoolManager';
+import { ActiveSynergyState, SynergyEngine } from './SynergyEngine';
 
 export type LootOrbTier = 'GRAY' | 'BLUE' | 'GOLD' | 'PRISMATIC';
 
@@ -47,29 +48,98 @@ export class DopamineEngine {
    *   누적된 goblinVaultStacks 구간(1~9, 10+, 25+, 45+, 70+, 100+)에 따라 폭발적인 보상이 담긴
    *   LootOrb[]를 생성하여 반환하고 goblinVaultStacks = 0으로 초기화한다.
    */
+  public static hasGoblinUnitOnBoard(participant: Participant): boolean {
+    for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+      for (let c = 0; c < Participant.BOARD_COLS; c++) {
+        const unit = participant.board[r][c];
+        if (unit && unit.traits.includes('GOLDEN_GOBLIN')) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 라운드 종료 경제: (5)(7) 승리 유지 보상 + (7) 매판 잭팝 (캐시아웃은 processGoldenGoblinTrait).
+   */
+  public static processRoundEnd(
+    participant: Participant,
+    didWinCombat: boolean,
+    isCreepMatch: boolean,
+    sharedPool: SharedPoolManager
+  ): LootOrb[] {
+    if (participant.isEliminated || isCreepMatch) return [];
+
+    const goblinState = SynergyEngine.getActiveSynergyMap(participant).get('GOLDEN_GOBLIN');
+    if (!goblinState || goblinState.count < 3) return [];
+    if (!DopamineEngine.hasGoblinUnitOnBoard(participant)) return [];
+
+    const effect = goblinState.activeEffect;
+    if (!effect) return [];
+
+    const orbs: LootOrb[] = [];
+
+    if (effect.goblinPerRoundJackpot) {
+      orbs.push(
+        ...DopamineEngine.buildGoblinPerRoundJackpotOrbs(participant, sharedPool)
+      );
+    }
+
+    if (didWinCombat && goblinState.count >= 5) {
+      const minG = effect.goblinWinGoldMin ?? 0;
+      const maxG = effect.goblinWinGoldMax ?? 0;
+      if (maxG > 0) {
+        const span = Math.max(0, maxG - minG);
+        const goldGain = minG + Math.floor(Math.random() * (span + 1));
+        participant.gold += goldGain;
+        participant.lastActionMessage = `🪙 [황금 고블린] 승리 유지 +${goldGain}골드!`;
+      }
+
+      const smallOrbChance = effect.goblinSmallOrbChanceOnWin ?? 0;
+      if (smallOrbChance > 0 && Math.random() < smallOrbChance) {
+        orbs.push(
+          DopamineEngine.createLootOrb('GRAY', 0.42, 0.5, '🔹 고블린 소박 구슬', {
+            gold: 2,
+            items: [DopamineEngine.randomBaseItem()],
+          })
+        );
+      }
+
+      const streakThreshold = effect.goblinWinStreakForGoldOrb ?? 0;
+      if (streakThreshold > 0 && participant.winStreak >= streakThreshold) {
+        orbs.push(
+          DopamineEngine.createLootOrb('GOLD', 0.58, 0.5, '🪙 연승 황금 구슬', {
+            gold: 5,
+            items: [DopamineEngine.randomBaseItem()],
+          })
+        );
+      }
+    }
+
+    return orbs;
+  }
+
   public static processGoldenGoblinTrait(
     participant: Participant,
-    activeGoblinCount: number,
+    goblinState: ActiveSynergyState | null,
     didWinCombat: boolean,
     sharedPool: SharedPoolManager
   ): LootOrb[] {
-    if (participant.isEliminated) return [];
+    const activeGoblinCount = goblinState?.count ?? 0;
+    if (participant.isEliminated || activeGoblinCount < 3) return [];
+
+    const stackMultiplier = goblinState?.activeEffect?.goblinStackMultiplier ?? 1;
 
     // 1. 전투 패배 시: 황금 고블린 3시너지 이상 활성화 중이면 금고 스택 축적
     if (!didWinCombat) {
-      if (activeGoblinCount >= 3) {
-        const baseGain = 4 + participant.loseStreak * 2;
-        const multiplier =
-          activeGoblinCount >= 7 ? 4 : activeGoblinCount >= 5 ? 2 : 1;
-        const totalGain = baseGain * multiplier;
-        participant.goblinVaultStacks += totalGain;
-        participant.lastActionMessage = `🪙 [황금 고블린 금고] 패배 스택 +${totalGain} 축적! (현재 총 ${participant.goblinVaultStacks} 스택)`;
-      }
+      const baseGain = 4 + participant.loseStreak * 2;
+      const totalGain = baseGain * stackMultiplier;
+      participant.goblinVaultStacks += totalGain;
+      participant.lastActionMessage = `🪙 [황금 고블린 금고] 패배 스택 +${totalGain} 축적! (현재 총 ${participant.goblinVaultStacks} 스택)`;
       return [];
     }
 
     // 2. 전투 승리 시: 누적된 금고 스택이 있으면 즉시 금고 폭발(Cash-out)!
-    if (didWinCombat && participant.goblinVaultStacks > 0 && activeGoblinCount >= 3) {
+    if (participant.goblinVaultStacks > 0) {
       const stacks = participant.goblinVaultStacks;
       participant.goblinVaultStacks = 0;
 
@@ -84,6 +154,53 @@ export class DopamineEngine {
     }
 
     return [];
+  }
+
+  private static buildGoblinPerRoundJackpotOrbs(
+    participant: Participant,
+    sharedPool: SharedPoolManager
+  ): LootOrb[] {
+    const isPrism = Math.random() < 0.28;
+    const tier: LootOrbTier = isPrism ? 'PRISMATIC' : 'GOLD';
+    const gold = 6 + Math.floor(Math.random() * 7);
+    const rewards: LootOrbRewards = {
+      gold,
+      items: [DopamineEngine.randomBaseItem()],
+    };
+
+    const roll = Math.random();
+    if (roll < 0.1) {
+      rewards.units = DopamineEngine.pickAvailableUnitsFromPool(
+        sharedPool,
+        participant,
+        5,
+        1
+      );
+    } else if (roll < 0.32) {
+      rewards.units = DopamineEngine.pickAvailableUnitsFromPool(
+        sharedPool,
+        participant,
+        4,
+        1
+      );
+    }
+
+    if (isPrism && Math.random() < 0.35) {
+      rewards.items = [
+        ...(rewards.items ?? []),
+        DopamineEngine.randomCompletedItem(),
+      ];
+    }
+
+    return [
+      DopamineEngine.createLootOrb(
+        tier,
+        0.5,
+        0.48,
+        tier === 'PRISMATIC' ? '👑 7고블린 매판 잭팟' : '🪙 7고블린 매판 황금',
+        rewards
+      ),
+    ];
   }
 
   /**
