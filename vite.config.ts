@@ -10,6 +10,7 @@ export default defineConfig({
     outDir: 'dist',
     target: 'es2020',
     rollupOptions: {
+      external: ['onnxruntime-node'],
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/three')) return 'vendor-three';
