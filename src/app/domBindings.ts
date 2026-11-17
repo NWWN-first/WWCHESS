@@ -291,7 +291,7 @@ export function bindGlobalDOMEvents(app: FantasyAutoBattlerApp): void {
 
     document.getElementById('buy-xp-btn')?.addEventListener('pointerup', (e) => {
       const pt = app.clientToCanvasPoint(e.clientX, e.clientY);
-      if (app.game.player.buyXp()) {
+      if (app.game.player.buyXp(app.game.sharedPool)) {
         soundFX.playCoin(1.2);
         app.pixelRenderer.spawnPixelSparks(pt.x, pt.y, '#38bdf8', 14);
         app.renderAllHUD();

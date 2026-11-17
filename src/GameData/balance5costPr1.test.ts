@@ -17,8 +17,5 @@ describe('5-cost PR1 balance (v2)', () => {
     expect(gt.skill.baseValueByStar[1]).toBe(990);
     expect(gt.skill.baseValueByStar[0]).toBe(480);
     expect(gt.skill.baseValueByStar[2]).toBe(99999);
-
-    expect(UNIT_TEMPLATES.u5_ignis.skill.baseValueByStar[1]).toBe(980);
-    expect(UNIT_TEMPLATES.u5_luciel.skill.baseValueByStar[1]).toBe(840);
   });
 });

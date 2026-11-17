@@ -819,7 +819,7 @@ export class Participant implements PoolParticipant {
   /**
    * 경험치 구매 (4골드 소모 -> 기본 +4 XP, [레벨 업!] 증강체 보유 시 +7 XP)
    */
-  public buyXp(): boolean {
+  public buyXp(sharedPool?: SharedPoolManager): boolean {
     if (this.isEliminated || this.level >= 10) {
       this.lastActionMessage = '이미 최대 레벨(Lv.10)입니다.';
       return false;
@@ -831,14 +831,14 @@ export class Participant implements PoolParticipant {
 
     this.gold -= 4;
     const xpGain = this.augments.includes('AUG_LEVEL_UP') ? 7 : 4;
-    this.addXp(xpGain);
+    this.addXp(xpGain, sharedPool);
     return true;
   }
 
   /**
    * 경험치를 추가하고 레벨업 임계값 도달 시 자동 레벨업을 수행한다.
    */
-  public addXp(amount: number): void {
+  public addXp(amount: number, sharedPool?: SharedPoolManager): void {
     if (this.level >= 10) {
       this.xp = 0;
       return;
@@ -851,6 +851,12 @@ export class Participant implements PoolParticipant {
       if (this.xp >= required) {
         this.xp -= required;
         this.level = nextLevel;
+        if (
+          this.augments.includes('AUG_BIRTHDAY_PRESENT') &&
+          sharedPool
+        ) {
+          this.grantBirthdayPresentOnLevelUp(sharedPool);
+        }
       } else {
         break;
       }
@@ -859,6 +865,26 @@ export class Participant implements PoolParticipant {
     if (this.level >= 10) {
       this.xp = 0;
     }
+  }
+
+  /**
+   * [생일 선물] 레벨 업마다 2성 기물 1기(공유 풀 3장 차감) + 6골드.
+   */
+  private grantBirthdayPresentOnLevelUp(sharedPool: SharedPoolManager): void {
+    this.gold += 6;
+    const unitId = sharedPool.pullRandomTwoStarUnitForParticipant(this);
+    if (!unitId) {
+      return;
+    }
+
+    const unit = Participant.createUnitInstance(unitId, 2);
+    const emptyIdx = this.bench.findIndex((s) => s === null);
+    if (emptyIdx !== -1) {
+      this.bench[emptyIdx] = unit;
+    } else {
+      this.overflowUnits.push(unit);
+    }
+    this.tryMergeUnits(unitId, sharedPool);
   }
 
   /**
@@ -928,7 +954,7 @@ export class Participant implements PoolParticipant {
       this.freeRerolls += aug.freeRerollsGranted;
     }
     if (aug.immediateXp) {
-      this.addXp(aug.immediateXp);
+      this.addXp(aug.immediateXp, sharedPool);
     }
     if (aug.immediateHp) {
       this.hp = Math.min(this.maxHp, this.hp + aug.immediateHp);

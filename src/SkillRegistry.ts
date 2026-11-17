@@ -40,6 +40,8 @@ export interface CombatEvent {
   team?: CombatTeam;
   unitId?: string;
   skillName?: string;
+  /** SkillRegistry handler key for VFX routing (from unit template skill.skillType). */
+  skillType?: SkillType;
   fromRow?: number;
   fromCol?: number;
   toRow?: number;
@@ -665,7 +667,10 @@ const UNIT_SKILL_HANDLERS: Record<string, SkillHandler> = {
       ctx.teleportUnit(caster, behindTile.row, behindTile.col);
     }
 
-    const executeDamage = getSkillPrimaryValue(caster) + caster.atk * 1.5;
+    const baseExecute = getSkillPrimaryValue(caster) + caster.atk * 1.62;
+    const executeThreshold = lowestEnemy.maxHp * 0.38;
+    const executeBonus = lowestEnemy.currentHp <= executeThreshold ? 1.22 : 1;
+    const executeDamage = baseExecute * executeBonus;
     const result = ctx.dealDamage(
       caster,
       lowestEnemy,
@@ -675,7 +680,7 @@ const UNIT_SKILL_HANDLERS: Record<string, SkillHandler> = {
       true
     );
 
-    // 주변 1칸 적들에게 40% 스플래시 피해 부여
+    // 주변 1칸 적들에게 45% 스플래시 피해 부여
     const splashTargets = getLivingEnemies(caster, allUnits).filter(
       (e) =>
         e.instanceId !== lowestEnemy.instanceId &&
@@ -685,7 +690,7 @@ const UNIT_SKILL_HANDLERS: Record<string, SkillHandler> = {
       ctx.dealDamage(
         caster,
         splTarget,
-        executeDamage * 0.4,
+        executeDamage * 0.45,
         'PHYSICAL',
         caster.enableSkillCrit,
         true
@@ -719,8 +724,92 @@ const UNIT_SKILL_HANDLERS: Record<string, SkillHandler> = {
     for (const enemy of enemies) {
       ctx.dealDamage(caster, enemy, damage, 'MAGICAL', caster.enableSkillCrit, true);
       if (enemy.currentHp > 0) {
-        ctx.applyStun(caster, enemy, 2000);
+        ctx.applyStun(caster, enemy, 2250);
       }
+    }
+  },
+
+  /**
+   * [5코 전설] 천군 총사령관 미카엘 (u5_michael): 천상의 성검 대강림
+   * 적 전체에 신성 마법 피해 + 아군 전체 성광 보호막
+   */
+  u5_michael: (caster, _primaryTarget, allUnits, ctx) => {
+    const damage = getSkillPrimaryValue(caster);
+    const teamShield = getSkillSecondaryValue(caster) * caster.spellPower;
+    const enemies = getLivingEnemies(caster, allUnits);
+
+    for (const enemy of enemies) {
+      ctx.dealDamage(caster, enemy, damage, 'MAGICAL', caster.enableSkillCrit, true);
+    }
+
+    const allies = getLivingAllies(caster, allUnits);
+    for (const ally of allies) {
+      ctx.addShield(caster, ally, teamShield);
+    }
+  },
+
+  /**
+   * [5코 전설] 성운의 창세룡 바하무트 (u5_bahamut): 기가 플레어 노바
+   * 집중 타겟 중심 반경 2칸은 전력, 그 외 적은 65% 노바 피해
+   */
+  u5_bahamut: (caster, primaryTarget, allUnits, ctx) => {
+    const novaDamage = getSkillPrimaryValue(caster);
+    const enemies = getLivingEnemies(caster, allUnits);
+
+    for (const enemy of enemies) {
+      const inNova =
+        chebyshevDist(primaryTarget.row, primaryTarget.col, enemy.row, enemy.col) <= 2;
+      const dmg = novaDamage * (inNova ? 1 : 0.65);
+      ctx.dealDamage(caster, enemy, dmg, 'MAGICAL', caster.enableSkillCrit, true);
+    }
+  },
+
+  /**
+   * [5코 전설] 시간의 지배자 크로노스 (u5_chronos): 시공간 붕괴 폭격
+   * 전장 전체 마법 탄환 + 짧은 기절로 마법 DPS/CC
+   */
+  u5_chronos: (caster, _primaryTarget, allUnits, ctx) => {
+    const boltDamage = getSkillPrimaryValue(caster) * 0.58 + caster.atk * 0.85;
+    const enemies = getLivingEnemies(caster, allUnits);
+
+    for (const enemy of enemies) {
+      ctx.dealDamage(caster, enemy, boltDamage, 'MAGICAL', caster.enableSkillCrit, true);
+      if (enemy.currentHp > 0) {
+        ctx.applyStun(caster, enemy, 650);
+      }
+    }
+  },
+
+  /**
+   * [5코 전설] 세계수의 화신 이그드라실 (u5_yggdrasil): 대자연의 천지개벽
+   * 적 전체 뿌리 폭풍 + 아군 전체 보호막
+   */
+  u5_yggdrasil: (caster, _primaryTarget, allUnits, ctx) => {
+    const damage = getSkillPrimaryValue(caster);
+    const teamShield = getSkillSecondaryValue(caster) * caster.spellPower;
+    const splashRatio = 0.38;
+
+    for (const enemy of getLivingEnemies(caster, allUnits)) {
+      ctx.dealDamage(caster, enemy, damage, 'MAGICAL', caster.enableSkillCrit, true);
+      const splashTargets = getLivingEnemies(caster, allUnits).filter(
+        (e) =>
+          e.instanceId !== enemy.instanceId &&
+          chebyshevDist(enemy.row, enemy.col, e.row, e.col) <= 1
+      );
+      for (const spl of splashTargets) {
+        ctx.dealDamage(
+          caster,
+          spl,
+          damage * splashRatio,
+          'MAGICAL',
+          caster.enableSkillCrit,
+          true
+        );
+      }
+    }
+
+    for (const ally of getLivingAllies(caster, allUnits)) {
+      ctx.addShield(caster, ally, teamShield);
     }
   },
 
@@ -759,7 +848,7 @@ const UNIT_SKILL_HANDLERS: Record<string, SkillHandler> = {
    * (3성 달성 시 타겟당 50,000 피해로 적 전체 즉사!)
    */
   u5_luciel: (caster, _primaryTarget, allUnits, ctx) => {
-    const baseBarrageDamage = getSkillPrimaryValue(caster) + caster.atk * 1.5;
+    const baseBarrageDamage = getSkillPrimaryValue(caster) + caster.atk * 1.68;
     const enemies = getLivingEnemies(caster, allUnits);
 
     for (const enemy of enemies) {

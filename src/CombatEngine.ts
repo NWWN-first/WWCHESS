@@ -377,19 +377,25 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // 황금 고블린(GOLDEN_GOBLIN) 5/7 전투력 보너스
-    const goblin = synergyMap.get('GOLDEN_GOBLIN');
-    if (goblin && cu.traits.includes('GOLDEN_GOBLIN')) {
-      if (goblin.count >= 7) {
-        cu.maxHp += 600;
-        cu.currentHp += 600;
-        cu.atk += 50;
-        cu.baseAtk += 50;
-        cu.atkSpeed = Number((cu.atkSpeed + 0.35).toFixed(2));
-      } else if (goblin.count >= 5) {
-        cu.atk += 25;
-        cu.baseAtk += 25;
-        cu.atkSpeed = Number((cu.atkSpeed + 0.25).toFixed(2));
+    // 황금 고블린(GOLDEN_GOBLIN) — trait 정의(TRAIT_DEFINITIONS) 단일 소스
+    const goblinFx = synergyMap.get('GOLDEN_GOBLIN')?.activeEffect;
+    if (goblinFx && cu.traits.includes('GOLDEN_GOBLIN')) {
+      if (goblinFx.goblinCombatBonusHp) {
+        cu.maxHp += goblinFx.goblinCombatBonusHp;
+        cu.currentHp += goblinFx.goblinCombatBonusHp;
+      }
+      if (goblinFx.goblinCombatBonusAtk) {
+        cu.atk += goblinFx.goblinCombatBonusAtk;
+        cu.baseAtk += goblinFx.goblinCombatBonusAtk;
+      }
+      if (goblinFx.goblinCombatBonusAtkSpeed) {
+        cu.atkSpeed = Number((cu.atkSpeed + goblinFx.goblinCombatBonusAtkSpeed).toFixed(2));
+      }
+      if (goblinFx.goblinCombatDamageReduction) {
+        cu.damageReductionRatio = Math.max(
+          cu.damageReductionRatio,
+          goblinFx.goblinCombatDamageReduction
+        );
       }
     }
 
@@ -977,6 +983,7 @@ export class CombatEngine implements SkillCombatContext {
       team: unit.team,
       unitId: unit.unitId,
       skillName,
+      skillType: template?.skill.skillType,
       fromRow: unit.row,
       fromCol: unit.col,
       toRow: target.row,

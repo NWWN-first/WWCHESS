@@ -21,6 +21,7 @@ import { HexCoord } from './HexGridMath';
 import { Participant } from './Participant';
 import { UNIT_PIXEL_SPECS, WEAPON_BADGE_ICONS } from './PixelGameRenderer';
 import { CombatEvent, CombatUnit } from './SkillRegistry';
+import { soundFX } from './SoundFXManager';
 
 export type ChampionArchetype =
   | 'WARRIOR'      // 기사, 선봉대, 성기사 (Knight.glb)
@@ -799,6 +800,15 @@ interface Active3DProjectile {
   durationMs: number;
   arcHeight: number;
   kind: 'ARROW' | 'MAGIC_ORB';
+  isSkill: boolean;
+  trailColor: number;
+  trailAccumMs: number;
+}
+
+interface Active3DMeleeVfx {
+  group: THREE.Object3D;
+  elapsedMs: number;
+  maxLifeMs: number;
 }
 
 interface Active3DPopup {
@@ -874,6 +884,7 @@ export class ThreeJsGameRenderer {
   private activeProjectiles: Active3DProjectile[] = [];
   private activePopups: Active3DPopup[] = [];
   private activeSparks: Active3DSpark[] = [];
+  private activeMeleeVfx: Active3DMeleeVfx[] = [];
 
   // 조명
   private dirLight: THREE.DirectionalLight;
@@ -2011,6 +2022,12 @@ export class ThreeJsGameRenderer {
           const attacker = unitMap.get(ev.sourceId);
           const isSkill = ev.type === 'SKILL_CAST';
 
+          if (isSkill) {
+            soundFX.playMagicSpell();
+          } else {
+            soundFX.playSlash(false);
+          }
+
           juice.lungeMaxMs = isSkill ? 240 : 160;
           juice.lungeTimerMs = juice.lungeMaxMs;
           this.playUnitAnimation(ev.sourceId, isSkill ? 'spell' : 'attack');
@@ -2021,15 +2038,53 @@ export class ThreeJsGameRenderer {
             const dx = pTo.x - pFrom.x;
             const dz = pTo.z - pFrom.z;
             const len = Math.max(0.1, Math.hypot(dx, dz));
-            juice.lungeDirX = (dx / len) * (isSkill ? 0.6 : 0.4);
-            juice.lungeDirZ = (dz / len) * (isSkill ? 0.6 : 0.4);
+            const nx = dx / len;
+            const nz = dz / len;
+            juice.lungeDirX = nx * (isSkill ? 0.6 : 0.4);
+            juice.lungeDirZ = nz * (isSkill ? 0.6 : 0.4);
             juice.facingY = Math.atan2(dx, dz);
 
-            const isRanged = attacker && attacker.range > 1;
+            const spec =
+              UNIT_PIXEL_SPECS[ev.unitId ?? attacker?.unitId ?? 'u1_garen'] ??
+              UNIT_PIXEL_SPECS.u1_garen;
+            const glowHex = parseInt(spec.weaponGlow.replace('#', ''), 16);
+            const trailHex = parseInt(spec.primaryArmor.replace('#', ''), 16);
+
+            const isRanged = attacker ? attacker.range > 1 : false;
             if (isRanged) {
-              const archetype = attacker ? this.getChampionArchetype(attacker.unitId) : 'WARRIOR';
-              const projKind = archetype === 'WARRIOR' || archetype === 'ROGUE' ? 'ARROW' : 'MAGIC_ORB';
-              this.spawn3DProjectile(pFrom.x, 1.3, pFrom.z, pTo.x, 1.1, pTo.z, projKind);
+              const archetype = attacker
+                ? this.getChampionArchetype(attacker.unitId)
+                : 'WARRIOR';
+              const projKind =
+                archetype === 'WARRIOR' || archetype === 'ROGUE' ? 'ARROW' : 'MAGIC_ORB';
+              this.spawn3DProjectile(
+                pFrom.x,
+                1.3,
+                pFrom.z,
+                pTo.x,
+                1.1,
+                pTo.z,
+                projKind,
+                { isSkill, glowColor: glowHex, trailColor: trailHex }
+              );
+            } else {
+              const smearX = pFrom.x + nx * this.hexRadius * (isSkill ? 0.72 : 0.52);
+              const smearZ = pFrom.z + nz * this.hexRadius * (isSkill ? 0.72 : 0.52);
+              this.spawnMeleeSlashRingVfx(
+                smearX,
+                smearZ,
+                Math.atan2(dx, dz),
+                glowHex,
+                isSkill
+              );
+            }
+
+            if (isSkill && attacker && attacker.cost >= 3) {
+              this.triggerImpactShake(attacker.cost >= 4 ? 8 : 5, 190);
+            }
+
+            if (isSkill && ev.skillType === 'GOLDEN_VAULT_BOMBARD') {
+              this.spawnGoldenVaultBombardVfx(pTo.x, pTo.z, attacker?.cost ?? 5);
             }
           }
         }
@@ -2101,25 +2156,33 @@ export class ThreeJsGameRenderer {
     x2: number,
     y2: number,
     z2: number,
-    kind: 'ARROW' | 'MAGIC_ORB'
+    kind: 'ARROW' | 'MAGIC_ORB',
+    opts?: { isSkill?: boolean; glowColor?: number; trailColor?: number }
   ): void {
+    const isSkill = !!opts?.isSkill;
+    const glow = opts?.glowColor ?? (kind === 'ARROW' ? 0xfacc15 : 0x38bdf8);
+    const trailColor = opts?.trailColor ?? glow;
+
     const group = new THREE.Group();
     if (kind === 'ARROW') {
-      const shaftGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.85, 4);
+      const shaftRad = isSkill ? 0.065 : 0.04;
+      const shaftLen = isSkill ? 1.05 : 0.85;
+      const shaftGeo = new THREE.CylinderGeometry(shaftRad, shaftRad, shaftLen, 5);
       const shaftMat = new THREE.MeshStandardMaterial({
-        color: 0xfef08a,
-        emissive: 0xfacc15,
-        emissiveIntensity: 0.8,
+        color: glow,
+        emissive: glow,
+        emissiveIntensity: isSkill ? 1.2 : 0.8,
       });
       const shaft = new THREE.Mesh(shaftGeo, shaftMat);
       shaft.rotation.x = Math.PI / 2;
       group.add(shaft);
     } else {
-      const orbGeo = new THREE.SphereGeometry(0.26, 8, 8);
+      const orbRad = isSkill ? 0.38 : 0.26;
+      const orbGeo = new THREE.SphereGeometry(orbRad, 10, 10);
       const orbMat = new THREE.MeshStandardMaterial({
-        color: 0x38bdf8,
-        emissive: 0x38bdf8,
-        emissiveIntensity: 1.5,
+        color: glow,
+        emissive: glow,
+        emissiveIntensity: isSkill ? 2.0 : 1.5,
       });
       const orb = new THREE.Mesh(orbGeo, orbMat);
       group.add(orb);
@@ -2133,10 +2196,101 @@ export class ThreeJsGameRenderer {
       startPos: new THREE.Vector3(x1, y1, z1),
       targetPos: new THREE.Vector3(x2, y2, z2),
       elapsedMs: 0,
-      durationMs: 280,
-      arcHeight: 1.2,
+      durationMs: isSkill ? 310 : 280,
+      arcHeight: isSkill ? 1.65 : 1.2,
       kind,
+      isSkill,
+      trailColor,
+      trailAccumMs: 0,
     });
+  }
+
+  private spawnMeleeSlashRingVfx(
+    x: number,
+    z: number,
+    angleY: number,
+    glowColor: number,
+    isSkill: boolean
+  ): void {
+    const group = new THREE.Group();
+    group.position.set(x, 0.55, z);
+    group.rotation.y = angleY;
+
+    const slashW = (isSkill ? 1.35 : 0.95) * this.hexRadius;
+    const slashGeo = new THREE.PlaneGeometry(slashW, isSkill ? 0.42 : 0.28);
+    const slashMat = new THREE.MeshBasicMaterial({
+      color: glowColor,
+      transparent: true,
+      opacity: isSkill ? 0.92 : 0.78,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const slash = new THREE.Mesh(slashGeo, slashMat);
+    slash.rotation.x = -Math.PI / 2 + (isSkill ? 0.15 : 0.08);
+    slash.position.set(slashW * 0.35, 0, 0);
+    group.add(slash);
+
+    const ringGeo = new THREE.RingGeometry(
+      this.hexRadius * (isSkill ? 0.38 : 0.28),
+      this.hexRadius * (isSkill ? 0.62 : 0.48),
+      24,
+      1,
+      0,
+      Math.PI * 1.15
+    );
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: isSkill ? 0.85 : 0.65,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    group.add(ring);
+
+    this.vfxGroup.add(group);
+    this.activeMeleeVfx.push({
+      group,
+      elapsedMs: 0,
+      maxLifeMs: isSkill ? 240 : 160,
+    });
+  }
+
+  private spawnGoldenVaultBombardVfx(x: number, z: number, cost: CostTier): void {
+    this.triggerImpactShake(cost >= 5 ? 11 : 8, 420);
+    soundFX.playCoin(1.35);
+
+    const pillarGeo = new THREE.CylinderGeometry(0.35, 0.9, 5.5, 12, 1, true);
+    const pillarMat = new THREE.MeshBasicMaterial({
+      color: 0xfbbf24,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+    pillar.position.set(x, 2.8, z);
+    this.vfxGroup.add(pillar);
+    this.activeMeleeVfx.push({ group: pillar, elapsedMs: 0, maxLifeMs: 380 });
+
+    const groundRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.5, 2.2, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0xfde047,
+        transparent: true,
+        opacity: 0.75,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      })
+    );
+    groundRing.rotation.x = -Math.PI / 2;
+    groundRing.position.set(x, 0.12, z);
+    this.vfxGroup.add(groundRing);
+    this.activeMeleeVfx.push({ group: groundRing, elapsedMs: 0, maxLifeMs: 520 });
+
+    this.spawnSparks(x, 3.5, z, 0xfacc15, 22);
+    this.spawnSparks(x, 0.4, z, 0xfde047, 14);
   }
 
   public spawn3DFloatingPopup(
@@ -2315,8 +2469,9 @@ export class ThreeJsGameRenderer {
     // 4. 유닛 동기화 및 3D 1:1 드래그 물리 모션 갱신
     this.syncUnits3D(dtMs, state);
 
-    // 5. 투사체 & 팝업 & 스파크 업데이트
+    // 5. 투사체 & 팝업 & 스파크 & 근접 슬래시 업데이트
     this.updateProjectiles(dtMs);
+    this.updateMeleeVfx(dtMs);
     this.updatePopups(dtMs);
     this.updateSparks(dtMs);
 
@@ -2342,11 +2497,70 @@ export class ThreeJsGameRenderer {
         p.mesh.lookAt(p.targetPos.x, p.targetPos.y, p.targetPos.z);
       }
 
+      if (p.isSkill) {
+        p.trailAccumMs += dtMs;
+        if (p.trailAccumMs >= 32) {
+          p.trailAccumMs = 0;
+          this.spawnProjectileTrailPuff(curX, curY, curZ, p.trailColor);
+        }
+      }
+
       if (t >= 1.0) {
-        this.spawnSparks(p.targetPos.x, p.targetPos.y, p.targetPos.z, 0xfacc15, 6);
+        const hitSparkCount = p.isSkill ? 12 : 6;
+        this.spawnSparks(p.targetPos.x, p.targetPos.y, p.targetPos.z, 0xfacc15, hitSparkCount);
         this.projectilesGroup.remove(p.mesh);
         this.activeProjectiles.splice(i, 1);
       }
+    }
+  }
+
+  private spawnProjectileTrailPuff(x: number, y: number, z: number, color: number): void {
+    const geo = new THREE.SphereGeometry(0.11, 6, 6);
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.65,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, y, z);
+    this.vfxGroup.add(mesh);
+    this.activeMeleeVfx.push({ group: mesh, elapsedMs: 0, maxLifeMs: 140 });
+  }
+
+  private updateMeleeVfx(dtMs: number): void {
+    for (let i = this.activeMeleeVfx.length - 1; i >= 0; i--) {
+      const fx = this.activeMeleeVfx[i];
+      fx.elapsedMs += dtMs;
+      const life = fx.elapsedMs / fx.maxLifeMs;
+      if (life >= 1) {
+        this.vfxGroup.remove(fx.group);
+        fx.group.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (mesh.isMesh) {
+            mesh.geometry?.dispose();
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            for (const m of mats) m.dispose();
+          }
+        });
+        this.activeMeleeVfx.splice(i, 1);
+        continue;
+      }
+      const fade = 1 - life * life;
+      fx.group.scale.setScalar(0.85 + life * (fx.maxLifeMs > 200 ? 0.35 : 0.2));
+      fx.group.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh && mesh.material && !Array.isArray(mesh.material)) {
+          const m = mesh.material as THREE.MeshBasicMaterial;
+          if (m.transparent) {
+            const base =
+              typeof mesh.userData.trailBaseOpacity === 'number'
+                ? mesh.userData.trailBaseOpacity
+                : (mesh.userData.trailBaseOpacity = m.opacity);
+            m.opacity = base * fade;
+          }
+        }
+      });
     }
   }
 

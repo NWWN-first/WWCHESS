@@ -1128,30 +1128,39 @@ export class GameLoopManager {
     // 황금 고블린(GOLDEN_GOBLIN) 시너지 패배 스택 축적 또는 승리 캐시아웃 발동!
     if (!isCreepMatch && participant.hp > 0) {
       const synergies = SynergyEngine.getActiveSynergyMap(participant);
-      const goblinCount = synergies.get('GOLDEN_GOBLIN')?.count ?? 0;
-
-      if (goblinCount >= 3) {
+      const goblinState = synergies.get('GOLDEN_GOBLIN') ?? null;
+      if (goblinState && goblinState.count >= 3) {
         const cashoutOrbs = DopamineEngine.processGoldenGoblinTrait(
           participant,
-          goblinCount,
+          goblinState,
           didWin,
           this.sharedPool
         );
+        const roundEndOrbs = DopamineEngine.processRoundEnd(
+          participant,
+          didWin,
+          isCreepMatch,
+          this.sharedPool
+        );
+        const dropOrbs = [...cashoutOrbs, ...roundEndOrbs];
 
-        if (cashoutOrbs.length > 0) {
+        if (dropOrbs.length > 0) {
           if (!participant.isAI) {
-            this.playerLootOrbs.push(...cashoutOrbs);
-            this.pushBannerNotification(
-              `💥🪙 [황금 고블린 금고 대폭발!] ! 대박 미스터리 상자 ${cashoutOrbs.length}개가 보드에 쏟아졌습니다! 터치하여 오픈하세요!`
-            );
+            this.playerLootOrbs.push(...dropOrbs);
+            if (cashoutOrbs.length > 0) {
+              this.pushBannerNotification(
+                `💥🪙 [황금 고블린 금고 대폭발!] ! 대박 미스터리 상자 ${cashoutOrbs.length}개가 보드에 쏟아졌습니다! 터치하여 오픈하세요!`
+              );
+            }
           } else {
-            // AI 봇은 캐시아웃 구슬을 즉시 오픈하여 보상 획득
-            for (const orb of cashoutOrbs) {
+            for (const orb of dropOrbs) {
               DopamineEngine.claimLootOrb(participant, orb, this.sharedPool);
             }
-            this.pushBannerNotification(
-              `💥🪙 [${participant.name}] 황금 고블린 금고 캐시아웃 성공!`
-            );
+            if (cashoutOrbs.length > 0) {
+              this.pushBannerNotification(
+                `💥🪙 [${participant.name}] 황금 고블린 금고 캐시아웃 성공!`
+              );
+            }
           }
         }
       }
@@ -1174,7 +1183,7 @@ export class GameLoopManager {
         maxStreak >= 5 ? 3 : maxStreak >= 4 ? 2 : maxStreak >= 2 ? 1 : 0;
 
       p.gold += baseGold + interestGold + streakGold;
-      p.addXp(2);
+      p.addXp(2, this.sharedPool);
 
       if (!p.isShopLocked) {
         this.sharedPool.drawShopForParticipant(p);
