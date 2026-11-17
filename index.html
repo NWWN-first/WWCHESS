@@ -39,9 +39,9 @@
             <div class="lobby-crest-emblem">⚔️ ⬡ ⚔️</div>
             <h1 class="lobby-main-title">WWCHESS</h1>
             <div class="lobby-sub-title">FANTASY AUTO BATTLER · 신비의 전장</div>
-            <div class="lobby-badge-row">
-              <span class="lobby-feature-tag">✨ TFT S18 증강</span>
-              <span class="lobby-feature-tag">🧠 딥러닝 ONNX 봇</span>
+            <div class="lobby-badge-row" id="lobby-feature-badge-row">
+              <span class="lobby-feature-tag" id="lobby-badge-augments">✨ 증강</span>
+              <span class="lobby-feature-tag" id="lobby-badge-neural">🧠 ONNX · 인라인 신경망 봇</span>
               <span class="lobby-feature-tag">⚡ 100% 오프라인</span>
             </div>
           </div>
@@ -389,14 +389,7 @@
             </div>
 
             <div class="settings-section">
-              <div class="settings-section-title">인공지능 &amp; 시스템</div>
-              <div class="settings-row">
-                <span class="settings-label">AI 봇 두뇌 모드</span>
-                <div class="settings-options" id="settings-ai-options">
-                  <button class="setting-opt-btn active" data-ai="neural">🧠 딥러닝 ONNX 지능</button>
-                  <button class="setting-opt-btn" data-ai="standard">⚖️ 정석 룰베이스</button>
-                </div>
-              </div>
+              <div class="settings-section-title">시스템</div>
               <div class="settings-row">
                 <span class="settings-label">오프라인 구동</span>
                 <div class="settings-badge-ok">✅ 100% 완전 오프라인 로컬 실행 중</div>

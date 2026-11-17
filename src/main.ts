@@ -4,6 +4,7 @@ import { getCreepMonsterTemplate } from './CreepMonsterData';
 import {
   AUGMENT_DEFINITIONS,
   BaseItemId,
+  GAME_CONTENT_STATS,
   ITEM_DEFINITIONS,
   ItemId,
   SHOP_ODDS_BY_LEVEL,
@@ -137,6 +138,7 @@ class FantasyAutoBattlerApp {
     });
 
     this.bindGlobalDOMEvents();
+    this.refreshLobbyContentBadges();
     this.resizeCanvas();
     window.addEventListener('resize', () => this.resizeCanvas());
     window.addEventListener('orientationchange', () => {
@@ -2281,6 +2283,17 @@ class FantasyAutoBattlerApp {
       }
     } catch {
       // Ignore
+    }
+  }
+
+  private refreshLobbyContentBadges(): void {
+    const aug = document.getElementById('lobby-badge-augments');
+    if (aug) {
+      aug.textContent = `✨ 증강 ${GAME_CONTENT_STATS.augmentCount}종 · 시너지 ${GAME_CONTENT_STATS.traitCount}종`;
+    }
+    const neural = document.getElementById('lobby-badge-neural');
+    if (neural) {
+      neural.textContent = `🧠 ONNX·인라인 신경망 봇 (${GAME_CONTENT_STATS.championCount}챔피언)`;
     }
   }
 

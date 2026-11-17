@@ -441,7 +441,7 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
 };
 
 // ============================================================================
-// C. 20종 판타지 챔피언 정의 (UNIT_TEMPLATES)
+// C. 판타지 챔피언 정의 (UNIT_TEMPLATES — 규모는 GAME_CONTENT_STATS 참조)
 // ============================================================================
 
 export interface UnitStats {
@@ -2318,7 +2318,7 @@ export function getUnitRecommendedItems(unitId: string): CompletedItemId[] {
 }
 
 // ============================================================================
-// E. 26종 증강체 정의 (AUGMENT_DEFINITIONS - 실버/골드/프리즘)
+// E. 증강체 정의 (AUGMENT_DEFINITIONS — 실버/골드/프리즘, 규모는 GAME_CONTENT_STATS 참조)
 // ============================================================================
 
 export type AugmentCategory = 'ECONOMY' | 'COMBAT' | 'HERO' | 'TRAIT';
@@ -3287,3 +3287,13 @@ export const AUGMENT_DEFINITIONS: AugmentDefinition[] = [
     description: '전투 개전 시 팀에서 가장 공격력이 높은 아군 1명의 복제 분신(체력 70%)을 소환하여 함께 싸웁니다!',
   },
 ];
+
+/** UI·릴리스 노트용 콘텐츠 규모 (GameData 단일 소스) */
+export const GAME_CONTENT_STATS = {
+  traitCount: Object.keys(TRAIT_DEFINITIONS).length,
+  championCount: Object.keys(UNIT_TEMPLATES).length,
+  augmentCount: AUGMENT_DEFINITIONS.length,
+  completedItemCount: (Object.keys(ITEM_DEFINITIONS) as ItemId[]).filter(
+    (id) => !(['SWORD', 'BOW', 'ROD', 'TEAR', 'ARMOR'] as const).includes(id as BaseItemId)
+  ).length,
+} as const;
