@@ -26,6 +26,20 @@ import {
   placementRowPriority,
   primaryPlacementBucket,
 } from './set6/botPlacementHints';
+import {
+  BOT_NEURAL_FEATURE_DIM,
+  activeSynergyNorm,
+  augmentSlotsNorm,
+  augmentTierNorm,
+  countBoardItems,
+  countBoardUnits,
+  equippedItemPressure,
+  traitBreakpointProgress,
+} from './set6/botNeuralFeatures';
+import {
+  PERSONA_MACRO_LOGIT_BIAS,
+  PERSONA_POLICY_TEMPERATURE_HILLCLIMB,
+} from './set6/botPersonaTuning';
 
 export interface BotBrainState {
   botId: string;
@@ -60,15 +74,7 @@ const ONNX_PREFERRED_PERSONAS: ReadonlySet<AIPersona> = new Set([
   'LOW_COST_REROLLER',
 ]);
 
-const PERSONA_POLICY_TEMPERATURE: Record<AIPersona, number> = {
-  HYPER_ROLLER: 0.95,
-  LOW_COST_REROLLER: 0.88,
-  FAST_NINE_GREEDY: 0.42,
-  FAST_NINE_ECONOMIST: 0.32,
-  MERCENARY_GAMBLER: 1.05,
-  FLEX_MASTER: 0.55,
-  FLEX_BALANCED: 0.62,
-};
+const PERSONA_POLICY_TEMPERATURE = PERSONA_POLICY_TEMPERATURE_HILLCLIMB;
 
 function hashBotDecisionSeed(botId: string): number {
   let h = 2166136261;
@@ -168,6 +174,13 @@ export interface AIStateTensor {
   lossStreakNorm: number;
   contestedTraitRatio: number;
   emergencyFlag: number;
+  augmentSlotsNorm: number;
+  augmentTierNorm: number;
+  targetTraitProgressNorm: number;
+  mercenaryVaultNorm: number;
+  boardFillRatio: number;
+  activeSynergyNorm: number;
+  equippedItemPressure: number;
   features: number[];
 }
 
@@ -427,29 +440,11 @@ export class AIBotController {
   private biasPolicyLogitsForPersona(persona: AIPersona, logits: number[]): number[] {
     const b = [...logits];
     if (b.length < 4) return b;
-    if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
-      b[0] -= 1.1;
-      b[2] += 1.4;
-      b[3] += 0.9;
-    } else if (persona === 'FAST_NINE_ECONOMIST') {
-      b[0] += 1.35;
-      b[1] += 0.85;
-      b[2] -= 0.9;
-    } else if (persona === 'FAST_NINE_GREEDY') {
-      b[0] += 0.75;
-      b[1] += 0.55;
-      b[2] -= 0.35;
-    } else if (persona === 'MERCENARY_GAMBLER') {
-      b[2] += 0.65;
-      b[3] += 0.45;
-      b[0] -= 0.35;
-    } else if (persona === 'FLEX_BALANCED') {
-      b[1] += 0.85;
-      b[3] += 0.35;
-    } else {
-      b[1] += 0.45;
-      b[3] += 0.15;
-    }
+    const bias = PERSONA_MACRO_LOGIT_BIAS[persona];
+    b[0] += bias.save;
+    b[1] += bias.tempo;
+    b[2] += bias.roll;
+    b[3] += bias.stabilize;
     return b;
   }
 
@@ -1016,7 +1011,7 @@ export class AIBotController {
 
   /**
    * 딥러닝/ONNX 모델 추론용 정규화 상태 텐서(Feature Vector)를 추출한다.
-   * [현재 체력비율, 골드, 레벨, 스테이지, 대기석기물비율, 아이템비율, 필드전투력, 연승, 연패, 경합비율, 위기플래그]
+   * See `set6/botNeuralFeatures.ts` (18-dim schema).
    */
   public extractAIStateTensor(
     bot: Participant,
@@ -1053,6 +1048,22 @@ export class AIBotController {
     const contestedTraitRatio = Math.min(1, contestedCount / 4);
     const emergencyFlag = bot.hp <= 35 ? 1 : 0;
 
+    const traitCounts = bot.getActiveTraitCounts();
+    const augmentSlotsN = augmentSlotsNorm(bot.augments);
+    const augmentTierN = augmentTierNorm(bot.augments);
+    const targetTraitProgressNorm = traitBreakpointProgress(
+      traitCounts,
+      brain.targetTrait
+    );
+    const mercenaryVaultNorm = Math.min(1, bot.goblinVaultStacks / 70);
+    const boardUnits = countBoardUnits(bot);
+    const boardFillRatio = Math.min(1, boardUnits / Math.max(1, bot.level));
+    const activeSynergyN = activeSynergyNorm(traitCounts);
+    const equippedItemPressureN = equippedItemPressure(
+      bot,
+      countBoardItems(bot)
+    );
+
     const features = [
       hpRatio,
       goldNorm,
@@ -1065,7 +1076,20 @@ export class AIBotController {
       lossStreakNorm,
       contestedTraitRatio,
       emergencyFlag,
+      augmentSlotsN,
+      augmentTierN,
+      targetTraitProgressNorm,
+      mercenaryVaultNorm,
+      boardFillRatio,
+      activeSynergyN,
+      equippedItemPressureN,
     ];
+
+    if (features.length !== BOT_NEURAL_FEATURE_DIM) {
+      throw new Error(
+        `Neural feature dim mismatch: expected ${BOT_NEURAL_FEATURE_DIM}, got ${features.length}`
+      );
+    }
 
     return {
       hpRatio,
@@ -1079,6 +1103,13 @@ export class AIBotController {
       lossStreakNorm,
       contestedTraitRatio,
       emergencyFlag,
+      augmentSlotsNorm: augmentSlotsN,
+      augmentTierNorm: augmentTierN,
+      targetTraitProgressNorm,
+      mercenaryVaultNorm,
+      boardFillRatio,
+      activeSynergyNorm: activeSynergyN,
+      equippedItemPressure: equippedItemPressureN,
       features,
     };
   }

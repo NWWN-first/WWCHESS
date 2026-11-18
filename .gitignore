@@ -4,3 +4,4 @@ scripts/.cache/
 .DS_Store
 *.log
 
+__pycache__/

@@ -3,6 +3,7 @@
 // 100% 완전 오프라인 지원: 외부 서버 통신 없이 기기 내부에서 동작합니다.
 
 import { TRAINED_NEURAL_WEIGHTS, NeuralNetworkWeights } from './NeuralWeights';
+import { BOT_NEURAL_FEATURE_DIM } from './set6/botNeuralFeatures';
 
 export type NeuralMacroAction =
   | 'SAVE_INTEREST'
@@ -220,7 +221,7 @@ export class NeuralBotEngine {
     if (!this.useHeadlessOnnxInference()) return;
     let worst = 0;
     for (let i = 0; i < samples; i++) {
-      const features = Array.from({ length: 11 }, (_, j) => {
+      const features = Array.from({ length: BOT_NEURAL_FEATURE_DIM }, (_, j) => {
         const t = i * 0.17 + j * 0.09;
         return Math.max(0, Math.min(1, (Math.sin(t) + 1) * 0.5));
       });
@@ -249,6 +250,12 @@ export class NeuralBotEngine {
    */
   public predictSync(features: number[], options?: NeuralPredictOptions): NeuralInferenceResult {
     const w = this.weights;
+    const expectedIn = w.fc1_w[0]?.length ?? BOT_NEURAL_FEATURE_DIM;
+    if (features.length !== expectedIn) {
+      throw new Error(
+        `Neural feature length ${features.length} != weight input ${expectedIn}`
+      );
+    }
 
     const h1 = relu(matmul(features, w.fc1_w, w.fc1_b));
     const h2 = relu(matmul(h1, w.fc2_w, w.fc2_b));
