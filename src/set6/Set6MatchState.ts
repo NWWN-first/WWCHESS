@@ -12,6 +12,27 @@ export const MUTANT_VARIANTS = [
 
 export type MutantVariant = (typeof MUTANT_VARIANTS)[number];
 
+/** Official Set 6 mutant power names (TOWER_POWER = Tower of Power, not a trait). */
+export const MUTANT_VARIANT_LABELS: Record<MutantVariant, string> = {
+  METAL_CLAWS: 'Metal Claws',
+  ADRENALINE_RUSH: 'Adrenaline Burst',
+  VAMPIRIC: 'Vampiric',
+  HUNGER: 'Hungry',
+  ARCANA: 'Arcana',
+  TOWER_POWER: 'Tower of Power',
+  DREAD: 'Dread',
+};
+
+export const MUTANT_VARIANT_LABELS_KO: Record<MutantVariant, string> = {
+  METAL_CLAWS: '금속 발톱',
+  ADRENALINE_RUSH: '아드레날린 폭주',
+  VAMPIRIC: '흡혈',
+  HUNGER: '갈망',
+  ARCANA: '비전',
+  TOWER_POWER: '탑의 힘',
+  DREAD: '공포',
+};
+
 export function rollMutantVariant(): MutantVariant {
   const idx = Math.floor(Math.random() * MUTANT_VARIANTS.length);
   return MUTANT_VARIANTS[idx]!;
