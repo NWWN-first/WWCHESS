@@ -17,7 +17,7 @@ describe('botNeuralFeatures', () => {
     const rm = new RankManager();
     const ai = new AIBotController(rm);
     const bot = new Participant('n1', 'bot', true, 'FLEX_MASTER');
-    bot.goblinVaultStacks = 14;
+    bot.mercenaryArmoryLoot = 14;
     bot.augments.push('AUG_MERCENARY_HEART');
     const tensor = ai.extractAIStateTensor(bot, [bot], '4-2');
     expect(tensor.features).toHaveLength(18);

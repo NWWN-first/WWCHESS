@@ -1055,7 +1055,7 @@ export class AIBotController {
       traitCounts,
       brain.targetTrait
     );
-    const mercenaryVaultNorm = Math.min(1, bot.goblinVaultStacks / 70);
+    const mercenaryVaultNorm = Math.min(1, bot.mercenaryArmoryLoot / 70);
     const boardUnits = countBoardUnits(bot);
     const boardFillRatio = Math.min(1, boardUnits / Math.max(1, bot.level));
     const activeSynergyN = activeSynergyNorm(traitCounts);
