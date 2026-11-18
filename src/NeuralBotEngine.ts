@@ -4,6 +4,10 @@
 
 import { TRAINED_NEURAL_WEIGHTS, NeuralNetworkWeights } from './NeuralWeights';
 import { BOT_NEURAL_FEATURE_DIM } from './set6/botNeuralFeatures';
+import {
+  browserOnnxMacroEnabled,
+  resolveBrowserOnnxModelUrl,
+} from './set6/browserOnnxConfig';
 
 export type NeuralMacroAction =
   | 'SAVE_INTEREST'
@@ -128,9 +132,12 @@ export class NeuralBotEngine {
   private isOnnxReady = false;
   private onnxRuntime: OnnxRuntimeKind = null;
   private headlessOnnxInit: Promise<void> | null = null;
+  private onnxWebInit: Promise<void> | null = null;
 
   private constructor() {
-    void this.tryInitOnnxWeb();
+    if (typeof window !== 'undefined') {
+      this.onnxWebInit = this.tryInitOnnxWeb();
+    }
     if (headlessOnnxSimRequested()) {
       this.headlessOnnxInit = this.tryInitOnnxNode();
     }
@@ -163,19 +170,44 @@ export class NeuralBotEngine {
     return this.useHeadlessOnnxInference();
   }
 
+  /** 앱 부팅 시 호출 — `public/models/wwchess_bot.onnx` 웹 세션 선로딩 */
+  public async ensureBrowserOnnxReady(): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
+    if (!this.onnxWebInit) {
+      this.onnxWebInit = this.tryInitOnnxWeb();
+    }
+    await this.onnxWebInit;
+    return this.isOnnxSessionReady();
+  }
+
+  /** 브라우저에서 매크로 ONNX 경로가 활성인지 (플래그 + 세션) */
+  public browserMacroOnnxActive(): boolean {
+    return (
+      typeof window !== 'undefined' &&
+      browserOnnxMacroEnabled() &&
+      this.isOnnxSessionReady()
+    );
+  }
+
   private async tryInitOnnxWeb(): Promise<void> {
     try {
-      if (typeof window !== 'undefined') {
-        const ort = await import('onnxruntime-web');
-        ort.env.wasm.numThreads = 1;
-        this.onnxSession = await ort.InferenceSession.create('./models/wwchess_bot.onnx');
-        this.isOnnxReady = true;
-        this.onnxRuntime = 'web';
-        console.log('[NeuralBotEngine] ONNX Runtime Web session initialized successfully.');
-      }
-    } catch {
+      if (typeof window === 'undefined') return;
+      const ort = await import('onnxruntime-web');
+      ort.env.wasm.numThreads = 1;
+      const modelUrl = resolveBrowserOnnxModelUrl();
+      this.onnxSession = await ort.InferenceSession.create(modelUrl);
+      this.isOnnxReady = true;
+      this.onnxRuntime = 'web';
+      console.log(
+        `[NeuralBotEngine] ONNX Runtime Web session initialized (${modelUrl}).`
+      );
+    } catch (e) {
       this.isOnnxReady = false;
       this.onnxRuntime = null;
+      console.warn(
+        '[NeuralBotEngine] Browser ONNX unavailable; macros use SYNC.',
+        e instanceof Error ? e.message : e
+      );
     }
   }
 

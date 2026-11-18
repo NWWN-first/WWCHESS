@@ -36,6 +36,7 @@ import * as pointerDrag from './app/pointerDrag';
 import * as hudModals from './app/hudModals';
 import * as renderBridge from './app/renderBridge';
 import * as domBindings from './app/domBindings';
+import { NeuralBotEngine } from './NeuralBotEngine';
 
 export class FantasyAutoBattlerApp {
   public game: GameLoopManager;
@@ -106,6 +107,8 @@ export class FantasyAutoBattlerApp {
       this.fxCanvas.classList.remove('hidden');
       this.fxCanvas.style.display = 'block';
     }
+
+    void NeuralBotEngine.getInstance().ensureBrowserOnnxReady();
 
     // 로비 화면 대기 상태로 초기화 (autoStart = false)
     this.game = new GameLoopManager(undefined, false);

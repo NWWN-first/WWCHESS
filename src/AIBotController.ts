@@ -40,6 +40,7 @@ import {
   PERSONA_MACRO_LOGIT_BIAS,
   PERSONA_POLICY_TEMPERATURE_HILLCLIMB,
 } from './set6/botPersonaTuning';
+import { shouldRefreshMacroWithBrowserOnnx } from './set6/browserOnnxConfig';
 
 export interface BotBrainState {
   botId: string;
@@ -481,11 +482,7 @@ export class AIBotController {
     this.applyNeuralMacroToBrain(bot, brain, neuralResult, currentRound, aiParams);
     this.logInferenceBackendOnce(bot, brain, neuralResult.backend);
 
-    if (
-      !engine.useHeadlessOnnxInference() &&
-      brain.preferOnnxBackend &&
-      engine.isOnnxSessionReady()
-    ) {
+    if (shouldRefreshMacroWithBrowserOnnx(engine, brain.preferOnnxBackend)) {
       void engine.predictONNX(stateTensor.features, predictOpts).then((rawOnnx) => {
         if (rawOnnx.backend !== 'ONNX_RUNTIME') return;
         const onnxResult = this.refineMacroForVisibleTempo(
