@@ -9,6 +9,10 @@ import {
   UNIT_TEMPLATES,
 } from './GameData';
 import { HexGridMath } from './HexGridMath';
+import {
+  isSet6Champion,
+  SET6_UNIT_SKILL_HANDLERS,
+} from './set6/set6SkillExecutor';
 
 export type CombatTeam = 'HOME' | 'AWAY';
 
@@ -114,6 +118,12 @@ export interface CombatUnit {
 
   ownerGold: number;
   totalDamageDealt: number;
+
+  /** Set 6 Jayce: true = hammer melee form. */
+  set6JayceHammerForm?: boolean;
+  /** Set 6 Kog'Maw Barrage end (combat elapsed ms). */
+  set6KogmawBarrageUntilMs?: number;
+  set6KogmawOnHitPct?: number;
 }
 
 /**
@@ -978,6 +988,14 @@ export class SkillRegistry {
     allCombatUnits: CombatUnit[],
     ctx: SkillCombatContext
   ): void {
+    if (isSet6Champion(caster.unitId)) {
+      const set6Handler = SET6_UNIT_SKILL_HANDLERS[caster.unitId];
+      if (set6Handler) {
+        set6Handler(caster, primaryTarget, allCombatUnits, ctx);
+        return;
+      }
+    }
+
     const directHandler = SkillRegistry.HANDLERS[caster.unitId];
     if (directHandler) {
       directHandler(caster, primaryTarget, allCombatUnits, ctx);

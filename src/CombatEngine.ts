@@ -272,6 +272,10 @@ export class CombatEngine implements SkillCombatContext {
       cu.baseAtkSpeed = jhinAttackSpeed;
       cu.attackCooldownMs = Math.round(1000 / Math.max(0.2, jhinAttackSpeed));
     }
+    if (cu.unitId === 'u5_jayce') {
+      cu.set6JayceHammerForm = true;
+      cu.range = 1;
+    }
 
     // 아이템 고유 패시브(무한의 대검 스킬 치명타) 반영
     for (const itemId of cu.items) {
@@ -1074,6 +1078,29 @@ export class CombatEngine implements SkillCombatContext {
 
       if (attacker.unitId === 'u5_viktor') {
         target.def = Math.max(5, Math.round(target.def * 0.3));
+      }
+
+      if (
+        attacker.unitId === 'u2_kogmaw' &&
+        attacker.set6KogmawBarrageUntilMs &&
+        this.elapsedMs <= attacker.set6KogmawBarrageUntilMs &&
+        attacker.set6KogmawOnHitPct
+      ) {
+        const pct = attacker.set6KogmawOnHitPct / 100;
+        this.dealDamage(attacker, target, target.maxHp * pct, 'MAGICAL', false, true);
+      }
+    }
+
+    if (
+      attacker.unitId === 'u2_kogmaw' &&
+      attacker.set6KogmawBarrageUntilMs &&
+      this.elapsedMs > attacker.set6KogmawBarrageUntilMs
+    ) {
+      const template = UNIT_TEMPLATES[attacker.unitId];
+      attacker.set6KogmawBarrageUntilMs = undefined;
+      attacker.set6KogmawOnHitPct = undefined;
+      if (template) {
+        attacker.range = template.stats.range;
       }
     }
 

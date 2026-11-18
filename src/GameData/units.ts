@@ -800,6 +800,7 @@ export const UNIT_TEMPLATES: Record<string, UnitTemplate> = {
       description: 'Akali dashes in a line through the most enemies, dealing magic damage and marking them for 7 seconds. When a marked target drops below Health threshold, Akali dashes again and executes them, dealing magic damage to enemi',
       skillType: 'EXECUTE_RESET',
       baseValueByStar: [275, 375, 2000],
+      secondaryValueByStar: [15, 20, 90],
       manaLockMs: 900,
     },
   },

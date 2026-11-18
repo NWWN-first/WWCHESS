@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SET6_SKILL_BEHAVIOR } from '../set6/set6SkillBehaviors';
 import { GAME_CONTENT_STATS } from './contentStats';
 import { TRAIT_DEFINITIONS } from './traits';
 import { UNIT_TEMPLATES, UNITS_BY_COST, YORDLE_UNIT_IDS } from './units';
@@ -27,6 +28,15 @@ describe('Set 6 content roster', () => {
   it('lists yordle roster ids for lord stub (excludes Veigar)', () => {
     expect(YORDLE_UNIT_IDS).toHaveLength(6);
     expect(YORDLE_UNIT_IDS).not.toContain('u5_veigar');
+  });
+
+  it('maps every champion to a Set 6 skill behavior', () => {
+    expect(Object.keys(SET6_SKILL_BEHAVIOR).length).toBe(59);
+    for (const unit of Object.values(UNIT_TEMPLATES)) {
+      expect(SET6_SKILL_BEHAVIOR[unit.id]).toBeDefined();
+    }
+    expect(SET6_SKILL_BEHAVIOR.u2_zilean).toBe('stun_bomb_adjacent');
+    expect(SET6_SKILL_BEHAVIOR.u1_zilean).toBeUndefined();
   });
 
   it('rejects unknown trait ids on units', () => {
