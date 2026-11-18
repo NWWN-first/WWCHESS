@@ -19,7 +19,10 @@ import {
 } from './GameData';
 import { HexCoord } from './HexGridMath';
 import { Participant } from './Participant';
-import { UNIT_PIXEL_SPECS, WEAPON_BADGE_ICONS } from './PixelGameRenderer';
+import {
+  resolveUnitPixelSpec,
+  WEAPON_BADGE_ICONS,
+} from './PixelGameRenderer';
 import { CombatEvent, CombatUnit } from './SkillRegistry';
 import { soundFX } from './SoundFXManager';
 
@@ -2023,8 +2026,7 @@ export class ThreeJsGameRenderer {
             juice.facingY = Math.atan2(dx, dz);
 
             const spec =
-              UNIT_PIXEL_SPECS[ev.unitId ?? attacker?.unitId ?? 'u1_garen'] ??
-              UNIT_PIXEL_SPECS.u1_garen;
+              resolveUnitPixelSpec(ev.unitId ?? attacker?.unitId ?? 'u1_garen');
             const glowHex = parseInt(spec.weaponGlow.replace('#', ''), 16);
             const trailHex = parseInt(spec.primaryArmor.replace('#', ''), 16);
 
@@ -2982,7 +2984,7 @@ export class ThreeJsGameRenderer {
     pCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     pCtx.imageSmoothingEnabled = true;
 
-    const spec = UNIT_PIXEL_SPECS[unitId] ?? UNIT_PIXEL_SPECS.u1_garen;
+    const spec = resolveUnitPixelSpec(unitId);
 
     // 1) 3D 전용 프리미엄 다크 메탈릭 그라데이션 배경
     const costThemes: Record<number, { bgTop: string; bgBottom: string; ringColor: string }> = {

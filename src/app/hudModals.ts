@@ -490,12 +490,17 @@ export function renderShopAndControls(app: FantasyAutoBattlerApp): void {
       intText.textContent = `+${player.calculateInterestGold()}G`;
     }
 
+    const buyXpBtn = document.getElementById('buy-xp-btn');
+    if (buyXpBtn) {
+      buyXpBtn.innerHTML = `<span class="btn-main-label">⬆️경험치</span><span class="btn-sub-cost">4G (+4XP)</span>`;
+    }
+
     const rerollBtn = document.getElementById('reroll-btn');
     if (rerollBtn) {
       rerollBtn.innerHTML =
         player.freeRerolls > 0
           ? `<span class="btn-main-label">🎟️무료리롤</span><span class="btn-sub-cost">${player.freeRerolls}회</span>`
-          : `<span class="btn-main-label">🎲리롤</span><span class="btn-sub-cost">2G</span>`;
+          : `<span class="btn-main-label">🎲새로고침</span><span class="btn-sub-cost">2G</span>`;
     }
 
     const lockBtn = document.getElementById('lock-shop-btn');

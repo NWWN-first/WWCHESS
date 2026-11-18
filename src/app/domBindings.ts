@@ -72,7 +72,7 @@ export function bindGlobalDOMEvents(app: FantasyAutoBattlerApp): void {
         const nextTheme = app.pixelRenderer.toggleMapTheme();
         const btn = document.getElementById('map-theme-btn');
         if (btn) {
-          btn.textContent = nextTheme === 'FOREST' ? '🌲숲맵' : '🏰도시맵';
+          btn.textContent = nextTheme === 'FOREST' ? '🔬연구' : '🏙️즈운';
         }
       });
 
