@@ -102,6 +102,14 @@ function yordleMaxManaReduction(count: number): number {
   return count >= 6 ? 10 : 0;
 }
 
+function arcanistSelfSpellBonus(count: number): number {
+  if (count >= 8) return 0.4;
+  if (count >= 6) return 0.32;
+  if (count >= 4) return 0.22;
+  if (count >= 2) return 0.15;
+  return 0;
+}
+
 export class Set6TraitCombat {
   public homeAcademyStacks = 0;
   public awayAcademyStacks = 0;
@@ -113,11 +121,21 @@ export class Set6TraitCombat {
     boardRow: number,
     boardCol: number
   ): void {
-    const mutantCount = synergyMap.get('MUTANT')?.count ?? 0;
-    if (cu.traits.includes('MUTANT') && owner.set6MutantVariant && mutantCount >= 3) {
-      cu.set6MutantVariant = owner.set6MutantVariant;
-      const mult = mutantPowerMultiplier(mutantCount);
-      Set6TraitCombat.applyMutantVariantStats(cu, owner.set6MutantVariant, mult);
+    const yordleFx = synergyMap.get('YORDLE')?.activeEffect;
+    if (yordleFx?.dodgeChance && cu.traits.includes('YORDLE')) {
+      cu.dodgeChance = Math.min(0.95, cu.dodgeChance + yordleFx.dodgeChance);
+    }
+
+    if (
+      owner.set6ImperialTyrantInstanceId &&
+      cu.sourceInstanceId === owner.set6ImperialTyrantInstanceId &&
+      cu.traits.includes('IMPERIAL')
+    ) {
+      const impFx = synergyMap.get('IMPERIAL')?.activeEffect;
+      if (impFx?.imperialDamageBonus) {
+        cu.set6ImperialTyrant = true;
+        cu.trueDamageBonusRatio += impFx.imperialDamageBonus;
+      }
     }
 
     const cw = clockworkBonus(synergyMap, owner.augments.length);
@@ -193,6 +211,118 @@ export class Set6TraitCombat {
     }
   }
 
+  public applyTeamWideBonuses(
+    teamUnits: CombatUnit[],
+    synergyMap: Map<TraitId, ActiveSynergyState>
+  ): void {
+    const bruiserFx = synergyMap.get('BRUISER')?.activeEffect;
+    const teamHpRatio = bruiserFx?.teamMaxHpRatio ?? 0;
+    if (teamHpRatio > 0) {
+      for (const u of teamUnits) {
+        const mult = u.traits.includes('BRUISER') ? teamHpRatio * 2 : teamHpRatio;
+        const bonus = Math.round(u.maxHp * mult);
+        u.maxHp += bonus;
+        u.currentHp += bonus;
+      }
+    }
+
+    const challengerFx = synergyMap.get('CHALLENGER')?.activeEffect;
+    if (challengerFx?.bonusAtkSpeed) {
+      for (const u of teamUnits) {
+        if (!u.traits.includes('CHALLENGER')) continue;
+        u.atkSpeed = Number((u.atkSpeed * (1 + challengerFx.bonusAtkSpeed)).toFixed(3));
+        u.baseAtkSpeed = u.atkSpeed;
+      }
+    }
+
+    const twinFx = synergyMap.get('TWINSHOT')?.activeEffect;
+    if (twinFx?.bonusAtkSpeed) {
+      for (const u of teamUnits) {
+        if (!u.traits.includes('TWINSHOT')) continue;
+        u.atk = Math.round(u.atk * (1 + twinFx.bonusAtkSpeed));
+        u.baseAtk = u.atk;
+      }
+    }
+
+    const arcanistState = synergyMap.get('ARCANIST');
+    const teamSp = arcanistState?.activeEffect?.spellPowerBonus ?? 0;
+    const arcanistExtra = arcanistSelfSpellBonus(arcanistState?.count ?? 0);
+    if (teamSp > 0) {
+      for (const u of teamUnits) {
+        const selfExtra = u.traits.includes('ARCANIST') ? arcanistExtra : 0;
+        u.spellPower = Number((u.spellPower * (1 + teamSp + selfExtra)).toFixed(3));
+      }
+    }
+
+    const enchanterFx = synergyMap.get('ENCHANTER')?.activeEffect;
+    if (enchanterFx?.magicDamageReduction) {
+      for (const u of teamUnits) {
+        u.magicDamageReduction = Math.max(
+          u.magicDamageReduction,
+          enchanterFx.magicDamageReduction
+        );
+      }
+    }
+
+    const syndicateFx = synergyMap.get('SYNDICATE')?.activeEffect;
+    const syndicateCount = synergyMap.get('SYNDICATE')?.count ?? 0;
+    if (syndicateFx) {
+      for (const u of teamUnits) {
+        if (!u.traits.includes('SYNDICATE')) continue;
+        let magicDr = syndicateFx.magicDamageReduction ?? 0;
+        let omi = syndicateFx.omnivamp ?? 0;
+        let defBonus = syndicateFx.bonusDef ?? 0;
+        if (syndicateCount >= 7) {
+          magicDr *= 2;
+          omi *= 2;
+          defBonus *= 2;
+          u.set6SyndicateAmpUntilMs = 8000;
+          if (syndicateFx.damageReductionFirst8s) {
+            u.set6SyndicateCombatDr = syndicateFx.damageReductionFirst8s * 2;
+          }
+        }
+        u.magicDamageReduction = Math.max(u.magicDamageReduction, magicDr);
+        u.omnivamp += omi;
+        if (defBonus > 0) {
+          u.def += defBonus;
+          u.baseDef += defBonus;
+        }
+      }
+    }
+  }
+
+  public static applyMutantVariantsToTeam(
+    teamUnits: CombatUnit[],
+    owner: Participant,
+    synergyMap: Map<TraitId, ActiveSynergyState>
+  ): void {
+    const mutantCount = synergyMap.get('MUTANT')?.count ?? 0;
+    if (!owner.set6MutantVariant || mutantCount < 3) return;
+    const mult = mutantPowerMultiplier(mutantCount);
+    const cap = mutantCount >= 7 ? 2 : 1;
+    const mutants = teamUnits
+      .filter((u) => u.traits.includes('MUTANT'))
+      .slice(0, cap);
+    for (const cu of mutants) {
+      cu.set6MutantVariant = owner.set6MutantVariant;
+      Set6TraitCombat.applyMutantVariantStats(cu, owner.set6MutantVariant, mult);
+    }
+  }
+
+  public static recordImperialTyrant(
+    participant: Participant,
+    teamUnits: CombatUnit[]
+  ): void {
+    let best: CombatUnit | null = null;
+    for (const u of teamUnits) {
+      if (!u.traits.includes('IMPERIAL')) continue;
+      if (!best || u.totalDamageDealt > best.totalDamageDealt) {
+        best = u;
+      }
+    }
+    participant.set6ImperialTyrantInstanceId = best?.sourceInstanceId ?? null;
+  }
+
   public applyScrapEffects(
     teamUnits: CombatUnit[],
     synergyMap: Map<TraitId, ActiveSynergyState>,
@@ -222,7 +352,10 @@ export class Set6TraitCombat {
         const it = u.items[i]!;
         if (!isCompletedItem(it)) continue;
         const rolled = pickRandomCompleted();
-        if (!rolled) continue;
+        if (!rolled || rolled === it) continue;
+        if (!u.set6ScrapOriginalItems) {
+          u.set6ScrapOriginalItems = [...u.items];
+        }
         u.items[i] = rolled;
         u.set6ScrapTransformed = true;
         slots += 1;
@@ -341,8 +474,24 @@ export class Set6TraitCombat {
     for (const cu of teamUnits) {
       if (!cu.traits.includes('ACADEMY')) continue;
       cu.atk = Math.round(cu.baseAtk * (1 + p.baseAtk + stacks * p.stackAtk));
-      cu.spellPower = Number((1 + p.baseSp + stacks * p.stackSp).toFixed(3));
+      cu.spellPower = Number(
+        (cu.spellPower * (1 + stacks * p.stackSp)).toFixed(3)
+      );
     }
+  }
+
+  public onChallengerKill(
+    killer: CombatUnit,
+    synergyMap: Map<TraitId, ActiveSynergyState>
+  ): void {
+    if (!killer.traits.includes('CHALLENGER')) return;
+    const fx = synergyMap.get('CHALLENGER')?.activeEffect;
+    if (!fx?.challengerOnKillAsMult) return;
+    killer.set6ChallengerAsBoostUntilMs =
+      fx.challengerOnKillDurationMs ?? 2500;
+    killer.atkSpeed = Number(
+      (killer.atkSpeed * fx.challengerOnKillAsMult).toFixed(3)
+    );
   }
 
   /** Tiles occupied by this unit (Colossus = 2 hexes). */

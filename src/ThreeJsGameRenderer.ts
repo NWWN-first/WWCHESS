@@ -177,17 +177,6 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
   // -------------------------------------------------------------
   // [2차 신규 추가 10종]
   // -------------------------------------------------------------
-  // 11. 아리아 (엘프 궁수 아리아) - 1코 Elven Sylvan / Ranger (초록빛 숲의 정찰 궁수 & 연속사격)
-  u1_aria: {
-    modelKey: 'Rogue',
-    scale: 1.08,
-    primaryColor: 0x15803d,
-    emissiveColor: 0x22c55e,
-    attackAnim: '2H_Ranged_Shoot',
-    skillAnim: '1H_Ranged_Shoot',
-    stunAnim: 'Lie_Idle',
-    aura: 'POISON_GREEN',
-  },
   // 12. 발렌 (성당 수련기사 발렌) - 1코 Holy Empire / Paladin (순백의 수련기사 & 성스러운 축복 방패)
   u1_valen: {
     modelKey: 'Knight',
@@ -693,17 +682,6 @@ export const DEDICATED_CHAMPION_3D_MAP: Record<string, Champion3DVisualConfig> =
     skillAnim: '2H_Melee_Attack_Spin',
     stunAnim: 'Lie_Idle',
     aura: 'POISON_GREEN',
-  },
-  // 55. 골드투스 (황금 고블린 왕 골드투스) - 5코 전설 Golden Goblin / Paladin / Vanguard (탐욕의 황금 고블린 황제)
-  u5_goldtooth: {
-    modelKey: 'Barbarian',
-    scale: 1.30,
-    primaryColor: 0xeab308,
-    emissiveColor: 0xfef08a,
-    attackAnim: '1H_Melee_Attack_Chop',
-    skillAnim: '2H_Melee_Attack_Jump_Chop',
-    stunAnim: 'Lie_Idle',
-    aura: 'GOBLIN_GOLD',
   },
   // 56. 루시엘 (타락한 대천사 루시엘) - 5코 전설 Holy Empire / Undead Scourge / Ranger (흑백 날개 타락천사 명궁)
   u5_luciel: {

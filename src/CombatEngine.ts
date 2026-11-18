@@ -152,6 +152,13 @@ export class CombatEngine implements SkillCombatContext {
     this.applySet6TraitCombatStart('HOME', this.homeSynergies, home);
     this.applySet6TraitCombatStart('AWAY', this.awaySynergies, away);
 
+    const homeUnits = this.units.filter((u) => u.team === 'HOME');
+    const awayUnits = this.units.filter((u) => u.team === 'AWAY');
+    this.set6TraitCombat.applyTeamWideBonuses(homeUnits, this.homeSynergies);
+    this.set6TraitCombat.applyTeamWideBonuses(awayUnits, this.awaySynergies);
+    Set6TraitCombat.applyMutantVariantsToTeam(homeUnits, home, this.homeSynergies);
+    Set6TraitCombat.applyMutantVariantsToTeam(awayUnits, away, this.awaySynergies);
+
     // 4. 개전 직후 이미 한쪽이 전멸했는지 확인
     this.checkCombatEndCondition();
 
@@ -265,7 +272,10 @@ export class CombatEngine implements SkillCombatContext {
       enableSkillCrit: false,
       trueDamageBonusRatio: 0,
       damageReductionRatio: 0,
+      magicDamageReduction: 0,
+      dodgeChance: 0,
       ccDurationReduction: 0,
+      sourceInstanceId: source.instanceId,
       stunTimerMs: 0,
       manaLockTimerMs: 0,
       attackCooldownMs: Math.round(1000 / Math.max(0.2, source.atkSpeed)),
@@ -336,20 +346,6 @@ export class CombatEngine implements SkillCombatContext {
     }
 
     // 시너지 상시 스탯 버프 반영
-    // - 범죄조직(SYNDICATE): 방어/흡혈
-    const syndicate = synergyMap.get('SYNDICATE')?.activeEffect;
-    if (syndicate && cu.traits.includes('SYNDICATE')) {
-      cu.def += syndicate.bonusDef ?? 0;
-      cu.baseDef += syndicate.bonusDef ?? 0;
-      cu.omnivamp += syndicate.omnivamp ?? 0;
-      if (syndicate.damageReductionFirst8s) {
-        cu.damageReductionRatio = Math.max(
-          cu.damageReductionRatio,
-          syndicate.damageReductionFirst8s
-        );
-      }
-    }
-
     // - 경호대(BODYGUARD): 방어력 상승
     const bodyguard = synergyMap.get('BODYGUARD')?.activeEffect;
     if (bodyguard && cu.traits.includes('BODYGUARD')) {
@@ -361,12 +357,6 @@ export class CombatEngine implements SkillCombatContext {
     const sniper = synergyMap.get('SNIPER')?.activeEffect;
     if (sniper && cu.traits.includes('SNIPER') && sniper.bonusRange) {
       cu.range += sniper.bonusRange;
-    }
-
-    // - 비전 마법사(ARCANIST): 주문력 상승
-    const arcanist = synergyMap.get('ARCANIST')?.activeEffect;
-    if (arcanist && cu.traits.includes('ARCANIST') && arcanist.spellPowerBonus) {
-      cu.spellPower = Number((cu.spellPower + arcanist.spellPowerBonus).toFixed(2));
     }
 
     // - 암살자(ASSASSIN): 치명타 확률 및 치명타 피해량 
@@ -447,6 +437,9 @@ export class CombatEngine implements SkillCombatContext {
       reviveBonusAtkSpeed: 0,
       ownerGold: 0,
       totalDamageDealt: 0,
+      sourceInstanceId: `summon_${cfg.name}`,
+      magicDamageReduction: 0,
+      dodgeChance: 0,
       set6InnovatorSummon: true,
     };
   }
@@ -935,6 +928,15 @@ export class CombatEngine implements SkillCombatContext {
       unit.atkSpeed = Number(Math.min(5, unit.atkSpeed * 1.35).toFixed(3));
     }
 
+    const protectorFx = synergyMap.get('PROTECTOR')?.activeEffect;
+    if (protectorFx?.shieldMaxHpRatio && unit.traits.includes('PROTECTOR')) {
+      this.addShield(
+        unit,
+        unit,
+        Math.round(unit.maxHp * protectorFx.shieldMaxHpRatio)
+      );
+    }
+
     const owner = unit.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
 
   }
@@ -958,6 +960,10 @@ export class CombatEngine implements SkillCombatContext {
       toRow: target.row,
       toCol: target.col,
     });
+
+    if (target.dodgeChance > 0 && Math.random() < target.dodgeChance) {
+      return;
+    }
 
     // 1. 기본 물리 공격 피해 적용 (공식: rawAtk * (100 / (100 + targetDef))는 dealDamage 내부에서 수행)
     this.dealDamage(attacker, target, attacker.atk, 'PHYSICAL', true, false);
@@ -1031,46 +1037,16 @@ export class CombatEngine implements SkillCombatContext {
 
     const synergyMap =
       attacker.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
-    // 3. 난동꾼(BRUISER) 광폭 중 스플래시 (화학공학 버스트 연계)
-    const berserkerEffect = synergyMap.get('BRUISER')?.activeEffect;
-    if (
-      berserkerEffect &&
-      attacker.traits.includes('BRUISER') &&
-      attacker.berserkTriggered &&
-      berserkerEffect.berserkSplashRatio
-    ) {
-      const splashDmg = attacker.atk * berserkerEffect.berserkSplashRatio;
-      const nearbyEnemies = this.units.filter(
-        (e) =>
-          e.team !== attacker.team &&
-          e.currentHp > 0 &&
-          !e.isReviving &&
-          e.instanceId !== target.instanceId &&
-          this.chebyshevDistance(target.row, target.col, e.row, e.col) <= 1
-      );
-      for (const enemy of nearbyEnemies) {
-        this.dealDamage(attacker, enemy, splashDmg, 'PHYSICAL', false, false);
-      }
-    }
 
-    // 4. 순찰자(RANGER) 3타마다 관통 화살 추가 발사
     const twinShotEffect = synergyMap.get('TWINSHOT')?.activeEffect;
     if (
-      twinShotEffect &&
+      twinShotEffect?.twinShotProcChance &&
       attacker.traits.includes('TWINSHOT') &&
-      attacker.basicAttackCount % 2 === 0 &&
-      twinShotEffect.pierceArrowDamageRatio
+      Math.random() < twinShotEffect.twinShotProcChance &&
+      target.currentHp > 0
     ) {
-      if (target.currentHp > 0) {
-        this.dealDamage(
-          attacker,
-          target,
-          attacker.atk * twinShotEffect.pierceArrowDamageRatio,
-          'PHYSICAL',
-          true,
-          false
-        );
-      }
+      const ratio = twinShotEffect.twinShotSecondShotRatio ?? 0.7;
+      this.dealDamage(attacker, target, attacker.atk * ratio, 'PHYSICAL', true, false);
     }
 
     // 5. 스태틱의 단검(STATIKK_SHIV) 3타마다 적 3명에게 연쇄 번개 및 방어력 30% 파쇄
@@ -1141,6 +1117,27 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
+    const synergyMap =
+      attacker.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
+    const sniperFx = synergyMap.get('SNIPER')?.activeEffect;
+    if (
+      sniperFx?.sniperDamagePerHex &&
+      attacker.traits.includes('SNIPER') &&
+      damageType !== 'TRUE'
+    ) {
+      const dist = HexGridMath.hexDistance(
+        attacker.row,
+        attacker.col,
+        target.row,
+        target.col
+      );
+      const bonus = Math.min(
+        sniperFx.sniperDamageCap ?? 0.35,
+        dist * sniperFx.sniperDamagePerHex
+      );
+      modifiedRaw *= 1 + bonus;
+    }
+
     // 방어력 감산 공식: raw * (100 / (100 + targetDef))
     let mitigatedDamage = modifiedRaw;
     if (damageType !== 'TRUE') {
@@ -1148,9 +1145,15 @@ export class CombatEngine implements SkillCombatContext {
       mitigatedDamage = modifiedRaw * (100 / (100 + effectiveDef));
     }
 
+    if (damageType === 'MAGICAL' && target.magicDamageReduction > 0) {
+      mitigatedDamage *= 1 - Math.min(0.8, target.magicDamageReduction);
+    }
+
     // 시너지/버프 피해 감소
-    if (target.damageReductionRatio > 0 && damageType !== 'TRUE') {
-      mitigatedDamage *= 1 - target.damageReductionRatio;
+    const totalPhysDr =
+      target.damageReductionRatio + (target.set6SyndicateCombatDr ?? 0);
+    if (totalPhysDr > 0 && damageType !== 'TRUE') {
+      mitigatedDamage *= 1 - Math.min(0.9, totalPhysDr);
     }
 
     // 시너지 추가 피해 비율
@@ -1158,7 +1161,14 @@ export class CombatEngine implements SkillCombatContext {
       mitigatedDamage += modifiedRaw * attacker.trueDamageBonusRatio;
     }
 
-    const finalDamage = Math.max(1, Math.round(mitigatedDamage));
+    let finalDamage = Math.max(1, Math.round(mitigatedDamage));
+    if (
+      attacker.set6MutantVariant === 'METAL_CLAWS' &&
+      target.currentHp > 0 &&
+      target.currentHp / target.maxHp <= 0.15
+    ) {
+      finalDamage = target.currentHp + target.shield;
+    }
     attacker.totalDamageDealt += finalDamage;
 
     // 보호막 우선 차감 후 체력 차감
@@ -1263,6 +1273,30 @@ export class CombatEngine implements SkillCombatContext {
           attacker.currentHp = Math.min(attacker.maxHp, attacker.currentHp + healAmt);
         }
 
+        const killSynergy =
+          attacker.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
+        this.set6TraitCombat.onChallengerKill(attacker, killSynergy);
+        const nearestEnemy = this.findNearestEnemy(attacker);
+        if (
+          nearestEnemy &&
+          killSynergy.get('CHALLENGER')?.activeEffect?.challengerOnKillAsMult
+        ) {
+          const step = this.findNextStepWithReservation(
+            attacker,
+            nearestEnemy,
+            new Set(
+              this.units
+                .filter((u) => u.currentHp > 0 || u.isReviving)
+                .flatMap((u) => Set6TraitCombat.occupiedTileKeys(u))
+            ),
+            new Set()
+          );
+          if (step && (step.row !== attacker.row || step.col !== attacker.col)) {
+            attacker.row = step.row;
+            attacker.col = step.col;
+          }
+        }
+
         return { actualDamage: finalDamage, killed: true, isCrit };
       }
     }
@@ -1270,9 +1304,17 @@ export class CombatEngine implements SkillCombatContext {
     return { actualDamage: finalDamage, killed: false, isCrit };
   }
 
+  private enchanterHealShieldMultiplier(source: CombatUnit): number {
+    const synergyMap =
+      source.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
+    const mult = synergyMap.get('ENCHANTER')?.activeEffect?.enchanterHealShieldMult;
+    if (!mult || !source.traits.includes('ENCHANTER')) return 1;
+    return mult;
+  }
+
   public healUnit(source: CombatUnit, target: CombatUnit, amount: number): number {
     if (target.currentHp <= 0 || target.isReviving || amount <= 0) return 0;
-    const rounded = Math.round(amount);
+    const rounded = Math.round(amount * this.enchanterHealShieldMultiplier(source));
     const prevHp = target.currentHp;
     target.currentHp = Math.min(target.maxHp, target.currentHp + rounded);
     const actualHeal = target.currentHp - prevHp;
@@ -1305,7 +1347,7 @@ export class CombatEngine implements SkillCombatContext {
 
   public addShield(source: CombatUnit, target: CombatUnit, amount: number): void {
     if (target.currentHp <= 0 || target.isReviving || amount <= 0) return;
-    const rounded = Math.round(amount);
+    const rounded = Math.round(amount * this.enchanterHealShieldMultiplier(source));
     target.shield += rounded;
     this.emitEvent({
       type: 'SHIELD',
@@ -1475,24 +1517,24 @@ export class CombatEngine implements SkillCombatContext {
     const synergyMap =
       unit.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
 
-    // 1. 난동꾼(BRUISER) / 화학공학(CHEMTECH): 체력 임계 시 버스트 (스텁)
-    const chemThreshold = unit.traits.includes('CHEMTECH') ? 0.6 : 0.5;
-    const burstTrait: TraitId | null = unit.traits.includes('CHEMTECH')
-      ? 'CHEMTECH'
-      : unit.traits.includes('BRUISER')
-        ? 'BRUISER'
-        : null;
-    if (!unit.berserkTriggered && burstTrait && hpRatio <= chemThreshold) {
-      const berserkEffect = synergyMap.get(burstTrait)?.activeEffect;
-      if (berserkEffect) {
+    if (!unit.berserkTriggered && unit.traits.includes('CHEMTECH') && hpRatio <= 0.6) {
+      const chemFx = synergyMap.get('CHEMTECH')?.activeEffect;
+      if (chemFx) {
         unit.berserkTriggered = true;
-        unit.atk = Math.round(unit.atk * (berserkEffect.berserkAtkMultiplier ?? 2.0));
-        unit.atkSpeed = Number(
-          Math.min(
-            5.0,
-            unit.atkSpeed * (berserkEffect.berserkAtkSpeedMultiplier ?? 2.0)
-          ).toFixed(3)
-        );
+        if (chemFx.chemtechDamageReduction) {
+          unit.damageReductionRatio = Math.max(
+            unit.damageReductionRatio,
+            chemFx.chemtechDamageReduction
+          );
+        }
+        if (chemFx.chemtechAtkSpeedBonus) {
+          unit.atkSpeed = Number(
+            Math.min(5, unit.atkSpeed * (1 + chemFx.chemtechAtkSpeedBonus)).toFixed(3)
+          );
+        }
+        unit.set6ChemtechBurstUntilMs =
+          this.elapsedMs + (chemFx.chemtechBurstDurationMs ?? 4000);
+        unit.set6ChemtechRegenPerSec = chemFx.chemtechRegenPerSec ?? 0.02;
       }
     }
 
@@ -1532,12 +1574,37 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // 범죄조직(SYNDICATE) 7단: 개전 8초 후 피해 감소 해제
     if (this.elapsedMs >= 8000) {
       for (const u of this.units) {
-        if (u.damageReductionRatio > 0) {
-          u.damageReductionRatio = 0;
+        if (u.set6SyndicateAmpUntilMs) {
+          u.set6SyndicateCombatDr = 0;
+          u.set6SyndicateAmpUntilMs = undefined;
         }
+      }
+    }
+
+    for (const u of this.units) {
+      if (u.set6ChallengerAsBoostUntilMs && this.elapsedMs >= u.set6ChallengerAsBoostUntilMs) {
+        u.atkSpeed = u.baseAtkSpeed;
+        u.set6ChallengerAsBoostUntilMs = undefined;
+      }
+      if (
+        u.set6ChemtechBurstUntilMs &&
+        this.elapsedMs >= u.set6ChemtechBurstUntilMs &&
+        u.berserkTriggered
+      ) {
+        u.damageReductionRatio = 0;
+        u.set6ChemtechBurstUntilMs = undefined;
+        u.set6ChemtechRegenPerSec = undefined;
+      }
+      if (
+        u.set6ChemtechRegenPerSec &&
+        u.set6ChemtechBurstUntilMs &&
+        this.elapsedMs < u.set6ChemtechBurstUntilMs &&
+        u.currentHp > 0
+      ) {
+        const healAmt = Math.max(1, Math.round(u.maxHp * u.set6ChemtechRegenPerSec * (deltaMs / 1000)));
+        this.healUnit(u, u, healAmt);
       }
     }
 
@@ -1597,6 +1664,24 @@ export class CombatEngine implements SkillCombatContext {
   }
 
   private findNearestEnemy(unit: CombatUnit): CombatUnit | null {
+    const tauntTargets = this.units.filter(
+      (bg) =>
+        bg.team !== unit.team &&
+        bg.currentHp > 0 &&
+        !bg.isReviving &&
+        bg.traits.includes('BODYGUARD') &&
+        this.chebyshevDistance(unit.row, unit.col, bg.row, bg.col) <= 1 &&
+        this.chebyshevDistance(unit.row, unit.col, bg.row, bg.col) <= unit.range
+    );
+    if (tauntTargets.length > 0) {
+      tauntTargets.sort(
+        (a, b) =>
+          HexGridMath.hexDistance(unit.row, unit.col, a.row, a.col) -
+          HexGridMath.hexDistance(unit.row, unit.col, b.row, b.col)
+      );
+      return tauntTargets[0]!;
+    }
+
     let bestTarget: CombatUnit | null = null;
     let bestHexDist = 9999;
     let bestEuclidDist = 9999;
@@ -1676,6 +1761,17 @@ export class CombatEngine implements SkillCombatContext {
   /**
    * 전투 종료 후 요약 데이터(승패, 생존 기물 수, 플레이어 피해량 등)를 반환한다.
    */
+  public persistSet6PostCombatState(home: Participant, away: Participant): void {
+    Set6TraitCombat.recordImperialTyrant(
+      home,
+      this.units.filter((u) => u.team === 'HOME')
+    );
+    Set6TraitCombat.recordImperialTyrant(
+      away,
+      this.units.filter((u) => u.team === 'AWAY')
+    );
+  }
+
   public getCombatSummary(stageNumber: number = 2): CombatSummary {
     const survivingHomeUnits = this.units.filter(
       (u) => u.team === 'HOME' && (u.currentHp > 0 || u.isReviving)
