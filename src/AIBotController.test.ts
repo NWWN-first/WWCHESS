@@ -11,6 +11,8 @@ import { Participant } from './Participant';
 import { RankManager } from './RankManager';
 import { NeuralInferenceResult } from './NeuralBotEngine';
 import { SharedPoolManager } from './SharedPoolManager';
+import { AUGMENT_DEFINITIONS } from './GameData/augments';
+import { placementColPriority } from './set6/botPlacementHints';
 
 function rngFromSeed(seed: number): () => number {
   let s = seed >>> 0;
@@ -106,6 +108,144 @@ describe('Set 6 bot heuristics', () => {
     const ctx = ai.analyzeScoutingContext(scoutBot, [scoutBot, bodyguardStack]);
     expect(ctx.opponentBodyguardCount).toBeGreaterThanOrEqual(1);
     expect(ctx).not.toHaveProperty('opponentVanguardCount');
+  });
+});
+
+describe('Set 6 augment evaluation', () => {
+  function augByKey(key: string) {
+    const found = AUGMENT_DEFINITIONS.find((a) => a.effectKey === key);
+    expect(found).toBeDefined();
+    return found!;
+  }
+
+  it('prefers MERCENARY_SOUL over generic combat for MERCENARY_GAMBLER', () => {
+    const rm = new RankManager();
+    const ai = new AIBotController(rm);
+    const bot = new Participant('ag1', 'merc', true, 'MERCENARY_GAMBLER');
+    const brain: BotBrainState = {
+      botId: bot.id,
+      persona: 'MERCENARY_GAMBLER',
+      targetTrait: 'MERCENARY',
+      secondaryTrait: 'BRUISER',
+      deniedUnitInstanceIds: new Set(),
+      pivotedCount: 0,
+      isRolldownActive: false,
+      nextActionDelayMs: 0,
+      rerollsExecutedThisRound: 0,
+      maxRerollsAllowedThisRound: 6,
+      targetGoldFloorThisRound: 10,
+      unitsToDenyCache: new Set(),
+      decisionSeed: 1,
+      policyTemperature: 1,
+      preferOnnxBackend: false,
+      macroPickNonce: 0,
+      inferenceBackendLogged: false,
+    };
+    (ai as unknown as { botBrains: Map<string, BotBrainState> }).botBrains.set(
+      bot.id,
+      brain
+    );
+    const mercSoul = augByKey('MERCENARY_SOUL');
+    const ascension = augByKey('ASCENSION');
+    expect(ai.evaluateAugmentValue(mercSoul, bot, brain)).toBeGreaterThan(
+      ai.evaluateAugmentValue(ascension, bot, brain)
+    );
+  });
+
+  it('prefers matching ACADEMY_HEART for ACADEMY-target brain', () => {
+    const rm = new RankManager();
+    const ai = new AIBotController(rm);
+    const bot = new Participant('ag2', 'academy', true, 'FAST_NINE_ECONOMIST');
+    const brain: BotBrainState = {
+      botId: bot.id,
+      persona: 'FAST_NINE_ECONOMIST',
+      targetTrait: 'ACADEMY',
+      secondaryTrait: 'BODYGUARD',
+      deniedUnitInstanceIds: new Set(),
+      pivotedCount: 0,
+      isRolldownActive: false,
+      nextActionDelayMs: 0,
+      rerollsExecutedThisRound: 0,
+      maxRerollsAllowedThisRound: 6,
+      targetGoldFloorThisRound: 20,
+      unitsToDenyCache: new Set(),
+      decisionSeed: 2,
+      policyTemperature: 0.5,
+      preferOnnxBackend: false,
+      macroPickNonce: 0,
+      inferenceBackendLogged: false,
+    };
+    const heart = augByKey('ACADEMY_HEART');
+    const syndicate = augByKey('SYNDICATE_HEART');
+    expect(ai.evaluateAugmentValue(heart, bot, brain)).toBeGreaterThan(
+      ai.evaluateAugmentValue(syndicate, bot, brain)
+    );
+  });
+});
+
+describe('Set 6 board placement smoke', () => {
+  it('places Caitlyn back and Singed front after optimizeBoardAndItems', () => {
+    const rm = new RankManager();
+    const ai = new AIBotController(rm);
+    const params = rm.getAISkillParameters();
+    const bot = new Participant('pl1', 'bot', true, 'FLEX_MASTER');
+    bot.level = 3;
+    const brain: BotBrainState = {
+      botId: bot.id,
+      persona: 'FLEX_MASTER',
+      targetTrait: 'ACADEMY',
+      secondaryTrait: 'SNIPER',
+      deniedUnitInstanceIds: new Set(),
+      pivotedCount: 0,
+      isRolldownActive: false,
+      nextActionDelayMs: 0,
+      rerollsExecutedThisRound: 0,
+      maxRerollsAllowedThisRound: 6,
+      targetGoldFloorThisRound: 10,
+      unitsToDenyCache: new Set(),
+      decisionSeed: 3,
+      policyTemperature: 0.5,
+      preferOnnxBackend: false,
+      macroPickNonce: 0,
+      inferenceBackendLogged: false,
+    };
+    (ai as unknown as { botBrains: Map<string, BotBrainState> }).botBrains.set(
+      bot.id,
+      brain
+    );
+    const cait = Participant.createUnitInstance('u1_caitlyn', 1);
+    const singed = Participant.createUnitInstance('u1_singed', 1);
+    const talon = Participant.createUnitInstance('u2_talon', 1);
+    bot.bench[0] = cait;
+    bot.bench[1] = singed;
+    bot.bench[2] = talon;
+  const pool = new SharedPoolManager();
+    ai.optimizeBoardAndItems(bot, brain, [bot], pool, params);
+
+    const findRow = (uid: string) => {
+      for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+        for (let c = 0; c < Participant.BOARD_COLS; c++) {
+          const u = bot.board[r][c];
+          if (u?.unitId === uid) return r;
+        }
+      }
+      return -1;
+    };
+    const findCol = (uid: string) => {
+      for (let r = 0; r < Participant.BOARD_ROWS; r++) {
+        for (let c = 0; c < Participant.BOARD_COLS; c++) {
+          const u = bot.board[r][c];
+          if (u?.unitId === uid) return c;
+        }
+      }
+      return -1;
+    };
+
+    expect(findRow('u1_caitlyn')).toBeGreaterThanOrEqual(2);
+    expect(findRow('u1_singed')).toBeLessThanOrEqual(1);
+    const talonCol = findCol('u2_talon');
+    expect(placementColPriority('u2_talon', 3)[0]).toBe(3);
+    expect(talonCol).toBe(3);
   });
 });
 

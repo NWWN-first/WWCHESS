@@ -20,6 +20,12 @@ import { AISkillParameters, RankManager } from './RankManager';
 import { SharedPoolManager } from './SharedPoolManager';
 import { SynergyEngine } from './SynergyEngine';
 import { NeuralBotEngine, NeuralInferenceResult } from './NeuralBotEngine';
+import {
+  isHighPriorityFrontCc,
+  placementColPriority,
+  placementRowPriority,
+  primaryPlacementBucket,
+} from './set6/botPlacementHints';
 
 export interface BotBrainState {
   botId: string;
@@ -1077,10 +1083,29 @@ export class AIBotController {
     };
   }
 
+  private static isSet6TraitEffectKey(effectKey: string): boolean {
+    return /_(HEART|CREST|CROWN|SOUL)$/.test(effectKey);
+  }
+
+  private static scoreImmediateUnitGrant(
+    unitId: string | undefined,
+    brain: BotBrainState,
+    ownedUnitIds: Set<string>
+  ): number {
+    if (!unitId) return 0;
+    const tpl = UNIT_TEMPLATES[unitId];
+    if (!tpl) return -20;
+    let bonus = tpl.cost >= 4 ? 28 : 16;
+    if (tpl.traits.includes(brain.targetTrait)) bonus += 42;
+    else if (tpl.traits.includes(brain.secondaryTrait)) bonus += 22;
+    if (ownedUnitIds.has(unitId)) bonus += 35;
+    return bonus;
+  }
+
   /**
    * 증강체 1개의 종합 가치(Valuation / Utility Score)를 산출한다.
-   * - 덱 시너지 적합도, 영웅 증강 2~3성 각, 체력 위기(Crisis)에 따른 즉발 vs 장기 밸류 판단
-   * - 신규 시즌 18 증강(천상의 축복, 불완전한 초월, 단체 포옹, 고단수, 중심 잡기, 전기 충전, 판도라 등) 전면 가치평가
+   * - Set 6 149-roster: category, bonusTrait, effectKey suffix, immediate grants
+   * - 체력 위기(Crisis)에 따른 즉발 vs 장기 밸류 판단
    */
   public evaluateAugmentValue(
     aug: AugmentDefinition,
@@ -1109,12 +1134,18 @@ export class AIBotController {
     const threeStarCount = this.countTotalThreeStarUnits(bot);
     const ownedLocations = bot.getAllUnitLocations();
     const ownedUnitIds = new Set(ownedLocations.map((l) => l.unit.unitId));
+    const isCrisis = bot.hp <= 35;
+    const isHealthy = bot.hp >= 70;
 
-    // 1. 시너지 문장 / 왕관 증강 평가 (8~9단계 프리즘 필수 트리거)
+    // 1. 시너지 Heart / Crest / Crown / Soul (+bonusTrait)
     if (aug.bonusTrait) {
       if (aug.bonusTrait === brain.targetTrait) {
         score += 95;
-        // 다른 봇들이 안 가는 빈집 시너지라면 추가 가산
+        if (aug.effectKey.endsWith('_CROWN') || aug.effectKey.endsWith('_SOUL')) {
+          score += 25;
+        } else if (aug.effectKey.endsWith('_CREST')) {
+          score += 12;
+        }
         if (allParticipants) {
           const scouting = this.analyzeScoutingContext(bot, allParticipants);
           const contested = scouting.traitContestedMap.get(aug.bonusTrait) ?? 0;
@@ -1125,22 +1156,36 @@ export class AIBotController {
         score += 65;
       } else if (bot.getActiveTraitCounts().has(aug.bonusTrait)) {
         score += 45;
-      } else {
+      } else if (AIBotController.isSet6TraitEffectKey(aug.effectKey)) {
         score -= 30;
       }
+    } else if (
+      aug.effectKey.startsWith(`${brain.targetTrait}_`) &&
+      AIBotController.isSet6TraitEffectKey(aug.effectKey)
+    ) {
+      score += 70;
     }
 
-    // 3. 체력 위기(Crisis Management) 및 템포 가치평가
-    const isCrisis = bot.hp <= 35;
-    const isHealthy = bot.hp >= 70;
+    score += AIBotController.scoreImmediateUnitGrant(
+      aug.immediateUnitId,
+      brain,
+      ownedUnitIds
+    );
+    if (isCrisis && (aug.immediateGold || aug.immediateHp)) {
+      score += (aug.immediateGold ?? 0) + (aug.immediateHp ?? 0);
+    }
 
+    // 2. 체력 위기(Crisis Management) 및 템포 가치평가
     // 아이템 관련 증강 여부
     const isItemAug =
       aug.effectKey === 'ITEM_GRAB_BAG_1' ||
       aug.effectKey === 'ITEM_GRAB_BAG_2' ||
       aug.effectKey === 'SALVAGE_BIN' ||
       aug.effectKey === 'BAND_OF_THIEVES' ||
-      aug.effectKey === 'BINARY_AIRDROP';
+      aug.effectKey === 'BINARY_AIRDROP' ||
+      aug.effectKey === 'PORTABLE_FORGE' ||
+      aug.effectKey === 'JUNKYARD' ||
+      aug.effectKey === 'TINKER';
 
     if (isCrisis) {
       // 즉발 전투력/체력 증강에 대폭 가산점!
@@ -1150,7 +1195,10 @@ export class AIBotController {
         aug.effectKey.startsWith('STAND_UNITED') ||
         aug.effectKey.startsWith('BUILT_DIFFERENT') ||
         aug.effectKey.startsWith('EXILES') ||
-        aug.effectKey === 'FIRST_AID_KIT'
+        aug.effectKey === 'FIRST_AID_KIT' ||
+        aug.effectKey === 'METABOLIC_ACCELERATOR' ||
+        aug.effectKey.startsWith('MAKESHIFT_ARMOR') ||
+        aug.effectKey === 'DOMINANCE'
       ) {
         score += 90;
       } else if (aug.category === 'COMBAT') {
@@ -1188,7 +1236,8 @@ export class AIBotController {
       aug.effectKey === 'TRADE_SECTOR' ||
       aug.effectKey === 'HYPER_ROLL' ||
       aug.effectKey === 'CALCULATED_LOSS' ||
-      aug.effectKey === 'WISE_SPENDING';
+      aug.effectKey === 'WISE_SPENDING' ||
+      aug.effectKey.startsWith('FEATHERWEIGHTS');
 
     if (brain.persona === 'HYPER_ROLLER' || brain.persona === 'LOW_COST_REROLLER') {
       if (threeStarCount >= 2) {
@@ -1222,6 +1271,10 @@ export class AIBotController {
         aug.effectKey === 'MERCENARY_CREST' ||
         aug.effectKey === 'MERCENARY_SOUL' ||
         aug.effectKey === 'CALCULATED_LOSS' ||
+        aug.effectKey === 'GOLD_RESERVES' ||
+        aug.effectKey === 'HIGH_ROLLER' ||
+        aug.effectKey === 'PAYDAY' ||
+        aug.effectKey === 'PIRATES' ||
         aug.category === 'ECONOMY'
       ) {
         score += 80;
@@ -1232,7 +1285,21 @@ export class AIBotController {
       if (isItemAug) score += 35;
     }
 
-    // 5. 아이템 보유량 연계 (대기석 및 장착 아이템이 적으면 아이템 증강 우대)
+    // 5. 범용 Set 6 전투/경제 스테이플
+    if (
+      aug.category === 'COMBAT' &&
+      (aug.effectKey === 'TITANIC_FORCE' ||
+        aug.effectKey === 'SPELL_BLADE' ||
+        aug.effectKey === 'ARDENT_CENSER' ||
+        aug.effectKey === 'SUNFIRE_BOARD' ||
+        aug.effectKey.startsWith('KNIFE_S_EDGE') ||
+        aug.effectKey === 'SHARPSHOOTER' ||
+        aug.effectKey.startsWith('THRILL_OF_THE_HUNT'))
+    ) {
+      score += 22;
+    }
+
+    // 6. 아이템 보유량 연계 (대기석 및 장착 아이템이 적으면 아이템 증강 우대)
     const totalItems = bot.itemBench.length + ownedLocations.reduce((acc, l) => acc + l.unit.items.length, 0);
     if (totalItems <= 4 && isItemAug) {
       score += 45;
@@ -1263,6 +1330,18 @@ export class AIBotController {
       if (score > bestScore) {
         bestScore = score;
         bestAug = aug;
+      }
+    }
+
+    if (bestAug.immediateUnitId) {
+      const grant = UNIT_TEMPLATES[bestAug.immediateUnitId];
+      if (
+        grant &&
+        (grant.traits.includes(brain.targetTrait) ||
+          grant.traits.includes(brain.secondaryTrait) ||
+          grant.cost >= 3)
+      ) {
+        brain.heroTargetUnitId = bestAug.immediateUnitId;
       }
     }
 
@@ -1795,6 +1874,24 @@ export class AIBotController {
   }
 
   // ==========================================================================
+  private placeUnitWithPlacementHints(
+    bot: Participant,
+    unit: UnitInstance,
+    playerCarryCol: number
+  ): boolean {
+    const rows = placementRowPriority(unit.unitId);
+    const cols = placementColPriority(unit.unitId, playerCarryCol);
+    for (const row of rows) {
+      for (const col of cols) {
+        if (bot.board[row][col] === null) {
+          bot.board[row][col] = unit;
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   // 4. 지능형 보드 배치, 저격 배치 및 아이템 장착 (optimizeBoardAndItems)
   // ==========================================================================
 
@@ -1864,7 +1961,7 @@ export class AIBotController {
         brain.persona === 'MERCENARY_GAMBLER' &&
         unit.traits.includes('MERCENARY')
       ) {
-        power += 70; // 황금 고블린 시너지 유지 최우선
+        power += 70; // MERCENARY 시너지 유지 최우선
       }
       return { unit, power };
     });
@@ -1919,107 +2016,46 @@ export class AIBotController {
       }
     }
 
-    // 4. 역할군 분류: 전열 탱커/근접(Frontline), 암살자(Assassin), 후열 원거리 딜러(Backline)
+    // 4. Set 6 스킬 패턴 기반 배치 (전열 CC → 중열 → 후열 딜 → 암살 도약)
     const frontlineUnits: UnitInstance[] = [];
-    const assassinUnits: UnitInstance[] = [];
+    const midlineUnits: UnitInstance[] = [];
     const backlineUnits: UnitInstance[] = [];
+    const assassinUnits: UnitInstance[] = [];
 
     for (const u of deployedUnits) {
-      if (u.traits.includes('ASSASSIN')) {
-        assassinUnits.push(u);
-      } else if (
-        u.range <= 1 ||
-        u.traits.includes('BODYGUARD') ||
-        u.traits.includes('BRUISER') ||
-        u.traits.includes('ENCHANTER')
-      ) {
-        frontlineUnits.push(u);
-      } else {
-        backlineUnits.push(u);
+      switch (primaryPlacementBucket(u.unitId)) {
+        case 'assassin':
+          assassinUnits.push(u);
+          break;
+        case 'back':
+          backlineUnits.push(u);
+          break;
+        case 'front':
+          frontlineUnits.push(u);
+          break;
+        default:
+          midlineUnits.push(u);
       }
     }
 
-    // 고티어 AI: CC 탱커(레오나, 브라움, 사이온, 갈리오, 탐 켄치)를 플레이어 주력 캐리 맞은편 열에 최우선 배치
-    const ccTankIds = new Set([
-      'u3_leona',
-      'u4_braum',
-      'u4_sion',
-      'u5_galio',
-      'u5_tahm_kench',
-    ]);
     frontlineUnits.sort((a, b) => {
-      const aCC = ccTankIds.has(a.unitId) ? 1 : 0;
-      const bCC = ccTankIds.has(b.unitId) ? 1 : 0;
+      const aCC = isHighPriorityFrontCc(a.unitId) ? 1 : 0;
+      const bCC = isHighPriorityFrontCc(b.unitId) ? 1 : 0;
       if (aCC !== bCC) return bCC - aCC;
       return b.maxHp - a.maxHp;
     });
 
-    const frontCols = [
-      playerCarryCol,
-      3,
-      2,
-      4,
-      1,
-      5,
-      0,
-      6,
-    ].filter((col, idx, arr) => arr.indexOf(col) === idx);
-
-    for (const tank of frontlineUnits) {
-      let placed = false;
-      for (const row of [0, 1]) {
-        for (const col of frontCols) {
-          if (bot.board[row][col] === null) {
-            bot.board[row][col] = tank;
-            placed = true;
-            break;
-          }
-        }
-        if (placed) break;
-      }
+    for (const unit of frontlineUnits) {
+      this.placeUnitWithPlacementHints(bot, unit, playerCarryCol);
     }
-
-    // 후열 원거리 딜러(순찰자/대마법사): 맨 뒷열(3행) 양 구석(col 0, 6, 1, 5...)부터 안전하게 배치
-    const backCols = [0, 6, 1, 5, 2, 4, 3];
-    for (const ranged of backlineUnits) {
-      let placed = false;
-      for (const row of [3, 2, 1]) {
-        for (const col of backCols) {
-          if (bot.board[row][col] === null) {
-            bot.board[row][col] = ranged;
-            placed = true;
-            break;
-          }
-        }
-        if (placed) break;
-      }
+    for (const unit of midlineUnits) {
+      this.placeUnitWithPlacementHints(bot, unit, playerCarryCol);
     }
-
-    // 그림자 암살자: 적 주력 딜러 열(playerCarryCol)로 도약할 수 있도록 해당 열 우선 배치
-    const assassinCols = [
-      playerCarryCol,
-      6 - playerCarryCol,
-      0,
-      6,
-      1,
-      5,
-      2,
-      4,
-      3,
-    ].filter((col, idx, arr) => col >= 0 && col < 7 && arr.indexOf(col) === idx);
-
-    for (const assassin of assassinUnits) {
-      let placed = false;
-      for (const row of [2, 3, 1, 0]) {
-        for (const col of assassinCols) {
-          if (bot.board[row][col] === null) {
-            bot.board[row][col] = assassin;
-            placed = true;
-            break;
-          }
-        }
-        if (placed) break;
-      }
+    for (const unit of backlineUnits) {
+      this.placeUnitWithPlacementHints(bot, unit, playerCarryCol);
+    }
+    for (const unit of assassinUnits) {
+      this.placeUnitWithPlacementHints(bot, unit, playerCarryCol);
     }
 
     // 5. 남은 기물은 대기석 앞쪽부터 배치하고, 고티어 견제(Hold/Deny) 기물은 대기석 맨 오른쪽 구석(8, 7...)에 배치
