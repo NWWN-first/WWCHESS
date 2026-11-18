@@ -2,6 +2,7 @@
 
 import {
   AUGMENT_DEFINITIONS,
+  type AugmentEffectKey,
   BaseItemId,
   CompletedItemId,
   combineBaseItems,
@@ -15,6 +16,7 @@ import {
   UnitTemplate,
   XP_REQUIRED_BY_LEVEL,
 } from './GameData';
+import { participantHasEffect as augmentsIncludeEffect } from './GameData/augmentUtils';
 import { PoolParticipant, SharedPoolManager } from './SharedPoolManager';
 import type { MutantVariant, SocialiteSpotlight } from './set6/Set6MatchState';
 
@@ -778,13 +780,16 @@ export class Participant implements PoolParticipant {
     return true;
   }
 
+  public hasAugmentEffect(effectKey: AugmentEffectKey): boolean {
+    return augmentsIncludeEffect(this.augments, effectKey);
+  }
+
   /**
    * 팀 최대 배치 가능 슬롯 수 (레벨 + 증강체 효과)
    */
   public getMaxTeamSlots(): number {
     let slots = this.level;
-    if (this.augments.includes('AUG_CORONATION')) slots += 1;
-    if (this.augments.includes('AUG_CURSED_CROWN')) slots += 2;
+    if (this.hasAugmentEffect('NEW_RECRUIT')) slots += 1;
     return slots;
   }
 
@@ -810,14 +815,9 @@ export class Participant implements PoolParticipant {
     sharedPool.drawShopForParticipant(this);
 
     // [황금 티켓] 증강체 보유 시 리롤마다 40% 확률로 무료 리롤 +1 획득
-    if (this.augments.includes('AUG_GOLDEN_TICKET') && Math.random() < 0.4) {
+    if (this.hasAugmentEffect('GOLDEN_TICKET') && Math.random() < 0.4) {
       this.freeRerolls += 1;
       this.lastActionMessage = '🎟️ [황금 티켓] 발동! 무료 리롤 1회를 획득했습니다!';
-    }
-    // [프리즘 티켓] 증강체 보유 시 리롤마다 55% 확률로 무료 리롤 +1 획득
-    if (this.augments.includes('AUG_PRISMATIC_TICKET') && Math.random() < 0.55) {
-      this.freeRerolls += 1;
-      this.lastActionMessage = '🎫 [프리즘 티켓] 발동! 무료 리롤 1회를 획득했습니다!';
     }
 
     return true;
@@ -837,7 +837,7 @@ export class Participant implements PoolParticipant {
     }
 
     this.gold -= 4;
-    const xpGain = this.augments.includes('AUG_LEVEL_UP') ? 7 : 4;
+    const xpGain = this.hasAugmentEffect('LEVEL_UP') ? 7 : 4;
     this.addXp(xpGain, sharedPool);
     return true;
   }
@@ -858,12 +858,6 @@ export class Participant implements PoolParticipant {
       if (this.xp >= required) {
         this.xp -= required;
         this.level = nextLevel;
-        if (
-          this.augments.includes('AUG_BIRTHDAY_PRESENT') &&
-          sharedPool
-        ) {
-          this.grantBirthdayPresentOnLevelUp(sharedPool);
-        }
       } else {
         break;
       }
@@ -875,36 +869,10 @@ export class Participant implements PoolParticipant {
   }
 
   /**
-   * [생일 선물] 레벨 업마다 2성 기물 1기(공유 풀 3장 차감) + 6골드.
-   */
-  private grantBirthdayPresentOnLevelUp(sharedPool: SharedPoolManager): void {
-    this.gold += 6;
-    const unitId = sharedPool.pullRandomTwoStarUnitForParticipant(this);
-    if (!unitId) {
-      return;
-    }
-
-    const unit = Participant.createUnitInstance(unitId, 2);
-    const emptyIdx = this.bench.findIndex((s) => s === null);
-    if (emptyIdx !== -1) {
-      this.bench[emptyIdx] = unit;
-    } else {
-      this.overflowUnits.push(unit);
-    }
-    this.tryMergeUnits(unitId, sharedPool);
-  }
-
-  /**
-   * 최대 이자 한도 반환 (기본 5골드, [헤지펀드] 10골드, [사악한 금융/부익부] 7골드)
+   * 최대 이자 한도 반환 (기본 5골드, [부익부] 7골드)
    */
   public getMaxInterestCap(): number {
-    if (this.augments.includes('AUG_HEDGE_FUND')) return 10;
-    if (
-      this.augments.includes('AUG_DIABOLIC_FINANCE') ||
-      this.augments.includes('AUG_RICH_GET_RICHER')
-    ) {
-      return 7;
-    }
+    if (this.hasAugmentEffect('RICH_GET_RICHER')) return 7;
     return 5;
   }
 
@@ -979,15 +947,6 @@ export class Participant implements PoolParticipant {
     if (aug.bonusTrait && aug.bonusTraitCount) {
       const prev = this.bonusTraits.get(aug.bonusTrait) ?? 0;
       this.bonusTraits.set(aug.bonusTrait, prev + aug.bonusTraitCount);
-    }
-    if (aug.effectKey === 'ARCANE_CREST') {
-      // 고대 마탑의 왕관: 마탑 +1 외에 대마법사(ARCHMAGE)도 +1 추가 부여
-      const prevArchmage = this.bonusTraits.get('ARCANIST') ?? 0;
-      this.bonusTraits.set('ARCANIST', prevArchmage + 1);
-    }
-    if (aug.effectKey === 'TINY_TITANS') {
-      this.maxHp = 130;
-      this.hp = Math.min(this.maxHp, this.hp + 30);
     }
     if (aug.immediateUnitId) {
       if (sharedPool.pullSpecificUnitFromPool(aug.immediateUnitId)) {

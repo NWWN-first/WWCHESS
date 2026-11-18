@@ -214,7 +214,7 @@ export function renderTopHud(app: FantasyAutoBattlerApp): void {
     if (pandoraTag) {
       pandoraTag.classList.toggle(
         'hidden',
-        !viewed.augments.includes('AUG_PANDORA_BENCH')
+        !viewed.hasAugmentEffect('PANDORA_S_ITEMS')
       );
     }
   }

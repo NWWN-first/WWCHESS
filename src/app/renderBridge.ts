@@ -102,7 +102,7 @@ export function startRenderLoop(app: FantasyAutoBattlerApp): void {
               ? app.dragPayload.instanceId
               : null,
           selectedInstanceId: activeSelectedOrDraggedId,
-          hasPandoraBench: viewed.augments.includes('AUG_PANDORA_BENCH'),
+          hasPandoraBench: viewed.hasAugmentEffect('PANDORA_S_ITEMS'),
           opponentName: viewedCombat
             ? viewedCombat.opponentName
             : app.game.playerCurrentOpponentName,
@@ -125,7 +125,7 @@ export function startRenderLoop(app: FantasyAutoBattlerApp): void {
             ? app.dragPayload.instanceId
             : null,
         selectedInstanceId: activeSelectedOrDraggedId,
-        hasPandoraBench: viewed.augments.includes('AUG_PANDORA_BENCH'),
+        hasPandoraBench: viewed.hasAugmentEffect('PANDORA_S_ITEMS'),
         opponentName: viewedCombat
           ? viewedCombat.opponentName
           : app.game.playerCurrentOpponentName,

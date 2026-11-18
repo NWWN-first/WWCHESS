@@ -14,6 +14,8 @@ import {
 import { ActiveSynergyState, SynergyEngine } from './SynergyEngine';
 import { Set6TraitCombat } from './set6/Set6TraitCombat';
 import { defaultSocialiteSpotlights } from './set6/Set6MatchState';
+import { applySet6AugmentSpawnBonuses, celestialBlessingShieldCap } from './set6/Set6AugmentCombat';
+import { participantEffectTier, participantHasEffect } from './GameData/augmentUtils';
 
 export interface CombatSummary {
   winner: 'HOME' | 'AWAY' | 'DRAW';
@@ -311,107 +313,14 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // 증강체 전투 버프 반영
-    // 1) 사이버네틱 임플란트: 아이템 1개 이상 장착 시 체력 +250, 공격력 +25
-    if (owner.augments.includes('AUG_CYBERNETIC_IMPLANT') && cu.items.length > 0) {
-      cu.maxHp += 250;
-      cu.currentHp += 250;
-      cu.atk += 25;
-      cu.baseAtk += 25;
-    }
-    // 2) 전투 마법사: 전방 2열(원본 보드 기준 0~1행)에 배치된 아군 기물이 주문력 +35%, 방어력 +35
     const originalBoardRow = team === 'HOME' ? row - 4 : 3 - row;
-    if (owner.augments.includes('AUG_BATTLE_MAGE') && originalBoardRow <= 1) {
-      cu.spellPower = Number((cu.spellPower + 0.35).toFixed(2));
-      cu.def += 35;
-      cu.baseDef += 35;
-    }
-    // 3) 천상의 축복: 아군 전체 모든 피해 흡혈 +20%
-    if (owner.augments.includes('AUG_CELESTIAL_BLESSING')) {
-      cu.omnivamp = Number((cu.omnivamp + 0.2).toFixed(2));
-    }
-    // 4) 무술 훈련 (Martial Training): 아군 전체 공격력 +25, 공속 +0.15
-    if (owner.augments.includes('AUG_MARTIAL_TRAINING')) {
-      cu.atk += 25;
-      cu.baseAtk += 25;
-      cu.atkSpeed = Number((cu.atkSpeed + 0.15).toFixed(2));
-    }
-    // 5) 상승 (Ascension): 아군 전체 공격력/주문력 +30%
-    if (owner.augments.includes('AUG_ASCENSION')) {
-      cu.atk = Math.round(cu.atk * 1.3);
-      cu.baseAtk = Math.round(cu.baseAtk * 1.3);
-      cu.spellPower = Number((cu.spellPower + 0.3).toFixed(2));
-    }
-    // 6) 단결된 힘 (Stand United): 활성화된 시너지당 아군 전체 공격력 +5, 주문력 +5%
-    if (owner.augments.includes('AUG_STAND_UNITED')) {
-      const activeTraitsCount = synergyMap.size;
-      cu.atk += activeTraitsCount * 5;
-      cu.baseAtk += activeTraitsCount * 5;
-      cu.spellPower = Number((cu.spellPower + activeTraitsCount * 0.05).toFixed(2));
-    }
-
-    // TFT 시즌 18 신규 실버/골드 증강 전투 버프
-    if (owner.augments.includes('AUG_STAND_UNITED_1')) {
-      const activeTraits = synergyMap.size;
-      cu.atk = Math.round(cu.atk * (1 + activeTraits * 0.02));
-      cu.baseAtk = Math.round(cu.baseAtk * (1 + activeTraits * 0.02));
-      cu.spellPower = Number((cu.spellPower + activeTraits * 0.02).toFixed(2));
-      cu.def += activeTraits * 2;
-      cu.baseDef += activeTraits * 2;
-    }
-    if (owner.augments.includes('AUG_BOXING_LESSON')) {
-      cu.maxHp += 180;
-      cu.currentHp += 180;
-    }
-    if (owner.augments.includes('AUG_MAKE_WAY')) {
-      cu.atk += 15;
-      cu.baseAtk += 15;
-    }
-    if (owner.augments.includes('AUG_GROUP_HUG')) {
-      cu.def += 22;
-      cu.baseDef += 22;
-    }
-    if (owner.augments.includes('AUG_TWIN_GUARDIAN') && originalBoardRow <= 1) {
-      cu.maxHp += 220;
-      cu.currentHp += 220;
-      cu.def += 25;
-      cu.baseDef += 25;
-    }
-    if (owner.augments.includes('AUG_MAKESHIFT_ARMOR') && cu.items.length === 0) {
-      cu.def += 40;
-      cu.baseDef += 40;
-    }
-    if (owner.augments.includes('AUG_GLASS_CANNON') && originalBoardRow >= 2) {
-      cu.atk = Math.round(cu.atk * 1.28);
-      cu.baseAtk = Math.round(cu.baseAtk * 1.28);
-      cu.spellPower = Number((cu.spellPower + 0.28).toFixed(2));
-      cu.maxHp = Math.max(100, cu.maxHp - 80);
-      cu.currentHp = Math.min(cu.currentHp, cu.maxHp);
-    }
-    if (owner.augments.includes('AUG_JEWELED_LOTUS')) {
-      cu.enableSkillCrit = true;
-      cu.critChance = Math.min(1.0, cu.critChance + 0.25);
-    }
-    if (owner.augments.includes('AUG_TITANIC_FORCE') && cu.maxHp >= 1500) {
-      cu.atk = Math.round(cu.atk * 1.35);
-      cu.baseAtk = Math.round(cu.baseAtk * 1.35);
-    }
-    if (
-      owner.augments.includes('AUG_WARP_DRIVE') &&
-      (cu.traits.includes('ASSASSIN') || originalBoardRow >= 2)
-    ) {
-      cu.currentMana = Math.min(cu.maxMana, cu.currentMana + 35);
-    }
-    if (owner.augments.includes('AUG_GOLDEN_SCALPEL')) {
-      cu.critDamage += 0.35;
-    }
-    if (owner.augments.includes('AUG_HEROIC_INSPIRATION')) {
-      const threeStarCount = owner.board.flat().filter((u) => u && u.starLevel === 3).length;
-      if (threeStarCount > 0) {
-        cu.atk = Math.round(cu.atk * (1 + threeStarCount * 0.12));
-        cu.spellPower = Number((cu.spellPower + threeStarCount * 0.12).toFixed(2));
-      }
-    }
+    applySet6AugmentSpawnBonuses(cu, {
+      owner,
+      synergyActiveCount: synergyMap.size,
+      synergyMap,
+      originalBoardRow,
+      unitCost: source.cost,
+    });
 
     // 용병(MERCENARY) 전투 스텁 — (5)(7) 수치는 TRAIT_DEFINITIONS 단일 소스
     const mercFx = synergyMap.get('MERCENARY')?.activeEffect;
@@ -434,49 +343,6 @@ export class CombatEngine implements SkillCombatContext {
         );
       }
     }
-
-    // 영웅 전용 증강 (Hero Augments) 고유 메커니즘 변신
-    if (cu.unitId === 'u1_garen' && owner.augments.includes('AUG_HERO_GAREN')) {
-      cu.range = 4; // 근거리 탱커 -> 초장거리 원거리 저격수 변신!
-      cu.atkSpeed = Number((cu.atkSpeed + 0.35).toFixed(2));
-      cu.atk += 45;
-      cu.baseAtk += 45;
-      cu.maxHp += 400;
-      cu.currentHp += 400;
-    }
-    if (cu.unitId === 'u1_twitch' && owner.augments.includes('AUG_HERO_PIP')) {
-      cu.range = 1; // 원거리 -> 초근접 광역 암살자 변신!
-      cu.currentMana = cu.maxMana; // 전투 시작 즉시 스킬 발사!
-      cu.critChance = 1.0; // 100% 확정 치명타!
-      cu.critDamage += 0.5;
-      cu.atk += 40;
-      cu.baseAtk += 40;
-    }
-    if (cu.unitId === 'u2_blitzcrank' && owner.augments.includes('AUG_HERO_JEANNE')) {
-      cu.maxHp += 500;
-      cu.currentHp += 500;
-      cu.def += 40;
-      cu.baseDef += 40;
-    }
-    if (cu.unitId === 'u3_miss_fortune' && owner.augments.includes('AUG_HERO_ORION')) {
-      cu.range = 4;
-      cu.atkSpeed = Number((cu.atkSpeed + 0.25).toFixed(2));
-      cu.atk += 35;
-      cu.baseAtk += 35;
-    }
-    if (cu.unitId === 'u3_samira' && owner.augments.includes('AUG_HERO_DRAKE')) {
-      cu.maxHp += 400;
-      cu.currentHp += 400;
-      cu.atk += 35;
-      cu.baseAtk += 35;
-      cu.omnivamp = Number((cu.omnivamp + 0.15).toFixed(2));
-    }
-    if (cu.unitId === 'u3_malakor' && owner.augments.includes('AUG_HERO_MALAKOR')) {
-      cu.spellPower = Number((cu.spellPower + 0.5).toFixed(2));
-      cu.currentMana = cu.maxMana; // 전투 시작 즉시 광역 마나 강탈 스킬 발사!
-    }
-
-
 
     // 시너지 상시 스탯 버프 반영
     // - 범죄조직(SYNDICATE): 방어/흡혈
@@ -1077,66 +943,6 @@ export class CombatEngine implements SkillCombatContext {
 
     const owner = unit.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
 
-    // [영웅] 검기 투척수 가렌: 전장 관통 십자 칼바람 발사 (일직선상 모든 적 2.2배 강타)
-    if (unit.unitId === 'u1_garen' && owner?.augments.includes('AUG_HERO_GAREN')) {
-      const enemiesInLine = this.units.filter(
-        (e) =>
-          e.team !== unit.team &&
-          e.currentHp > 0 &&
-          !e.isReviving &&
-          (e.row === unit.row || e.col === unit.col)
-      );
-      for (const enemy of enemiesInLine) {
-        this.dealDamage(
-          unit,
-          enemy,
-          Math.round(unit.atk * 1.8 * unit.spellPower),
-          'PHYSICAL',
-          unit.enableSkillCrit,
-          true
-        );
-      }
-    }
-
-    // [영웅] 초근접 폭탄광 핍: 주변 2칸 반경 대규모 광역 폭발 + 치명타 골드 약탈
-    if (unit.unitId === 'u1_pip' && owner?.augments.includes('AUG_HERO_PIP')) {
-      const nearbyEnemies = this.units.filter(
-        (e) =>
-          e.team !== unit.team &&
-          e.currentHp > 0 &&
-          !e.isReviving &&
-          this.chebyshevDistance(unit.row, unit.col, e.row, e.col) <= 2
-      );
-      for (const enemy of nearbyEnemies) {
-        const res = this.dealDamage(
-          unit,
-          enemy,
-          Math.round((unit.atk * 1.5 + 180) * unit.spellPower),
-          'MAGICAL',
-          true,
-          true
-        );
-        if (res.isCrit && Math.random() < 0.45) {
-          if (unit.team === 'HOME' && this.homeGoldEarned < 5) {
-            this.homeGoldEarned += 1;
-            if (this.homeParticipant) this.homeParticipant.gold += 1;
-          }
-        }
-      }
-    }
-
-    // [영웅] 파멸의 영혼 군주 말라코르: 모든 적 치유 감소 60% 및 전원 마나 5씩 강탈
-    if (unit.unitId === 'u3_malakor' && owner?.augments.includes('AUG_HERO_MALAKOR')) {
-      const allEnemies = this.units.filter(
-        (e) => e.team !== unit.team && e.currentHp > 0 && !e.isReviving
-      );
-      for (const enemy of allEnemies) {
-        enemy.currentMana = Math.max(0, enemy.currentMana - 6);
-        this.dealDamage(unit, enemy, 150 * unit.spellPower, 'MAGICAL', false, true);
-      }
-      unit.currentMana = Math.min(unit.maxMana, unit.currentMana + allEnemies.length * 3);
-    }
-
     // 대마법사(ARCHMAGE) 시너지 활성화 시: 스킬 시전할 때 체력이 가장 낮은 적에게 연쇄 번개 추가 낙하!
     const archmageEffect = synergyMap.get('ARCANIST')?.activeEffect;
     if (
@@ -1297,34 +1103,6 @@ export class CombatEngine implements SkillCombatContext {
         );
       }
     }
-
-    // [영웅] 성운의 일제사격 오리온: 공격 시마다 공속 +6% 무한 누적 & 3발 분기 사격!
-    const attackerOwner =
-      attacker.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
-    if (
-      attacker.unitId === 'u3_miss_fortune' &&
-      attackerOwner?.augments.includes('AUG_HERO_ORION')
-    ) {
-      attacker.atkSpeed = Math.min(3.2, Number((attacker.atkSpeed * 1.06).toFixed(3)));
-      const otherEnemies = this.units.filter(
-        (e) =>
-          e.team !== attacker.team &&
-          e.currentHp > 0 &&
-          !e.isReviving &&
-          e.instanceId !== target.instanceId
-      );
-      otherEnemies.slice(0, 2).forEach((extra) => {
-        this.dealDamage(
-          attacker,
-          extra,
-          Math.round(attacker.atk * 0.75),
-          'PHYSICAL',
-          attacker.enableSkillCrit,
-          false
-        );
-      });
-    }
-
 
     // 5. 스태틱의 단검(STATIKK_SHIV) 3타마다 적 3명에게 연쇄 번개 및 방어력 30% 파쇄
     const hasStatikk = attacker.items.some(
@@ -1506,24 +1284,14 @@ export class CombatEngine implements SkillCombatContext {
           toCol: target.col,
         });
 
-        // [영웅] 무한 분노 학살자 드레이크: 적 처치 시 처치 팀 드레이크에게 공 +40, 체 +400, 흡혈 +12% 무한 스택!
         const killTeamOwner =
           attacker.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
-        if (killTeamOwner?.augments.includes('AUG_HERO_DRAKE')) {
-          const drakes = this.units.filter(
-            (u) =>
-              u.team === attacker.team &&
-              u.unitId === 'u3_drake' &&
-              u.currentHp > 0 &&
-              !u.isReviving
-          );
-          for (const d of drakes) {
-            d.atk += 40;
-            d.baseAtk += 40;
-            d.maxHp += 400;
-            d.currentHp += 400;
-            d.omnivamp = Number((d.omnivamp + 0.12).toFixed(2));
-          }
+        const thrillTier = killTeamOwner
+          ? participantEffectTier(killTeamOwner.augments, 'THRILL_OF_THE_HUNT')
+          : 0;
+        if (thrillTier > 0) {
+          const healAmt = [0, 400, 700, 700][thrillTier];
+          attacker.currentHp = Math.min(attacker.maxHp, attacker.currentHp + healAmt);
         }
 
         return { actualDamage: finalDamage, killed: true, isCrit };
@@ -1540,15 +1308,14 @@ export class CombatEngine implements SkillCombatContext {
     target.currentHp = Math.min(target.maxHp, target.currentHp + rounded);
     const actualHeal = target.currentHp - prevHp;
 
-    // 천상의 축복(AUG_CELESTIAL_BLESSING): 초과 회복량 보호막 전환 (최대 350)
     const owner =
       target.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
-    if (
-      owner?.augments.includes('AUG_CELESTIAL_BLESSING') &&
-      prevHp + rounded > target.maxHp
-    ) {
-      const overheal = prevHp + rounded - target.maxHp;
-      target.shield = Math.min(target.shield + overheal, Math.max(target.shield, 350));
+    if (owner && prevHp + rounded > target.maxHp) {
+      const cap = celestialBlessingShieldCap(owner.augments);
+      if (cap > 0) {
+        const overheal = prevHp + rounded - target.maxHp;
+        target.shield = Math.min(target.shield + overheal, Math.max(target.shield, cap));
+      }
     }
 
     if (actualHeal > 0) {
@@ -1783,79 +1550,15 @@ export class CombatEngine implements SkillCombatContext {
   }
 
   private processPeriodicTimers(deltaMs: number): void {
-    // [영웅] 불멸의 대지 거인 잔느: 매 1초마다 최대 체력 +150, 방어/마저 +5씩 영구히 무한 성장!
-    if (this.elapsedMs % 1000 < deltaMs) {
+  // 초월 (Ascension): 15초 후 아군 피해 +50%
+    if (this.elapsedMs >= 15000 && this.elapsedMs - deltaMs < 15000) {
       for (const u of this.units) {
         if (u.currentHp <= 0 || u.isReviving) continue;
         const owner = u.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
-        if (u.unitId === 'u2_blitzcrank' && owner?.augments.includes('AUG_HERO_JEANNE')) {
-          u.maxHp += 150;
-          u.currentHp += 150;
-          u.def += 5;
-          u.baseDef += 5;
-        }
-      }
-    }
-
-    // 유성 낙하 (AUG_METEORIC_IMPACT): 전투 5초 후 적 전체 진영에 최대 체력 16% 광역 마법 피해
-    if (this.elapsedMs >= 5000 && this.elapsedMs - deltaMs < 5000) {
-      for (const homeOrAway of ['HOME', 'AWAY'] as const) {
-        const owner = homeOrAway === 'HOME' ? this.homeParticipant : this.awayParticipant;
-        if (owner?.augments.includes('AUG_METEORIC_IMPACT')) {
-          const enemies = this.units.filter((u) => u.team !== homeOrAway && u.currentHp > 0);
-          const caster = this.units.find((u) => u.team === homeOrAway && u.currentHp > 0);
-          for (const e of enemies) {
-            const meteorDmg = Math.round(e.maxHp * 0.16);
-            if (caster) this.dealDamage(caster, e, meteorDmg, 'MAGICAL', false, true);
-          }
-        }
-      }
-    }
-
-    // 아케인 빅토리! (AUG_ARCANE_VICTORY): 전투 8초 후 적 전체 20% 마법 피해, 2.5초 기절 및 마나 0 소멸
-    if (this.elapsedMs >= 8000 && this.elapsedMs - deltaMs < 8000) {
-      for (const homeOrAway of ['HOME', 'AWAY'] as const) {
-        const owner = homeOrAway === 'HOME' ? this.homeParticipant : this.awayParticipant;
-        if (owner?.augments.includes('AUG_ARCANE_VICTORY')) {
-          const enemies = this.units.filter((u) => u.team !== homeOrAway && u.currentHp > 0);
-          const caster = this.units.find((u) => u.team === homeOrAway && u.currentHp > 0);
-          for (const e of enemies) {
-            e.currentMana = 0;
-            const lightningDmg = Math.round(e.maxHp * 0.2);
-            if (caster) {
-              this.dealDamage(caster, e, lightningDmg, 'MAGICAL', false, true);
-              this.applyStun(caster, e, 2500);
-            } else {
-              e.currentHp = Math.max(1, e.currentHp - lightningDmg);
-              e.stunTimerMs = Math.max(e.stunTimerMs, 2500);
-            }
-          }
-        }
-      }
-    }
-
-    // 불완전한 초월 (10초 후 피해 증폭 +22%)
-    if (this.elapsedMs >= 10000 && this.elapsedMs - deltaMs < 10000) {
-      for (const u of this.units) {
-        if (u.currentHp <= 0) continue;
-        const owner = u.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
-        if (owner?.augments.includes('AUG_INCOMPLETE_ASCENSION')) {
-          u.atk = Math.round(u.atk * 1.22);
-          u.baseAtk = Math.round(u.baseAtk * 1.22);
-          u.spellPower = Number((cu_sp => cu_sp + 0.22)(u.spellPower));
-        }
-      }
-    }
-
-    // 궁극의 초월 (12초 후 피해 증폭 +80%)
-    if (this.elapsedMs >= 12000 && this.elapsedMs - deltaMs < 12000) {
-      for (const u of this.units) {
-        if (u.currentHp <= 0) continue;
-        const owner = u.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
-        if (owner?.augments.includes('AUG_FINAL_ASCENSION')) {
-          u.atk = Math.round(u.atk * 1.8);
-          u.baseAtk = Math.round(u.baseAtk * 1.8);
-          u.spellPower = Number((cu_sp => cu_sp + 0.8)(u.spellPower));
+        if (owner && participantHasEffect(owner.augments, 'ASCENSION')) {
+          u.atk = Math.round(u.atk * 1.5);
+          u.baseAtk = Math.round(u.baseAtk * 1.5);
+          u.spellPower = Number((u.spellPower * 1.5).toFixed(2));
         }
       }
     }

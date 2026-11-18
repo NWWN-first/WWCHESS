@@ -295,9 +295,7 @@ export class DopamineEngine {
 
   /**
    * 2) 매 라운드 시작 시 발동하는 증강체 효과 처리
-   * - [판도라의 대기석(AUG_PANDORA_BENCH)] 보유 시:
-   *   매 라운드 시작마다 bench[6], bench[7], bench[8] (우측 3칸)에 있는 기물을 공유 풀에 반환하고,
-   *   동일한 코스트와 성급의 다른 기물을 공유 풀에서 추첨해 변환한 뒤 tryMergeUnits를 호출한다.
+   * - [판도라의 아이템] 보유 시: 벤치 조합 아이템을 랜덤 교체 (단순화).
    */
   public static processRoundStartAugments(
     participant: Participant,
@@ -307,39 +305,13 @@ export class DopamineEngine {
 
     const transformLogs: string[] = [];
 
-    if (participant.augments.includes('AUG_PANDORA_BENCH')) {
-      const pandoraIndices = [6, 7, 8];
-
-      for (const slotIdx of pandoraIndices) {
-        const currentUnit = participant.bench[slotIdx];
-        if (!currentUnit) continue;
-
-        const oldName = currentUnit.name;
-        const starLevel = currentUnit.starLevel;
-        const preservedItems = [...currentUnit.items];
-
-        // 공유 풀에 기존 기물(1성=1, 2성=3, 3성=9)을 반환하고 같은 코스트의 다른 기물 ID를 추첨
-        const newUnitId = sharedPool.transformUnitInPool(
-          participant,
-          currentUnit.unitId,
-          starLevel
-        );
-
-        if (newUnitId !== currentUnit.unitId) {
-          const transformedUnit = Participant.createUnitInstance(
-            newUnitId,
-            starLevel,
-            preservedItems
-          );
-          participant.bench[slotIdx] = transformedUnit;
-
-          transformLogs.push(
-            `🎲 [판도라의 대기석] ${oldName}(${starLevel}성) ➔ ${transformedUnit.name}(${starLevel}성) 변신!`
-          );
-
-          // 변신 직후 보드/대기석의 동일 기물과 2성/3성 합성이 가능한지 즉시 체크
-          participant.tryMergeUnits(newUnitId, sharedPool);
-        }
+    if (participant.hasAugmentEffect('PANDORA_S_ITEMS')) {
+      const bases = ['SWORD', 'BOW', 'ROD', 'TEAR', 'ARMOR'] as const;
+      for (let i = 0; i < participant.itemBench.length; i++) {
+        const item = participant.itemBench[i];
+        if (!item || (item as string) === 'SWORD') continue;
+        participant.itemBench[i] = bases[Math.floor(Math.random() * bases.length)];
+        transformLogs.push('🎲 [판도라의 아이템] 대기석 아이템이 변형되었습니다.');
       }
     }
 
