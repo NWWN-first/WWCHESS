@@ -12,6 +12,8 @@ import {
   SkillRegistry,
 } from './SkillRegistry';
 import { ActiveSynergyState, SynergyEngine } from './SynergyEngine';
+import { Set6TraitCombat } from './set6/Set6TraitCombat';
+import { defaultSocialiteSpotlights } from './set6/Set6MatchState';
 
 export interface CombatSummary {
   winner: 'HOME' | 'AWAY' | 'DRAW';
@@ -48,6 +50,7 @@ export class CombatEngine implements SkillCombatContext {
 
   private homeParticipant: Participant | null = null;
   private awayParticipant: Participant | null = null;
+  private readonly set6TraitCombat = new Set6TraitCombat();
   private homeSynergies: Map<TraitId, ActiveSynergyState> = new Map();
   private awaySynergies: Map<TraitId, ActiveSynergyState> = new Map();
 
@@ -87,6 +90,21 @@ export class CombatEngine implements SkillCombatContext {
     this.awayParticipant = away;
     this.homeSynergies = SynergyEngine.getActiveSynergyMap(home);
     this.awaySynergies = SynergyEngine.getActiveSynergyMap(away);
+    this.set6TraitCombat.homeAcademyStacks = 0;
+    this.set6TraitCombat.awayAcademyStacks = 0;
+
+    if (home.socialiteSpotlights.length === 0) {
+      const sc = this.homeSynergies.get('SOCIALITE')?.count ?? 0;
+      if (sc > 0) {
+        home.socialiteSpotlights = defaultSocialiteSpotlights(sc);
+      }
+    }
+    if (away.socialiteSpotlights.length === 0) {
+      const sc = this.awaySynergies.get('SOCIALITE')?.count ?? 0;
+      if (sc > 0) {
+        away.socialiteSpotlights = defaultSocialiteSpotlights(sc);
+      }
+    }
 
     // 1. HOME(아군) 기물 깊은 복사 및 배치 (4~7행, 0~6열)
     for (let r = 0; r < Participant.BOARD_ROWS; r++) {
@@ -101,7 +119,9 @@ export class CombatEngine implements SkillCombatContext {
           combatRow,
           combatCol,
           home,
-          this.homeSynergies
+          this.homeSynergies,
+          r,
+          c
         );
         this.units.push(cloned);
       }
@@ -120,7 +140,9 @@ export class CombatEngine implements SkillCombatContext {
           combatRow,
           combatCol,
           away,
-          this.awaySynergies
+          this.awaySynergies,
+          r,
+          c
         );
         this.units.push(cloned);
       }
@@ -129,6 +151,8 @@ export class CombatEngine implements SkillCombatContext {
     // 3. 개전 특수 효과 발동 (신성 제국 보호막, 용족 브레스, 그림자 암살자 후방 도약, 5코 3성 골드투스 개전 권능)
     this.triggerCombatStartEffects('HOME', this.homeSynergies);
     this.triggerCombatStartEffects('AWAY', this.awaySynergies);
+    this.applySet6TraitCombatStart('HOME', this.homeSynergies, home);
+    this.applySet6TraitCombatStart('AWAY', this.awaySynergies, away);
 
     // 4. 개전 직후 이미 한쪽이 전멸했는지 확인
     this.checkCombatEndCondition();
@@ -191,10 +215,10 @@ export class CombatEngine implements SkillCombatContext {
       return unitCustomMap[source.unitId];
     }
 
-    if (source.traits.includes('SHADOW_ASSASSIN')) return 380;
-    if (source.traits.includes('BERSERKER')) return 450;
-    if (source.traits.includes('VANGUARD')) return 600;
-    if (source.traits.includes('RANGER')) return 490;
+    if (source.traits.includes('ASSASSIN')) return 380;
+    if (source.traits.includes('BRUISER')) return 450;
+    if (source.traits.includes('BODYGUARD')) return 600;
+    if (source.traits.includes('SNIPER')) return 490;
     return 520;
   }
 
@@ -207,12 +231,14 @@ export class CombatEngine implements SkillCombatContext {
     row: number,
     col: number,
     owner: Participant,
-    synergyMap: Map<TraitId, ActiveSynergyState>
+    synergyMap: Map<TraitId, ActiveSynergyState>,
+    boardRow: number,
+    boardCol: number
   ): CombatUnit {
     const baseMoveIntervalMs = this.computeCharacteristicMoveIntervalMs(source);
     // 개전 직후 기물마다 자연스러운 출발 차이를 두어 기계적인 동시 이동을 방지
     const initialMoveStaggerMs =
-      100 + ((row * 37 + col * 53) % 140) + (source.traits.includes('VANGUARD') ? 60 : 0);
+      100 + ((row * 37 + col * 53) % 140) + (source.traits.includes('BODYGUARD') ? 60 : 0);
 
     const cu: CombatUnit = {
       instanceId: `${team}_${source.instanceId}`,
@@ -266,6 +292,16 @@ export class CombatEngine implements SkillCombatContext {
       totalDamageDealt: 0,
     };
 
+    if (cu.unitId === 'u4_jhin') {
+      const jhinAttackSpeed = [0.9, 0.9, 1.4][Math.max(0, cu.starLevel - 1)] ?? 0.9;
+      cu.atkSpeed = jhinAttackSpeed;
+      cu.baseAtkSpeed = jhinAttackSpeed;
+      cu.attackCooldownMs = Math.round(1000 / Math.max(0.2, jhinAttackSpeed));
+    }
+    if (cu.unitId === 'u5_jayce') {
+      cu.set6JayceHammerForm = true;
+      cu.range = 1;
+    }
 
     // 아이템 고유 패시브(무한의 대검 스킬 치명타) 반영
     for (const itemId of cu.items) {
@@ -362,7 +398,7 @@ export class CombatEngine implements SkillCombatContext {
     }
     if (
       owner.augments.includes('AUG_WARP_DRIVE') &&
-      (cu.traits.includes('SHADOW_ASSASSIN') || originalBoardRow >= 2)
+      (cu.traits.includes('ASSASSIN') || originalBoardRow >= 2)
     ) {
       cu.currentMana = Math.min(cu.maxMana, cu.currentMana + 35);
     }
@@ -377,24 +413,24 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // 황금 고블린(GOLDEN_GOBLIN) — trait 정의(TRAIT_DEFINITIONS) 단일 소스
-    const goblinFx = synergyMap.get('GOLDEN_GOBLIN')?.activeEffect;
-    if (goblinFx && cu.traits.includes('GOLDEN_GOBLIN')) {
-      if (goblinFx.goblinCombatBonusHp) {
-        cu.maxHp += goblinFx.goblinCombatBonusHp;
-        cu.currentHp += goblinFx.goblinCombatBonusHp;
+    // 용병(MERCENARY) 전투 스텁 — (5)(7) 수치는 TRAIT_DEFINITIONS 단일 소스
+    const mercFx = synergyMap.get('MERCENARY')?.activeEffect;
+    if (mercFx && cu.traits.includes('MERCENARY')) {
+      if (mercFx.mercenaryCombatBonusHp) {
+        cu.maxHp += mercFx.mercenaryCombatBonusHp;
+        cu.currentHp += mercFx.mercenaryCombatBonusHp;
       }
-      if (goblinFx.goblinCombatBonusAtk) {
-        cu.atk += goblinFx.goblinCombatBonusAtk;
-        cu.baseAtk += goblinFx.goblinCombatBonusAtk;
+      if (mercFx.mercenaryCombatBonusAtk) {
+        cu.atk += mercFx.mercenaryCombatBonusAtk;
+        cu.baseAtk += mercFx.mercenaryCombatBonusAtk;
       }
-      if (goblinFx.goblinCombatBonusAtkSpeed) {
-        cu.atkSpeed = Number((cu.atkSpeed + goblinFx.goblinCombatBonusAtkSpeed).toFixed(2));
+      if (mercFx.mercenaryCombatBonusAtkSpeed) {
+        cu.atkSpeed = Number((cu.atkSpeed + mercFx.mercenaryCombatBonusAtkSpeed).toFixed(2));
       }
-      if (goblinFx.goblinCombatDamageReduction) {
+      if (mercFx.mercenaryCombatDamageReduction) {
         cu.damageReductionRatio = Math.max(
           cu.damageReductionRatio,
-          goblinFx.goblinCombatDamageReduction
+          mercFx.mercenaryCombatDamageReduction
         );
       }
     }
@@ -408,7 +444,7 @@ export class CombatEngine implements SkillCombatContext {
       cu.maxHp += 400;
       cu.currentHp += 400;
     }
-    if (cu.unitId === 'u1_pip' && owner.augments.includes('AUG_HERO_PIP')) {
+    if (cu.unitId === 'u1_twitch' && owner.augments.includes('AUG_HERO_PIP')) {
       cu.range = 1; // 원거리 -> 초근접 광역 암살자 변신!
       cu.currentMana = cu.maxMana; // 전투 시작 즉시 스킬 발사!
       cu.critChance = 1.0; // 100% 확정 치명타!
@@ -416,19 +452,19 @@ export class CombatEngine implements SkillCombatContext {
       cu.atk += 40;
       cu.baseAtk += 40;
     }
-    if (cu.unitId === 'u2_jeanne' && owner.augments.includes('AUG_HERO_JEANNE')) {
+    if (cu.unitId === 'u2_blitzcrank' && owner.augments.includes('AUG_HERO_JEANNE')) {
       cu.maxHp += 500;
       cu.currentHp += 500;
       cu.def += 40;
       cu.baseDef += 40;
     }
-    if (cu.unitId === 'u3_orion' && owner.augments.includes('AUG_HERO_ORION')) {
+    if (cu.unitId === 'u3_miss_fortune' && owner.augments.includes('AUG_HERO_ORION')) {
       cu.range = 4;
       cu.atkSpeed = Number((cu.atkSpeed + 0.25).toFixed(2));
       cu.atk += 35;
       cu.baseAtk += 35;
     }
-    if (cu.unitId === 'u3_drake' && owner.augments.includes('AUG_HERO_DRAKE')) {
+    if (cu.unitId === 'u3_samira' && owner.augments.includes('AUG_HERO_DRAKE')) {
       cu.maxHp += 400;
       cu.currentHp += 400;
       cu.atk += 35;
@@ -443,75 +479,141 @@ export class CombatEngine implements SkillCombatContext {
 
 
     // 시너지 상시 스탯 버프 반영
-    // - 신성 제국(HOLY_EMPIRE): 방어력 보너스
-    const empire = synergyMap.get('HOLY_EMPIRE')?.activeEffect;
-    if (empire && cu.traits.includes('HOLY_EMPIRE') && empire.bonusDef) {
-      cu.def += empire.bonusDef;
-      cu.baseDef += empire.bonusDef;
+    // - 범죄조직(SYNDICATE): 방어/흡혈
+    const syndicate = synergyMap.get('SYNDICATE')?.activeEffect;
+    if (syndicate && cu.traits.includes('SYNDICATE')) {
+      cu.def += syndicate.bonusDef ?? 0;
+      cu.baseDef += syndicate.bonusDef ?? 0;
+      cu.omnivamp += syndicate.omnivamp ?? 0;
     }
 
-    // - 심연의 악마(ABYSSAL_DEMON): 고정 피해 및 모든 피해 흡혈
-    const demon = synergyMap.get('ABYSSAL_DEMON')?.activeEffect;
-    if (demon && cu.traits.includes('ABYSSAL_DEMON')) {
-      cu.trueDamageBonusRatio += demon.trueDamageRatio ?? 0;
-      cu.omnivamp += demon.omnivamp ?? 0;
+    // - 경호대(BODYGUARD): 방어력 상승
+    const bodyguard = synergyMap.get('BODYGUARD')?.activeEffect;
+    if (bodyguard && cu.traits.includes('BODYGUARD')) {
+      cu.def += bodyguard.bonusDef ?? 0;
+      cu.baseDef += bodyguard.bonusDef ?? 0;
+      if (bodyguard.damageReductionFirst8s) {
+        cu.damageReductionRatio = bodyguard.damageReductionFirst8s;
+      }
     }
 
-    // - 용족(DRAGONKIN): 스킬 치명타 활성화 및 치명타 피해 증가
-    const dragon = synergyMap.get('DRAGONKIN')?.activeEffect;
-    if (dragon && cu.traits.includes('DRAGONKIN')) {
-      if (dragon.enableSkillCrit) cu.enableSkillCrit = true;
-      cu.critDamage += dragon.bonusCritDamage ?? 0;
+    // - 저격수(SNIPER): 사거리 증가
+    const sniper = synergyMap.get('SNIPER')?.activeEffect;
+    if (sniper && cu.traits.includes('SNIPER') && sniper.bonusRange) {
+      cu.range += sniper.bonusRange;
     }
 
-    // - 언데드 군단(UNDEAD_SCOURGE): 최초 사망 시 2초 뒤 부활 플래그
-    const undead = synergyMap.get('UNDEAD_SCOURGE')?.activeEffect;
-    if (undead && cu.traits.includes('UNDEAD_SCOURGE') && undead.reviveHpRatio) {
-      cu.hasReviveAvailable = true;
-      cu.reviveHpRatio = undead.reviveHpRatio;
-      cu.reviveBonusAtkSpeed = undead.reviveBonusAtkSpeed ?? 0.35;
-    }
-
-    // - 마탑(ARCANE_TOWER): 마탑 기물 주문력 상승
-    const arcane = synergyMap.get('ARCANE_TOWER')?.activeEffect;
-    if (arcane && cu.traits.includes('ARCANE_TOWER') && arcane.spellPowerBonus) {
-      cu.spellPower = Number((cu.spellPower + arcane.spellPowerBonus).toFixed(2));
-    }
-
-    // - 선봉대(VANGUARD): 방어력 상승 및 개전 8초간 피해 감소 30%
-    const vanguard = synergyMap.get('VANGUARD')?.activeEffect;
-    if (vanguard && cu.traits.includes('VANGUARD')) {
-      cu.def += vanguard.bonusDef ?? 0;
-      cu.baseDef += vanguard.bonusDef ?? 0;
-      cu.damageReductionRatio = vanguard.damageReductionFirst8s ?? 0.3;
-    }
-
-    // - 순찰자(RANGER): 사거리 +1 증가
-    const ranger = synergyMap.get('RANGER')?.activeEffect;
-    if (ranger && cu.traits.includes('RANGER') && ranger.bonusRange) {
-      cu.range += ranger.bonusRange;
-    }
-
-    // - 대마법사(ARCHMAGE): 주문력 상승
-    const archmage = synergyMap.get('ARCHMAGE')?.activeEffect;
-    if (archmage && cu.traits.includes('ARCHMAGE') && archmage.spellPowerBonus) {
-      cu.spellPower = Number((cu.spellPower + archmage.spellPowerBonus).toFixed(2));
+    // - 비전 마법사(ARCANIST): 주문력 상승
+    const arcanist = synergyMap.get('ARCANIST')?.activeEffect;
+    if (arcanist && cu.traits.includes('ARCANIST') && arcanist.spellPowerBonus) {
+      cu.spellPower = Number((cu.spellPower + arcanist.spellPowerBonus).toFixed(2));
     }
 
     // - 그림자 암살자(SHADOW_ASSASSIN): 치명타 확률 및 치명타 피해량 증가
-    const assassin = synergyMap.get('SHADOW_ASSASSIN')?.activeEffect;
-    if (assassin && cu.traits.includes('SHADOW_ASSASSIN')) {
+    const assassin = synergyMap.get('ASSASSIN')?.activeEffect;
+    if (assassin && cu.traits.includes('ASSASSIN')) {
       cu.critChance = Math.min(1.0, cu.critChance + (assassin.bonusCritChance ?? 0));
       cu.critDamage += assassin.bonusCritDamage ?? 0;
     }
 
     // - 성기사(PALADIN): 아군 전체 군중제어(기절) 지속시간 감소 또는 면역
-    const paladin = synergyMap.get('PALADIN')?.activeEffect;
+    const paladin = synergyMap.get('ENCHANTER')?.activeEffect;
     if (paladin && paladin.ccDurationReduction) {
       cu.ccDurationReduction = paladin.ccDurationReduction;
     }
 
+    this.set6TraitCombat.applyPreCombatUnitBonuses(
+      cu,
+      owner,
+      synergyMap,
+      boardRow,
+      boardCol
+    );
+
     return cu;
+  }
+
+  private createInnovatorSummon(
+    team: CombatTeam,
+    cfg: { name: string; hp: number; atk: number; row: number; col: number }
+  ): CombatUnit {
+    return {
+      instanceId: `${team}_innovator_${cfg.name}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
+      unitId: 'set6_innovator_mech',
+      name: cfg.name,
+      team,
+      cost: 1,
+      starLevel: 1,
+      traits: [],
+      icon: '🔧',
+      items: [],
+      row: cfg.row,
+      col: cfg.col,
+      maxHp: cfg.hp,
+      currentHp: cfg.hp,
+      shield: 0,
+      atk: cfg.atk,
+      baseAtk: cfg.atk,
+      def: 25,
+      baseDef: 25,
+      atkSpeed: 0.55,
+      baseAtkSpeed: 0.55,
+      range: 1,
+      startMana: 0,
+      maxMana: 0,
+      currentMana: 0,
+      spellPower: 1,
+      critChance: 0.1,
+      critDamage: 1.4,
+      omnivamp: 0,
+      enableSkillCrit: false,
+      trueDamageBonusRatio: 0,
+      damageReductionRatio: 0,
+      ccDurationReduction: 0,
+      stunTimerMs: 0,
+      manaLockTimerMs: 0,
+      attackCooldownMs: 600,
+      baseMoveIntervalMs: 520,
+      moveCooldownMs: 80,
+      basicAttackCount: 0,
+      titansStacks: 0,
+      berserkTriggered: false,
+      bloodthirsterTriggered: false,
+      protectorsVowTriggered: false,
+      hasReviveAvailable: false,
+      isReviving: false,
+      reviveTimerMs: 0,
+      reviveHpRatio: 0,
+      reviveBonusAtkSpeed: 0,
+      ownerGold: 0,
+      totalDamageDealt: 0,
+      set6InnovatorSummon: true,
+    };
+  }
+
+  private applySet6TraitCombatStart(
+    team: CombatTeam,
+    synergyMap: Map<TraitId, ActiveSynergyState>,
+    owner: Participant
+  ): void {
+    const teamUnits = this.units.filter((u) => u.team === team && u.currentHp > 0);
+    const enemyUnits = this.units.filter((u) => u.team !== team && u.currentHp > 0);
+
+    this.set6TraitCombat.applyScrapEffects(teamUnits, synergyMap, (cu, amt) => {
+      this.addShield(cu, cu, amt);
+    });
+
+    this.set6TraitCombat.spawnInnovatorMechs(team, synergyMap, teamUnits, (cfg) =>
+      this.createInnovatorSummon(team, cfg)
+    ).forEach((s) => this.units.push(s));
+
+    this.set6TraitCombat.applyEnforcerCombatStart(
+      team,
+      synergyMap,
+      teamUnits,
+      enemyUnits,
+      (source, target, ms) => this.applyStun(source, target, ms)
+    );
   }
 
   /**
@@ -524,35 +626,21 @@ export class CombatEngine implements SkillCombatContext {
     const teamUnits = this.units.filter((u) => u.team === team && u.currentHp > 0);
     const enemyUnits = this.units.filter((u) => u.team !== team && u.currentHp > 0);
 
-    // 1. 신성 제국(HOLY_EMPIRE): 최대 체력 비례 신성 보호막 부여
-    const empire = synergyMap.get('HOLY_EMPIRE')?.activeEffect;
-    if (empire && empire.shieldMaxHpRatio) {
+    // 1. 경호대(BODYGUARD): 개전 최대 체력 비례 보호막
+    const bodyguardFx = synergyMap.get('BODYGUARD')?.activeEffect;
+    if (bodyguardFx?.shieldMaxHpRatio) {
       for (const u of teamUnits) {
-        if (u.traits.includes('HOLY_EMPIRE')) {
-          const shieldAmt = Math.round(u.maxHp * empire.shieldMaxHpRatio);
+        if (u.traits.includes('BODYGUARD')) {
+          const shieldAmt = Math.round(u.maxHp * bodyguardFx.shieldMaxHpRatio);
           this.addShield(u, u, shieldAmt);
         }
       }
     }
 
-    // 2. 용족(DRAGONKIN): 전투 시작 시 화염 숨결로 적 전체에게 최대 체력 비례 화상 피해
-    const dragon = synergyMap.get('DRAGONKIN')?.activeEffect;
-    if (dragon && dragon.initialBurnMaxHpRatio) {
-      const dragonCaster = teamUnits.find((u) => u.traits.includes('DRAGONKIN'));
-      if (dragonCaster) {
-        for (const enemy of enemyUnits) {
-          if (enemy.currentHp > 0) {
-            const burnDmg = Math.round(enemy.maxHp * dragon.initialBurnMaxHpRatio);
-            this.dealDamage(dragonCaster, enemy, burnDmg, 'TRUE', false, true);
-          }
-        }
-      }
-    }
-
-    // 3. 그림자 암살자(SHADOW_ASSASSIN): 전투 시작 시 적진 가장 뒷열(원거리 딜러 라인) 빈 타일로 은신 도약(Leap)
+    // 2. 암살자(ASSASSIN): 전투 시작 시 적진 후방 도약
     const targetBackRows = team === 'HOME' ? [0, 1, 2, 3] : [7, 6, 5, 4];
     for (const u of teamUnits) {
-      if (u.traits.includes('SHADOW_ASSASSIN')) {
+      if (u.traits.includes('ASSASSIN')) {
         const leapTile = this.findBacklineLeapTile(u, targetBackRows);
         if (leapTile && (leapTile.row !== u.row || leapTile.col !== u.col)) {
           const fromRow = u.row;
@@ -575,26 +663,6 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // 4. 5코스트 3성 황금 고블린 왕 골드투스(u5_goldtooth) 개전 즉시 권능 발동!
-    for (const u of teamUnits) {
-      if (u.unitId === 'u5_goldtooth' && u.starLevel === 3 && u.currentHp > 0) {
-        const aliveEnemies = this.units.filter(
-          (e) => e.team !== u.team && e.currentHp > 0
-        );
-        if (aliveEnemies.length > 0) {
-          this.emitEvent({
-            type: 'FIVE_COST_3STAR_CATACLYSM',
-            tick: this.currentTick,
-            sourceId: u.instanceId,
-            team: u.team,
-            unitId: u.unitId,
-            skillName: UNIT_TEMPLATES[u.unitId].skill.name,
-            message: `⚡👑 [3성 골드투스 절대 권능!] 개전 즉시 황금 제국 금고 대폭격 (99,999 피해 & +50G)!`,
-          });
-          SkillRegistry.executeSkill(u, aliveEnemies[0], this.units, this);
-        }
-      }
-    }
   }
 
   private findBacklineLeapTile(
@@ -804,7 +872,9 @@ export class CombatEngine implements SkillCombatContext {
 
     for (const u of this.units) {
       if (u.currentHp > 0 || u.isReviving) {
-        occupiedTiles.add(`${u.row},${u.col}`);
+        for (const key of Set6TraitCombat.occupiedTileKeys(u)) {
+          occupiedTiles.add(key);
+        }
       }
     }
 
@@ -993,6 +1063,18 @@ export class CombatEngine implements SkillCombatContext {
     // SkillRegistry 전략 핸들러 실행
     SkillRegistry.executeSkill(unit, target, this.units, this);
 
+    const synergyMap =
+      unit.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
+    this.set6TraitCombat.onAcademySkillCast(unit.team, synergyMap);
+    this.set6TraitCombat.applyAcademyOnCast(
+      unit.team,
+      this.units.filter((u) => u.team === unit.team && u.currentHp > 0),
+      synergyMap
+    );
+    if (unit.set6MutantAdrenaline) {
+      unit.atkSpeed = Number(Math.min(5, unit.atkSpeed * 1.35).toFixed(3));
+    }
+
     const owner = unit.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
 
     // [영웅] 검기 투척수 가렌: 전장 관통 십자 칼바람 발사 (일직선상 모든 적 2.2배 강타)
@@ -1056,12 +1138,10 @@ export class CombatEngine implements SkillCombatContext {
     }
 
     // 대마법사(ARCHMAGE) 시너지 활성화 시: 스킬 시전할 때 체력이 가장 낮은 적에게 연쇄 번개 추가 낙하!
-    const synergyMap =
-      unit.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
-    const archmageEffect = synergyMap.get('ARCHMAGE')?.activeEffect;
+    const archmageEffect = synergyMap.get('ARCANIST')?.activeEffect;
     if (
       archmageEffect &&
-      unit.traits.includes('ARCHMAGE') &&
+      unit.traits.includes('ARCANIST') &&
       archmageEffect.chainLightningDamage
     ) {
       const aliveEnemies = this.units
@@ -1104,11 +1184,60 @@ export class CombatEngine implements SkillCombatContext {
     // 1. 기본 물리 공격 피해 적용 (공식: rawAtk * (100 / (100 + targetDef))는 dealDamage 내부에서 수행)
     this.dealDamage(attacker, target, attacker.atk, 'PHYSICAL', true, false);
 
+    const skillTemplate = UNIT_TEMPLATES[attacker.unitId]?.skill;
+    if (skillTemplate) {
+      const starIdx = Math.max(0, Math.min(2, attacker.starLevel - 1));
+      const skillPrimary =
+        skillTemplate.baseValueByStar[starIdx] * attacker.spellPower;
+      const skillSecondary = skillTemplate.secondaryValueByStar?.[starIdx] ?? 0;
+
+      if (attacker.unitId === 'u2_warwick' && attacker.maxMana === 0) {
+        const onHit = target.currentHp * (skillPrimary / 100);
+        this.dealDamage(attacker, target, onHit, 'MAGICAL', false, true);
+        if (skillSecondary > 0) {
+          this.healUnit(attacker, attacker, skillSecondary);
+        }
+      }
+
+      if (attacker.unitId === 'u2_talon' && attacker.maxMana === 0) {
+        if (attacker.basicAttackCount === 1 || attacker.basicAttackCount % 3 === 0) {
+          this.dealDamage(attacker, target, skillPrimary, 'MAGICAL', false, true);
+        }
+      }
+
+      if (attacker.unitId === 'u5_viktor') {
+        target.def = Math.max(5, Math.round(target.def * 0.3));
+      }
+
+      if (
+        attacker.unitId === 'u2_kogmaw' &&
+        attacker.set6KogmawBarrageUntilMs &&
+        this.elapsedMs <= attacker.set6KogmawBarrageUntilMs &&
+        attacker.set6KogmawOnHitPct
+      ) {
+        const pct = attacker.set6KogmawOnHitPct / 100;
+        this.dealDamage(attacker, target, target.maxHp * pct, 'MAGICAL', false, true);
+      }
+    }
+
+    if (
+      attacker.unitId === 'u2_kogmaw' &&
+      attacker.set6KogmawBarrageUntilMs &&
+      this.elapsedMs > attacker.set6KogmawBarrageUntilMs
+    ) {
+      const template = UNIT_TEMPLATES[attacker.unitId];
+      attacker.set6KogmawBarrageUntilMs = undefined;
+      attacker.set6KogmawOnHitPct = undefined;
+      if (template) {
+        attacker.range = template.stats.range;
+      }
+    }
+
     // 2. 공격자 마나 회복: 기본 +10 + 마탑(ARCANE_TOWER) 보너스 + 쇼진의 창(SPEAR_OF_SHOJIN) 보너스
     const synergyMap =
       attacker.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
     const arcaneBonus =
-      synergyMap.get('ARCANE_TOWER')?.activeEffect?.teamManaPerAttack ?? 0;
+      synergyMap.get('SCHOLAR')?.activeEffect?.teamManaPerAttack ?? 0;
 
     let shojinBonus = 0;
     for (const itemId of attacker.items) {
@@ -1123,14 +1252,15 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    this.grantMana(attacker, 10 + arcaneBonus + shojinBonus);
+    const socialiteMana = attacker.set6SocialiteManaPerAttack ?? 0;
+    this.grantMana(attacker, 10 + arcaneBonus + shojinBonus + socialiteMana);
     this.incrementTitansResolve(attacker);
 
     // 3. 광전사(BERSERKER) 광폭화 중 스플래시 피해 처리
-    const berserkerEffect = synergyMap.get('BERSERKER')?.activeEffect;
+    const berserkerEffect = synergyMap.get('BRUISER')?.activeEffect;
     if (
       berserkerEffect &&
-      attacker.traits.includes('BERSERKER') &&
+      attacker.traits.includes('BRUISER') &&
       attacker.berserkTriggered &&
       berserkerEffect.berserkSplashRatio
     ) {
@@ -1149,18 +1279,18 @@ export class CombatEngine implements SkillCombatContext {
     }
 
     // 4. 순찰자(RANGER) 3타마다 관통 화살 추가 발사
-    const rangerEffect = synergyMap.get('RANGER')?.activeEffect;
+    const twinShotEffect = synergyMap.get('TWINSHOT')?.activeEffect;
     if (
-      rangerEffect &&
-      attacker.traits.includes('RANGER') &&
-      attacker.basicAttackCount % 3 === 0 &&
-      rangerEffect.pierceArrowDamageRatio
+      twinShotEffect &&
+      attacker.traits.includes('TWINSHOT') &&
+      attacker.basicAttackCount % 2 === 0 &&
+      twinShotEffect.pierceArrowDamageRatio
     ) {
       if (target.currentHp > 0) {
         this.dealDamage(
           attacker,
           target,
-          attacker.atk * rangerEffect.pierceArrowDamageRatio,
+          attacker.atk * twinShotEffect.pierceArrowDamageRatio,
           'PHYSICAL',
           true,
           false
@@ -1172,7 +1302,7 @@ export class CombatEngine implements SkillCombatContext {
     const attackerOwner =
       attacker.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
     if (
-      attacker.unitId === 'u3_orion' &&
+      attacker.unitId === 'u3_miss_fortune' &&
       attackerOwner?.augments.includes('AUG_HERO_ORION')
     ) {
       attacker.atkSpeed = Math.min(3.2, Number((attacker.atkSpeed * 1.06).toFixed(3)));
@@ -1211,10 +1341,10 @@ export class CombatEngine implements SkillCombatContext {
     }
 
     // 6. 성기사(PALADIN) 기본 공격 시 주변 아군 체력 회복
-    const paladinEffect = synergyMap.get('PALADIN')?.activeEffect;
+    const paladinEffect = synergyMap.get('ENCHANTER')?.activeEffect;
     if (
       paladinEffect &&
-      attacker.traits.includes('PALADIN') &&
+      attacker.traits.includes('ENCHANTER') &&
       paladinEffect.healPerAttack
     ) {
       const allies = this.units
@@ -1606,11 +1736,18 @@ export class CombatEngine implements SkillCombatContext {
   private checkLowHpThresholds(unit: CombatUnit): void {
     const hpRatio = unit.currentHp / unit.maxHp;
 
-    // 1. 광전사(BERSERKER): 체력 50% 이하 도달 시 공격력/공속 폭증
-    if (!unit.berserkTriggered && hpRatio <= 0.5 && unit.traits.includes('BERSERKER')) {
-      const synergyMap =
-        unit.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
-      const berserkEffect = synergyMap.get('BERSERKER')?.activeEffect;
+    const synergyMap =
+      unit.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
+
+    // 1. 난동꾼(BRUISER) / 화학공학(CHEMTECH): 체력 임계 시 버스트 (스텁)
+    const chemThreshold = unit.traits.includes('CHEMTECH') ? 0.6 : 0.5;
+    const burstTrait: TraitId | null = unit.traits.includes('CHEMTECH')
+      ? 'CHEMTECH'
+      : unit.traits.includes('BRUISER')
+        ? 'BRUISER'
+        : null;
+    if (!unit.berserkTriggered && burstTrait && hpRatio <= chemThreshold) {
+      const berserkEffect = synergyMap.get(burstTrait)?.activeEffect;
       if (berserkEffect) {
         unit.berserkTriggered = true;
         unit.atk = Math.round(unit.atk * (berserkEffect.berserkAtkMultiplier ?? 2.0));
@@ -1651,7 +1788,7 @@ export class CombatEngine implements SkillCombatContext {
       for (const u of this.units) {
         if (u.currentHp <= 0 || u.isReviving) continue;
         const owner = u.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
-        if (u.unitId === 'u2_jeanne' && owner?.augments.includes('AUG_HERO_JEANNE')) {
+        if (u.unitId === 'u2_blitzcrank' && owner?.augments.includes('AUG_HERO_JEANNE')) {
           u.maxHp += 150;
           u.currentHp += 150;
           u.def += 5;
@@ -1737,12 +1874,12 @@ export class CombatEngine implements SkillCombatContext {
     if (this.elvenTickTimerMs >= 2000) {
       this.elvenTickTimerMs -= 2000;
       for (const u of this.units) {
-        if (u.currentHp <= 0 || u.isReviving || !u.traits.includes('ELVEN_SYLVAN')) {
+        if (u.currentHp <= 0 || u.isReviving || !u.traits.includes('SCHOLAR')) {
           continue;
         }
         const synergyMap =
           u.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
-        const elven = synergyMap.get('ELVEN_SYLVAN')?.activeEffect;
+        const elven = synergyMap.get('SCHOLAR')?.activeEffect;
         if (elven) {
           if (elven.atkSpeedPerStack) {
             u.atkSpeed = Number(

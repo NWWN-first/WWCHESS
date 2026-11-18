@@ -5,20 +5,36 @@ export type StarLevel = 1 | 2 | 3;
 export type TraitType = 'ORIGIN' | 'CLASS';
 export type AugmentTier = 'SILVER' | 'GOLD' | 'PRISMATIC';
 
+/** TFT Set 6 (Gizmos & Gadgets) — 15 origins + 13 classes */
 export type TraitId =
-  | 'HOLY_EMPIRE'
-  | 'ABYSSAL_DEMON'
-  | 'ELVEN_SYLVAN'
-  | 'DRAGONKIN'
-  | 'UNDEAD_SCOURGE'
-  | 'ARCANE_TOWER'
-  | 'GOLDEN_GOBLIN'
-  | 'VANGUARD'
-  | 'BERSERKER'
-  | 'RANGER'
-  | 'ARCHMAGE'
-  | 'SHADOW_ASSASSIN'
-  | 'PALADIN';
+  | 'SCRAP'
+  | 'MUTANT'
+  | 'SYNDICATE'
+  | 'SOCIALITE'
+  | 'CLOCKWORK'
+  | 'ACADEMY'
+  | 'MERCENARY'
+  | 'YORDLE'
+  | 'IMPERIAL'
+  | 'ENFORCER'
+  | 'CHEMTECH'
+  | 'SISTER'
+  | 'CUDDLY'
+  | 'GLUTTON'
+  | 'YORDLE_LORD'
+  | 'ENCHANTER'
+  | 'BODYGUARD'
+  | 'BRUISER'
+  | 'CHALLENGER'
+  | 'INNOVATOR'
+  | 'PROTECTOR'
+  | 'ARCANIST'
+  | 'TWINSHOT'
+  | 'ASSASSIN'
+  | 'SNIPER'
+  | 'SCHOLAR'
+  | 'COLOSSUS'
+  | 'TRANSFORMER';
 
 export type BaseItemId = 'SWORD' | 'BOW' | 'ROD' | 'TEAR' | 'ARMOR';
 
@@ -61,5 +77,7 @@ export type SkillType =
   | 'EXECUTE_RESET'
   | 'APOCALYPSE_BREATH'
   | 'GOLDEN_VAULT_BOMBARD'
-  | 'JUDGMENT_BARRAGE';
+  | 'JUDGMENT_BARRAGE'
+  | 'FURYHORN_STORM';
 
+export type TraitKind = 'NORMAL' | 'UNIQUE' | 'PAIR' | 'CHAMPION_ONLY';

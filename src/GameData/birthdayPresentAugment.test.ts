@@ -24,7 +24,8 @@ describe('AUG_BIRTHDAY_PRESENT', () => {
     const p = new Participant('p2', 'Player');
     p.augments.push('AUG_BIRTHDAY_PRESENT');
     const pool = new SharedPoolManager();
-    const beforePool = pool.getRemainingCount('u1_garen');
+    const grantedUnitId = 'u1_caitlyn';
+    const beforePool = pool.getRemainingCount(grantedUnitId);
     p.gold = 0;
     p.level = 1;
     p.xp = 0;
@@ -33,11 +34,11 @@ describe('AUG_BIRTHDAY_PRESENT', () => {
 
     expect(p.level).toBe(2);
     expect(p.gold).toBe(6);
-    expect(pool.getRemainingCount('u1_garen')).toBe(beforePool - 3);
+    expect(pool.getRemainingCount(grantedUnitId)).toBe(beforePool - 3);
 
     const twoStar = p.bench.find((u) => u?.starLevel === 2);
     expect(twoStar).toBeDefined();
-    expect(twoStar!.unitId).toBe('u1_garen');
+    expect(twoStar!.unitId).toBe(grantedUnitId);
   });
 
   it('skips blocked units when participant already has a 3-star copy', () => {

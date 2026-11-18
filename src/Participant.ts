@@ -16,11 +16,12 @@ import {
   XP_REQUIRED_BY_LEVEL,
 } from './GameData';
 import { PoolParticipant, SharedPoolManager } from './SharedPoolManager';
+import type { MutantVariant, SocialiteSpotlight } from './set6/Set6MatchState';
 
 export type AIPersona =
   | 'HYPER_ROLLER'
   | 'FAST_NINE_GREEDY'
-  | 'GOBLIN_GAMBLER'
+  | 'MERCENARY_GAMBLER'
   | 'FLEX_MASTER'
   | 'LOW_COST_REROLLER'
   | 'FAST_NINE_ECONOMIST'
@@ -79,6 +80,12 @@ export class Participant implements PoolParticipant {
   public loseStreak: number = 0;
 
   public goblinVaultStacks: number = 0;
+  /** 요들 군주(YORDLE_LORD) 베이가 1회 스폰되었는지 */
+  public yordleLordVeigarSpawned: boolean = false;
+  /** Set 6 Mutant: 이 플레이어 판 variant (매 게임 1종). */
+  public set6MutantVariant: MutantVariant | null = null;
+  /** Set 6 Socialite spotlight board coords (prep phase). */
+  public socialiteSpotlights: SocialiteSpotlight[] = [];
 
   public bench: (UnitInstance | null)[];
   public board: (UnitInstance | null)[][];
@@ -975,8 +982,8 @@ export class Participant implements PoolParticipant {
     }
     if (aug.effectKey === 'ARCANE_CREST') {
       // 고대 마탑의 왕관: 마탑 +1 외에 대마법사(ARCHMAGE)도 +1 추가 부여
-      const prevArchmage = this.bonusTraits.get('ARCHMAGE') ?? 0;
-      this.bonusTraits.set('ARCHMAGE', prevArchmage + 1);
+      const prevArchmage = this.bonusTraits.get('ARCANIST') ?? 0;
+      this.bonusTraits.set('ARCANIST', prevArchmage + 1);
     }
     if (aug.effectKey === 'TINY_TITANS') {
       this.maxHp = 130;

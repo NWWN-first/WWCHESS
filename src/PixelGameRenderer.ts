@@ -2505,7 +2505,7 @@ export class PixelGameRenderer {
           strideArcOffsetY = -Math.sin(st.moveProgress * Math.PI) * 32;
         } else {
           // 기물 고유 보행 리듬(중갑 탱커의 묵직한 걸음 vs 암살자/고블린의 경쾌한 스텝)
-          const isHeavyTank = cu.traits.includes('VANGUARD');
+          const isHeavyTank = cu.traits.includes('BODYGUARD');
           const hopHeight = isHeavyTank ? 2.5 : 4.5;
           strideArcOffsetY =
             -Math.abs(Math.sin(st.moveProgress * Math.PI * 2)) * hopHeight;

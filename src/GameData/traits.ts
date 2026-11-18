@@ -1,10 +1,7 @@
 // src/GameData/traits.ts
 
 import type { TraitId, TraitType } from './types';
-
-// ============================================================================
-// B. 13종 판타지 시너지 정의 (TRAIT_DEFINITIONS)
-// ============================================================================
+import type { TraitKind } from './types';
 
 export interface TraitEffectTier {
   threshold: number;
@@ -22,19 +19,16 @@ export interface TraitEffectTier {
   reviveBonusAtkSpeed?: number;
   teamManaPerAttack?: number;
   spellPowerBonus?: number;
-  goblinStackMultiplier?: number;
-  /** 황금 고블린 (3)/(5)/(7) 전투 보너스 — GOLDEN_GOBLIN trait 유닛만 */
-  goblinCombatBonusHp?: number;
-  goblinCombatBonusAtk?: number;
-  goblinCombatBonusAtkSpeed?: number;
-  goblinCombatDamageReduction?: number;
-  /** (5)(7) 승리 유지 보상 — 보드에 고블린 유닛 있을 때만 */
-  goblinWinGoldMin?: number;
-  goblinWinGoldMax?: number;
-  goblinSmallOrbChanceOnWin?: number;
-  goblinWinStreakForGoldOrb?: number;
-  /** (7) 매 라운드 종료 잭팟 (승패 무관) */
-  goblinPerRoundJackpot?: boolean;
+  mercenaryStackMultiplier?: number;
+  mercenaryCombatBonusHp?: number;
+  mercenaryCombatBonusAtk?: number;
+  mercenaryCombatBonusAtkSpeed?: number;
+  mercenaryCombatDamageReduction?: number;
+  mercenaryWinGoldMin?: number;
+  mercenaryWinGoldMax?: number;
+  mercenarySmallOrbChanceOnWin?: number;
+  mercenaryWinStreakForGoldOrb?: number;
+  mercenaryPerRoundJackpot?: boolean;
   damageReductionFirst8s?: number;
   berserkAtkMultiplier?: number;
   berserkAtkSpeedMultiplier?: number;
@@ -53,290 +47,742 @@ export interface TraitDefinition {
   id: TraitId;
   name: string;
   type: TraitType;
+  kind: TraitKind;
   icon: string;
   color: string;
   thresholds: number[];
   description: string;
   effects: TraitEffectTier[];
+  boundUnitIds?: string[];
+  nameEn?: string;
 }
 
 export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
-  // ---- 계열(Origin) 7종 ----
-  HOLY_EMPIRE: {
-    id: 'HOLY_EMPIRE',
-    name: '신성 제국',
+  SCRAP: {
+    id: 'SCRAP',
+    name: '고물상',
     type: 'ORIGIN',
-    icon: '🛡️',
-    color: '#F5D76E',
-    thresholds: [2, 4, 6, 9],
-    description:
-      '전투 시작 시 제국 기물들이 최대 체력 비례 신성 보호막(Shield)을 얻고 방어력이 증가합니다. 9신성제국 달성 시 불멸의 신화급 보호막!',
-    effects: [
-      { threshold: 2, label: '(2) 최대 체력 20% 보호막, 방어력 +25', shieldMaxHpRatio: 0.2, bonusDef: 25 },
-      { threshold: 4, label: '(4) 최대 체력 40% 보호막, 방어력 +55', shieldMaxHpRatio: 0.4, bonusDef: 55 },
-      { threshold: 6, label: '(6) 최대 체력 70% 보호막, 방어력 +95', shieldMaxHpRatio: 0.70, bonusDef: 95 },
-      { threshold: 9, label: '(9) [프리즘/문장필수] 최대 체력 150% 보호막, 방어력 +220', shieldMaxHpRatio: 1.5, bonusDef: 220 },
-    ],
-  },
-  ABYSSAL_DEMON: {
-    id: 'ABYSSAL_DEMON',
-    name: '심연의 악마',
-    type: 'ORIGIN',
-    icon: '👿',
-    color: '#C0392B',
-    thresholds: [2, 4, 6, 9],
-    description:
-      '악마 기물들의 기본 공격 및 스킬이 적에게 추가 고정 피해(True Damage)를 입히고 모든 피해 흡혈(Omnivamp)을 얻습니다.',
-    effects: [
-      { threshold: 2, label: '(2) 추가 고정 피해 11%, 모든 피해 흡혈 10%', trueDamageRatio: 0.11, omnivamp: 0.10 },
-      { threshold: 4, label: '(4) 추가 고정 피해 25%, 모든 피해 흡혈 18%', trueDamageRatio: 0.25, omnivamp: 0.18 },
-      { threshold: 6, label: '(6) 추가 고정 피해 45%, 모든 피해 흡혈 28%', trueDamageRatio: 0.45, omnivamp: 0.28 },
-      { threshold: 9, label: '(9) [프리즘/문장필수] 추가 고정 피해 85%, 모든 피해 흡혈 55%', trueDamageRatio: 0.85, omnivamp: 0.55 },
-    ],
-  },
-  ELVEN_SYLVAN: {
-    id: 'ELVEN_SYLVAN',
-    name: '엘프 숲',
-    type: 'ORIGIN',
-    icon: '🌿',
-    color: '#2ECC71',
-    thresholds: [2, 4, 6, 8],
-    description:
-      '매 2초마다 엘프 기물의 공격 속도가 중첩되어 빨라지며 최대 체력의 일정 비율을 회복합니다.',
-    effects: [
-      { threshold: 2, label: '(2) 2초마다 공속 +8%, 최대 체력 4% 회복', atkSpeedPerStack: 0.08, hpRegenRatioPerTick: 0.04 },
-      { threshold: 4, label: '(4) 2초마다 공속 +16%, 최대 체력 8% 회복', atkSpeedPerStack: 0.16, hpRegenRatioPerTick: 0.08 },
-      { threshold: 6, label: '(6) 2초마다 공속 +28%, 최대 체력 14% 회복', atkSpeedPerStack: 0.28, hpRegenRatioPerTick: 0.14 },
-      { threshold: 8, label: '(8) [프리즘/문장필수] 2초마다 공속 +55% 무한중첩, 최대 체력 28% 회복', atkSpeedPerStack: 0.55, hpRegenRatioPerTick: 0.28 },
-    ],
-  },
-  DRAGONKIN: {
-    id: 'DRAGONKIN',
-    name: '용족',
-    type: 'ORIGIN',
-    icon: '🐉',
-    color: '#E67E22',
-    thresholds: [2, 4, 6],
-    description:
-      '전투 시작 시 화염 숨결로 적 전체에게 최대 체력 비례 화상 피해를 입히고, 용족 기물의 스킬 치명타가 활성화됩니다.',
-    effects: [
-      {
-        threshold: 2,
-        label: '(2) 개전 화상 18%, 스킬 치명타 활성화 (+30% 치명타 피해)',
-        initialBurnMaxHpRatio: 0.18,
-        enableSkillCrit: true,
-        bonusCritDamage: 0.30,
-      },
-      {
-        threshold: 4,
-        label: '(4) 개전 화상 42%, 스킬 치명타 활성화 (+85% 치명타 피해)',
-        initialBurnMaxHpRatio: 0.42,
-        enableSkillCrit: true,
-        bonusCritDamage: 0.85,
-      },
-      {
-        threshold: 6,
-        label: '(6) [프리즘/문장필수] 개전 화상 70%, 스킬 치명타 활성화 (+180% 치명타 피해)',
-        initialBurnMaxHpRatio: 0.70,
-        enableSkillCrit: true,
-        bonusCritDamage: 1.8,
-      },
-    ],
-  },
-  UNDEAD_SCOURGE: {
-    id: 'UNDEAD_SCOURGE',
-    name: '언데드 군단',
-    type: 'ORIGIN',
-    icon: '💀',
-    color: '#8E44AD',
-    thresholds: [2, 4, 6, 8],
-    description:
-      '전투 중 최초 사망 시 2초 뒤 지정된 체력 상태로 1회 부활(Revive)하며 공격 속도가 폭증합니다.',
-    effects: [
-      { threshold: 2, label: '(2) 최대 체력 40% 부활, 부활 후 공속 +35%', reviveHpRatio: 0.4, reviveBonusAtkSpeed: 0.35 },
-      { threshold: 4, label: '(4) 최대 체력 70% 부활, 부활 후 공속 +65%', reviveHpRatio: 0.7, reviveBonusAtkSpeed: 0.65 },
-      { threshold: 6, label: '(6) 최대 체력 95% 부활, 부활 후 공속 +110%', reviveHpRatio: 0.95, reviveBonusAtkSpeed: 1.1 },
-      { threshold: 8, label: '(8) [프리즘/문장필수] 최대 체력 140% 부활, 부활 후 공속 +220%', reviveHpRatio: 1.4, reviveBonusAtkSpeed: 2.2 },
-    ],
-  },
-  ARCANE_TOWER: {
-    id: 'ARCANE_TOWER',
-    name: '마탑',
-    type: 'ORIGIN',
-    icon: '🔮',
-    color: '#3498DB',
-    thresholds: [2, 4, 6, 9],
-    description:
-      '아군 전체의 기본 공격 시 마나 회복량이 증가하고, 마탑 기물들의 주문력(Spell Power)이 대폭 상승합니다.',
-    effects: [
-      { threshold: 2, label: '(2) 아군 평타 마나 +3, 마탑 주문력 +25%', teamManaPerAttack: 3, spellPowerBonus: 0.25 },
-      { threshold: 4, label: '(4) 아군 평타 마나 +6, 마탑 주문력 +55%', teamManaPerAttack: 6, spellPowerBonus: 0.55 },
-      { threshold: 6, label: '(6) 아군 평타 마나 +10, 마탑 주문력 +90%', teamManaPerAttack: 10, spellPowerBonus: 0.90 },
-      { threshold: 9, label: '(9) [프리즘/문장필수] 아군 평타 마나 +20, 마탑 주문력 +200%', teamManaPerAttack: 20, spellPowerBonus: 2.0 },
-    ],
-  },
-  GOLDEN_GOBLIN: {
-    id: 'GOLDEN_GOBLIN',
-    name: '황금 고블린',
-    type: 'ORIGIN',
-    icon: '🪙',
-    color: '#F1C40F',
-    thresholds: [3, 5, 7],
-    description:
-      '패배 시 금고 스택 → 승리 한방 캐시아웃(3). (5) 승리 유지 보상·전투 강화. (7) 매판 잭팟·전투 폭발!',
-    effects: [
-      {
-        threshold: 3,
-        label: '(3) 패배 금고 스택 (1.0x), 승리 캐시아웃 — 전투는 미미한 체력만',
-        goblinStackMultiplier: 1.0,
-        goblinCombatBonusHp: 80,
-      },
-      {
-        threshold: 5,
-        label: '(5) 스택 2.0x + 승리 골드·구슬 + 전투 HP/ATK/공속',
-        goblinStackMultiplier: 2.0,
-        goblinCombatBonusHp: 120,
-        goblinCombatBonusAtk: 25,
-        goblinCombatBonusAtkSpeed: 0.25,
-        goblinWinGoldMin: 2,
-        goblinWinGoldMax: 4,
-        goblinSmallOrbChanceOnWin: 0.35,
-        goblinWinStreakForGoldOrb: 2,
-      },
-      {
-        threshold: 7,
-        label: '(7) 스택 4.0x + 매판 잭팟 + 승리 대박 + 전투 폭발(피해감소)',
-        goblinStackMultiplier: 4.0,
-        goblinCombatBonusHp: 600,
-        goblinCombatBonusAtk: 50,
-        goblinCombatBonusAtkSpeed: 0.35,
-        goblinCombatDamageReduction: 0.12,
-        goblinPerRoundJackpot: true,
-        goblinWinGoldMin: 4,
-        goblinWinGoldMax: 7,
-        goblinSmallOrbChanceOnWin: 0.45,
-        goblinWinStreakForGoldOrb: 2,
-      },
-    ],
-  },
-
-  // ---- 직업(Class) 6종 ----
-  VANGUARD: {
-    id: 'VANGUARD',
-    name: '선봉대',
-    type: 'CLASS',
-    icon: '🏰',
+    kind: 'NORMAL',
+    icon: '🔩',
     color: '#95A5A6',
-    thresholds: [2, 4, 6, 9],
-    description:
-      '방어력이 대폭 증가하며 전투 시작 후 8초간 받는 모든 피해량이 추가 감소합니다. 9선봉대 달성 시 불멸의 요새가 됩니다.',
+    thresholds: [2, 4, 6],
+    description: 'TFT Set 6 고물상 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-      { threshold: 2, label: '(2) 방어력 +40, 개전 8초간 피해 감소 30%', bonusDef: 40, damageReductionFirst8s: 0.3 },
-      { threshold: 4, label: '(4) 방어력 +90, 개전 8초간 피해 감소 30%', bonusDef: 90, damageReductionFirst8s: 0.3 },
-      { threshold: 6, label: '(6) 방어력 +160, 개전 8초간 피해 감소 30%', bonusDef: 160, damageReductionFirst8s: 0.3 },
-      { threshold: 9, label: '(9) [프리즘/문장필수] 방어력 +350, 개전 8초간 피해 감소 55% 및 기절 면역', bonusDef: 350, damageReductionFirst8s: 0.55, ccDurationReduction: 1.0 },
-    ],
+            {
+                  "threshold": 2,
+                  "label": "(2) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 6,
+                  "label": "(6) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
   },
-  BERSERKER: {
-    id: 'BERSERKER',
-    name: '광전사',
+  MUTANT: {
+    id: 'MUTANT',
+    name: '돌연변이',
+    type: 'ORIGIN',
+    kind: 'NORMAL',
+    icon: '🧬',
+    color: '#9B59B6',
+    thresholds: [3, 5, 7],
+    description: 'TFT Set 6 돌연변이 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 3,
+                  "label": "(3) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 5,
+                  "label": "(5) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 7,
+                  "label": "(7) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+  },
+  SYNDICATE: {
+    id: 'SYNDICATE',
+    name: '범죄조직',
+    type: 'ORIGIN',
+    kind: 'NORMAL',
+    icon: '🎩',
+    color: '#34495E',
+    thresholds: [3, 5, 7],
+    description: 'TFT Set 6 범죄조직 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 3,
+                  "label": "(3) DEF/MR/흡혈",
+                  "bonusDef": 25,
+                  "omnivamp": 0.08
+            },
+            {
+                  "threshold": 5,
+                  "label": "(5) 강화",
+                  "bonusDef": 50,
+                  "omnivamp": 0.14
+            },
+            {
+                  "threshold": 7,
+                  "label": "(7) 개전 8초 2배",
+                  "bonusDef": 50,
+                  "omnivamp": 0.14,
+                  "damageReductionFirst8s": 0.12
+            }
+      ],
+  },
+  SOCIALITE: {
+    id: 'SOCIALITE',
+    name: '사교계',
+    type: 'ORIGIN',
+    kind: 'NORMAL',
+    icon: '💡',
+    color: '#F39C12',
+    thresholds: [1, 2, 3],
+    description: 'TFT Set 6 사교계 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 1,
+                  "label": "(1) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 2,
+                  "label": "(2) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 3,
+                  "label": "(3) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+  },
+  CLOCKWORK: {
+    id: 'CLOCKWORK',
+    name: '시계태엽',
+    type: 'ORIGIN',
+    kind: 'NORMAL',
+    icon: '⚙️',
+    color: '#7F8C8D',
+    thresholds: [2, 4, 6],
+    description: 'TFT Set 6 시계태엽 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 2,
+                  "label": "(2) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 6,
+                  "label": "(6) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+  },
+  ACADEMY: {
+    id: 'ACADEMY',
+    name: '아카데미',
+    type: 'ORIGIN',
+    kind: 'NORMAL',
+    icon: '🎓',
+    color: '#3498DB',
+    thresholds: [2, 4, 6, 8],
+    description: 'TFT Set 6 아카데미 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 2,
+                  "label": "(2) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 6,
+                  "label": "(6) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 8,
+                  "label": "(8) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+  },
+  MERCENARY: {
+    id: 'MERCENARY',
+    name: '용병',
+    type: 'ORIGIN',
+    kind: 'NORMAL',
+    icon: '🎲',
+    color: '#E67E22',
+    thresholds: [3, 5, 7],
+    description: 'TFT Set 6 용병 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 3,
+                  "label": "(3) 패배 스택 1x",
+                  "mercenaryStackMultiplier": 1
+            },
+            {
+                  "threshold": 5,
+                  "label": "(5) 스택 2x",
+                  "mercenaryStackMultiplier": 2,
+                  "mercenaryWinGoldMin": 2,
+                  "mercenaryWinGoldMax": 4
+            },
+            {
+                  "threshold": 7,
+                  "label": "(7) 스택 3x",
+                  "mercenaryStackMultiplier": 3,
+                  "mercenaryWinGoldMin": 3,
+                  "mercenaryWinGoldMax": 6,
+                  "mercenaryPerRoundJackpot": true
+            }
+      ],
+  },
+  YORDLE: {
+    id: 'YORDLE',
+    name: '요들',
+    type: 'ORIGIN',
+    kind: 'NORMAL',
+    icon: '🐾',
+    color: '#2ECC71',
+    thresholds: [3, 6],
+    description: 'TFT Set 6 요들 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 3,
+                  "label": "(3) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 6,
+                  "label": "(6) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+  },
+  IMPERIAL: {
+    id: 'IMPERIAL',
+    name: '제국',
+    type: 'ORIGIN',
+    kind: 'NORMAL',
+    icon: '👑',
+    color: '#C0392B',
+    thresholds: [3, 5],
+    description: 'TFT Set 6 제국 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 3,
+                  "label": "(3) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 5,
+                  "label": "(5) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+  },
+  ENFORCER: {
+    id: 'ENFORCER',
+    name: '집행자',
+    type: 'ORIGIN',
+    kind: 'NORMAL',
+    icon: '🔗',
+    color: '#2980B9',
+    thresholds: [2, 4],
+    description: 'TFT Set 6 집행자 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 2,
+                  "label": "(2) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+  },
+  CHEMTECH: {
+    id: 'CHEMTECH',
+    name: '화학공학',
+    type: 'ORIGIN',
+    kind: 'NORMAL',
+    icon: '🧪',
+    color: '#1ABC9C',
+    thresholds: [3, 5, 7, 9],
+    description: 'TFT Set 6 화학공학 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 3,
+                  "label": "(3) 60% 이하 버스트",
+                  "berserkAtkMultiplier": 1.5,
+                  "berserkAtkSpeedMultiplier": 1.35,
+                  "berserkSplashRatio": 0.3
+            },
+            {
+                  "threshold": 5,
+                  "label": "(5) 단계 상승",
+                  "berserkAtkMultiplier": 1.7,
+                  "berserkAtkSpeedMultiplier": 1.5,
+                  "berserkSplashRatio": 0.45
+            },
+            {
+                  "threshold": 7,
+                  "label": "(7) 단계 상승",
+                  "berserkAtkMultiplier": 2,
+                  "berserkAtkSpeedMultiplier": 1.7,
+                  "berserkSplashRatio": 0.6
+            },
+            {
+                  "threshold": 9,
+                  "label": "(9) 최고 단계",
+                  "berserkAtkMultiplier": 2.3,
+                  "berserkAtkSpeedMultiplier": 1.9,
+                  "berserkSplashRatio": 0.75
+            }
+      ],
+  },
+  SISTER: {
+    id: 'SISTER',
+    name: '자매',
+    type: 'ORIGIN',
+    kind: 'PAIR',
+    icon: '👭',
+    color: '#E91E63',
+    thresholds: [2],
+    description: 'TFT Set 6 자매 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 2,
+                  "label": "(2) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+    boundUnitIds: ["u2_vi","u5_jinx"],
+  },
+  CUDDLY: {
+    id: 'CUDDLY',
+    name: '단짝',
+    type: 'ORIGIN',
+    kind: 'CHAMPION_ONLY',
+    icon: '🐱',
+    color: '#FF9800',
+    thresholds: [1],
+    description: 'TFT Set 6 단짝 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 1,
+                  "label": "(1) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+    boundUnitIds: ["u5_yuumi"],
+  },
+  GLUTTON: {
+    id: 'GLUTTON',
+    name: '대식가',
+    type: 'ORIGIN',
+    kind: 'CHAMPION_ONLY',
+    icon: '🦈',
+    color: '#607D8B',
+    thresholds: [1],
+    description: 'TFT Set 6 대식가 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 1,
+                  "label": "(1) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+    boundUnitIds: ["u5_tahm_kench"],
+  },
+  YORDLE_LORD: {
+    id: 'YORDLE_LORD',
+    name: '요들 군주',
+    type: 'ORIGIN',
+    kind: 'CHAMPION_ONLY',
+    icon: '🏰',
+    color: '#8E44AD',
+    thresholds: [1],
+    description: 'TFT Set 6 요들 군주 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 1,
+                  "label": "(1) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+    boundUnitIds: ["u5_veigar"],
+  },
+  ENCHANTER: {
+    id: 'ENCHANTER',
+    name: '강화술사',
     type: 'CLASS',
-    icon: '🪓',
+    kind: 'NORMAL',
+    icon: '✨',
+    color: '#F1C40F',
+    thresholds: [2, 3, 4, 5],
+    description: 'TFT Set 6 강화술사 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 2,
+                  "label": "(2) 힐/실드 효율",
+                  "healPerAttack": 40
+            },
+            {
+                  "threshold": 3,
+                  "label": "(3) 강화",
+                  "healPerAttack": 80
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) 강화",
+                  "healPerAttack": 130
+            },
+            {
+                  "threshold": 5,
+                  "label": "(5) 최대",
+                  "healPerAttack": 200
+            }
+      ],
+  },
+  BODYGUARD: {
+    id: 'BODYGUARD',
+    name: '경호대',
+    type: 'CLASS',
+    kind: 'NORMAL',
+    icon: '🛡️',
+    color: '#BDC3C7',
+    thresholds: [2, 4, 6, 8],
+    description: 'TFT Set 6 경호대 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 2,
+                  "label": "(2) 방어력 +40, 개전 실드",
+                  "bonusDef": 40,
+                  "shieldMaxHpRatio": 0.1
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) 방어력 +90, 개전 실드 강화",
+                  "bonusDef": 90,
+                  "shieldMaxHpRatio": 0.18
+            },
+            {
+                  "threshold": 6,
+                  "label": "(6) 방어력 +140, 개전 실드",
+                  "bonusDef": 140,
+                  "shieldMaxHpRatio": 0.25
+            },
+            {
+                  "threshold": 8,
+                  "label": "(8) 방어력 +200, 개전 실드",
+                  "bonusDef": 200,
+                  "shieldMaxHpRatio": 0.32
+            }
+      ],
+  },
+  BRUISER: {
+    id: 'BRUISER',
+    name: '난동꾼',
+    type: 'CLASS',
+    kind: 'NORMAL',
+    icon: '💪',
     color: '#E74C3C',
-    thresholds: [2, 4, 6, 9],
-    description:
-      '체력이 50% 이하로 내려가면 광폭화하여 공격력과 공격속도가 증가하고 기본 공격이 주변에 스플래시 피해를 입힙니다.',
+    thresholds: [2, 4, 6, 8],
+    description: 'TFT Set 6 난동꾼 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-      {
-        threshold: 2,
-        label: '(2) 광폭화 시 공격력/공속 2배, 주변 35% 스플래시 피해',
-        berserkAtkMultiplier: 2.0,
-        berserkAtkSpeedMultiplier: 2.0,
-        berserkSplashRatio: 0.35,
-      },
-      {
-        threshold: 4,
-        label: '(4) 광폭화 시 공격력/공속 2.2배, 주변 60% 스플래시 피해',
-        berserkAtkMultiplier: 2.2,
-        berserkAtkSpeedMultiplier: 2.2,
-        berserkSplashRatio: 0.6,
-      },
-      {
-        threshold: 6,
-        label: '(6) 광폭화 시 공격력/공속 2.5배, 주변 90% 스플래시 피해',
-        berserkAtkMultiplier: 2.5,
-        berserkAtkSpeedMultiplier: 2.5,
-        berserkSplashRatio: 0.9,
-      },
-      {
-        threshold: 9,
-        label: '(9) [프리즘/문장필수] 광폭화 시 공격력/공속 3.2배, 주변 160% 스플래시 피해',
-        berserkAtkMultiplier: 3.2,
-        berserkAtkSpeedMultiplier: 3.2,
-        berserkSplashRatio: 1.6,
-      },
-    ],
+            {
+                  "threshold": 2,
+                  "label": "(2) 체력 보너스",
+                  "berserkAtkMultiplier": 1.2,
+                  "berserkAtkSpeedMultiplier": 1.1,
+                  "berserkSplashRatio": 0.25
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) 단계 상승",
+                  "berserkAtkMultiplier": 1.35,
+                  "berserkAtkSpeedMultiplier": 1.2,
+                  "berserkSplashRatio": 0.35
+            },
+            {
+                  "threshold": 6,
+                  "label": "(6) 단계 상승",
+                  "berserkAtkMultiplier": 1.5,
+                  "berserkAtkSpeedMultiplier": 1.35,
+                  "berserkSplashRatio": 0.45
+            },
+            {
+                  "threshold": 8,
+                  "label": "(8) 최고 단계",
+                  "berserkAtkMultiplier": 2.3,
+                  "berserkAtkSpeedMultiplier": 1.9,
+                  "berserkSplashRatio": 0.75
+            }
+      ],
   },
-  RANGER: {
-    id: 'RANGER',
-    name: '순찰자',
+  CHALLENGER: {
+    id: 'CHALLENGER',
+    name: '도전자',
     type: 'CLASS',
-    icon: '🏹',
+    kind: 'NORMAL',
+    icon: '🏃',
+    color: '#16A085',
+    thresholds: [2, 4, 6, 8],
+    description: 'TFT Set 6 도전자 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 2,
+                  "label": "(2) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 6,
+                  "label": "(6) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 8,
+                  "label": "(8) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+  },
+  INNOVATOR: {
+    id: 'INNOVATOR',
+    name: '발명가',
+    type: 'CLASS',
+    kind: 'NORMAL',
+    icon: '🔧',
+    color: '#D35400',
+    thresholds: [3, 5, 7],
+    description: 'TFT Set 6 발명가 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 3,
+                  "label": "(3) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 5,
+                  "label": "(5) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 7,
+                  "label": "(7) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+  },
+  PROTECTOR: {
+    id: 'PROTECTOR',
+    name: '봉쇄자',
+    type: 'CLASS',
+    kind: 'NORMAL',
+    icon: '🫧',
+    color: '#5DADE2',
+    thresholds: [2, 3, 4, 5],
+    description: 'TFT Set 6 봉쇄자 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 2,
+                  "label": "(2) 스킬 실드",
+                  "shieldMaxHpRatio": 0.1
+            },
+            {
+                  "threshold": 3,
+                  "label": "(3) 실드",
+                  "shieldMaxHpRatio": 0.15
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) 실드",
+                  "shieldMaxHpRatio": 0.22
+            },
+            {
+                  "threshold": 5,
+                  "label": "(5) 실드",
+                  "shieldMaxHpRatio": 0.3
+            }
+      ],
+  },
+  ARCANIST: {
+    id: 'ARCANIST',
+    name: '비전 마법사',
+    type: 'CLASS',
+    kind: 'NORMAL',
+    icon: '🔮',
+    color: '#9B59B6',
+    thresholds: [2, 4, 6, 8],
+    description: 'TFT Set 6 비전 마법사 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 2,
+                  "label": "(2) 팀 주문력 +12%",
+                  "spellPowerBonus": 0.12
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) 팀 주문력 +22%",
+                  "spellPowerBonus": 0.22
+            },
+            {
+                  "threshold": 6,
+                  "label": "(6) 팀 주문력 +35%",
+                  "spellPowerBonus": 0.35
+            },
+            {
+                  "threshold": 8,
+                  "label": "(8) 팀 주문력 +50%",
+                  "spellPowerBonus": 0.5
+            }
+      ],
+  },
+  TWINSHOT: {
+    id: 'TWINSHOT',
+    name: '쌍발총',
+    type: 'CLASS',
+    kind: 'NORMAL',
+    icon: '🔫',
     color: '#27AE60',
     thresholds: [2, 4, 6],
-    description:
-      '기본 공격 3회마다 관통 화살을 추가로 발사하며 사거리가 증가합니다.',
+    description: 'TFT Set 6 쌍발총 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-      { threshold: 2, label: '(2) 사거리 +1, 3타마다 공격력 185% 관통 화살 발사', bonusRange: 1, pierceArrowDamageRatio: 1.85 },
-      { threshold: 4, label: '(4) 사거리 +1, 3타마다 공격력 340% 관통 화살 발사', bonusRange: 1, pierceArrowDamageRatio: 3.4 },
-      { threshold: 6, label: '(6) [프리즘/문장필수] 사거리 +2, 3타마다 공격력 580% 관통 화살 발사', bonusRange: 2, pierceArrowDamageRatio: 5.8 },
-    ],
+            {
+                  "threshold": 2,
+                  "label": "(2) 이중 사격",
+                  "pierceArrowDamageRatio": 0.25
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) 이중 사격 강화",
+                  "pierceArrowDamageRatio": 0.4
+            },
+            {
+                  "threshold": 6,
+                  "label": "(6) 이중 사격 최대",
+                  "pierceArrowDamageRatio": 0.6
+            }
+      ],
   },
-  ARCHMAGE: {
-    id: 'ARCHMAGE',
-    name: '대마법사',
+  ASSASSIN: {
+    id: 'ASSASSIN',
+    name: '암살자',
     type: 'CLASS',
-    icon: '⚡',
-    color: '#9B59B6',
-    thresholds: [2, 4, 6, 9],
-    description:
-      '주문력이 크게 증가하며, 최대 마나에 도달해 스킬을 시전할 때 체력이 가장 낮은 적에게 연쇄 번개를 추가로 떨어뜨립니다.',
-    effects: [
-      { threshold: 2, label: '(2) 주문력 +30%, 스킬 시전 시 180 연쇄 번개', spellPowerBonus: 0.3, chainLightningDamage: 180 },
-      { threshold: 4, label: '(4) 주문력 +65%, 스킬 시전 시 380 연쇄 번개', spellPowerBonus: 0.65, chainLightningDamage: 380 },
-      { threshold: 6, label: '(6) 주문력 +110%, 스킬 시전 시 700 연쇄 번개', spellPowerBonus: 1.1, chainLightningDamage: 700 },
-      { threshold: 9, label: '(9) [프리즘/문장필수] 주문력 +240%, 스킬 시전 시 1600 연쇄 번개', spellPowerBonus: 2.4, chainLightningDamage: 1600 },
-    ],
-  },
-  SHADOW_ASSASSIN: {
-    id: 'SHADOW_ASSASSIN',
-    name: '그림자 암살자',
-    type: 'CLASS',
+    kind: 'NORMAL',
     icon: '🗡️',
-    color: '#34495E',
+    color: '#2C3E50',
     thresholds: [2, 4, 6],
-    description:
-      '전투 시작 시 적진 가장 뒷열로 은신 도약(Leap)하며 치명타 확률과 치명타 피해량이 대폭 증가합니다.',
+    description: 'TFT Set 6 암살자 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-      { threshold: 2, label: '(2) 후방 도약, 치명타 확률 +25%, 치명타 피해량 +35%', bonusCritChance: 0.25, bonusCritDamage: 0.35 },
-      { threshold: 4, label: '(4) 후방 도약, 치명타 확률 +55%, 치명타 피해량 +75%', bonusCritChance: 0.55, bonusCritDamage: 0.75 },
-      { threshold: 6, label: '(6) [프리즘/문장필수] 후방 도약, 치명타 확률 +85%, 치명타 피해량 +130%', bonusCritChance: 0.85, bonusCritDamage: 1.30 },
-    ],
+            {
+                  "threshold": 2,
+                  "label": "(2) 후방 도약, 치확/치뎀",
+                  "bonusCritChance": 0.25,
+                  "bonusCritDamage": 0.35
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) 치확/치뎀 증가",
+                  "bonusCritChance": 0.45,
+                  "bonusCritDamage": 0.65
+            },
+            {
+                  "threshold": 6,
+                  "label": "(6) 치확/치뎀 최대",
+                  "bonusCritChance": 0.65,
+                  "bonusCritDamage": 0.95
+            }
+      ],
   },
-  PALADIN: {
-    id: 'PALADIN',
-    name: '성기사',
+  SNIPER: {
+    id: 'SNIPER',
+    name: '저격수',
     type: 'CLASS',
-    icon: '✨',
-    color: '#F39C12',
+    kind: 'NORMAL',
+    icon: '🎯',
+    color: '#1E8449',
     thresholds: [2, 4, 6],
-    description:
-      '기본 공격 시 주변 아군의 체력을 회복시키고, 아군 전체에게 군중제어(기절) 지속시간 감소 또는 면역을 부여합니다.',
+    description: 'TFT Set 6 저격수 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-      { threshold: 2, label: '(2) 평타 시 주변 아군 65 회복, 아군 기절 지속시간 50% 감소', healPerAttack: 65, ccDurationReduction: 0.5 },
-      { threshold: 4, label: '(4) 평타 시 주변 아군 160 회복, 아군 기절 지속시간 75% 감소', healPerAttack: 160, ccDurationReduction: 0.75 },
-      { threshold: 6, label: '(6) [프리즘/문장필수] 평타 시 주변 아군 350 회복, 기절 완전 면역, 방어력 +70', healPerAttack: 350, ccDurationReduction: 1.0, bonusDef: 70 },
-    ],
+            {
+                  "threshold": 2,
+                  "label": "(2) 사거리 +1",
+                  "bonusRange": 1
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) 사거리 +1",
+                  "bonusRange": 1
+            },
+            {
+                  "threshold": 6,
+                  "label": "(6) 사거리 +2",
+                  "bonusRange": 2
+            }
+      ],
+  },
+  SCHOLAR: {
+    id: 'SCHOLAR',
+    name: '학자',
+    type: 'CLASS',
+    kind: 'NORMAL',
+    icon: '📚',
+    color: '#6C3483',
+    thresholds: [2, 4, 6],
+    description: 'TFT Set 6 학자 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 2,
+                  "label": "(2) 2초마다 팀 마나",
+                  "teamManaPerAttack": 2
+            },
+            {
+                  "threshold": 4,
+                  "label": "(4) 마나 틱",
+                  "teamManaPerAttack": 4
+            },
+            {
+                  "threshold": 6,
+                  "label": "(6) 마나 틱",
+                  "teamManaPerAttack": 7
+            }
+      ],
+  },
+  COLOSSUS: {
+    id: 'COLOSSUS',
+    name: '거신',
+    type: 'CLASS',
+    kind: 'NORMAL',
+    icon: '🗿',
+    color: '#7D6608',
+    thresholds: [1, 2],
+    description: 'TFT Set 6 거신 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 1,
+                  "label": "(1) Set 6 — 엔진 스텁 (카운트만)"
+            },
+            {
+                  "threshold": 2,
+                  "label": "(2) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+  },
+  TRANSFORMER: {
+    id: 'TRANSFORMER',
+    name: '변형술사',
+    type: 'CLASS',
+    kind: 'CHAMPION_ONLY',
+    icon: '🔄',
+    color: '#5B2C6F',
+    thresholds: [1],
+    description: 'TFT Set 6 변형술사 — 상세 기믹은 후속 PR(T3~T7).',
+    effects: [
+            {
+                  "threshold": 1,
+                  "label": "(1) Set 6 — 엔진 스텁 (카운트만)"
+            }
+      ],
+    boundUnitIds: ["u5_jayce"],
   },
 };
-

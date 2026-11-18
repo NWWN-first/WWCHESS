@@ -1235,7 +1235,7 @@ export class ThreeJsGameRenderer {
     const range = tpl?.stats?.range ?? 1;
 
     // 크립 및 용족
-    if (unitId.startsWith('creep_') || traits.includes('DRAGONKIN')) {
+    if (unitId.startsWith('creep_') || traits.includes('CHEMTECH')) {
       return {
         modelKey: 'Dragon',
         scale: 1.05,
@@ -1249,8 +1249,8 @@ export class ThreeJsGameRenderer {
     }
 
     // 언데드 진영 세분화 (마법사: Skeleton_Mage, 암살자: Skeleton_Rogue, 전사: Skeleton_Warrior)
-    if (traits.includes('UNDEAD_SCOURGE')) {
-      if (traits.includes('ARCHMAGE') || range >= 3) {
+    if (traits.includes('MUTANT')) {
+      if (traits.includes('ARCANIST') || range >= 3) {
         return {
           modelKey: 'Skeleton_Mage',
           scale: 1.15,
@@ -1260,7 +1260,7 @@ export class ThreeJsGameRenderer {
           aura: 'SHADOW_PURPLE',
         };
       }
-      if (traits.includes('SHADOW_ASSASSIN')) {
+      if (traits.includes('ASSASSIN')) {
         return {
           modelKey: 'Skeleton_Rogue',
           scale: 1.12,
@@ -1282,19 +1282,19 @@ export class ThreeJsGameRenderer {
     }
 
     // 원거리 궁수 / 정찰대 (활 조준 사격 모션)
-    if (traits.includes('RANGER')) {
+    if (traits.includes('SNIPER')) {
       return {
         modelKey: 'Rogue',
         scale: 1.12,
         attackAnim: '2H_Ranged_Shoot',
         skillAnim: '1H_Ranged_Shoot',
         stunAnim: 'Lie_Idle',
-        aura: traits.includes('ELVEN_SYLVAN') ? 'POISON_GREEN' : 'ARCANE_BLUE',
+        aura: traits.includes('SCHOLAR') ? 'POISON_GREEN' : 'ARCANE_BLUE',
       };
     }
 
     // 마법사 및 사제 (마법 지팡이 및 주문 시전)
-    if (traits.includes('ARCHMAGE') || traits.includes('ARCANE_TOWER') || range >= 3) {
+    if (traits.includes('ARCANIST') || traits.includes('SCHOLAR') || range >= 3) {
       return {
         modelKey: 'Mage',
         scale: 1.15,
@@ -1306,7 +1306,7 @@ export class ThreeJsGameRenderer {
     }
 
     // 암살자 (후드 쓴 어둠의 자객)
-    if (traits.includes('SHADOW_ASSASSIN')) {
+    if (traits.includes('ASSASSIN')) {
       return {
         modelKey: 'Rogue_Hooded',
         scale: 1.12,
@@ -1318,7 +1318,7 @@ export class ThreeJsGameRenderer {
     }
 
     // 황금 고블린
-    if (traits.includes('GOLDEN_GOBLIN')) {
+    if (traits.includes('MERCENARY')) {
       return {
         modelKey: 'Rogue',
         scale: 0.98,
@@ -1330,7 +1330,7 @@ export class ThreeJsGameRenderer {
     }
 
     // 광전사
-    if (traits.includes('BERSERKER')) {
+    if (traits.includes('BRUISER')) {
       return {
         modelKey: 'Barbarian',
         scale: 1.22,
@@ -1348,7 +1348,7 @@ export class ThreeJsGameRenderer {
       attackAnim: '1H_Melee_Attack_Slice_Horizontal',
       skillAnim: '2H_Melee_Attack_Spin',
       stunAnim: 'Lie_Idle',
-      aura: traits.includes('HOLY_EMPIRE') ? 'HOLY_GOLD' : 'NONE',
+      aura: traits.includes('ACADEMY') ? 'HOLY_GOLD' : 'NONE',
     };
   }
 
@@ -1369,27 +1369,27 @@ export class ThreeJsGameRenderer {
     const range = tpl.stats?.range ?? 1;
 
     // 언데드
-    if (traits.includes('UNDEAD_SCOURGE') || unitId.includes('skel')) {
+    if (traits.includes('MUTANT') || unitId.includes('skel')) {
       return 'SKELETON';
     }
 
     // 용족 / 크립
-    if (traits.includes('DRAGONKIN') || unitId.includes('dragon')) {
+    if (traits.includes('CHEMTECH') || unitId.includes('dragon')) {
       return 'BEAST_GOLEM';
     }
 
     // 마법사
-    if (traits.includes('ARCHMAGE') || traits.includes('ARCANE_TOWER') || range >= 3) {
+    if (traits.includes('ARCANIST') || traits.includes('SCHOLAR') || range >= 3) {
       return 'MAGE';
     }
 
     // 도적 / 암살자
-    if (traits.includes('SHADOW_ASSASSIN') || traits.includes('GOLDEN_GOBLIN')) {
+    if (traits.includes('ASSASSIN') || traits.includes('MERCENARY')) {
       return 'ROGUE';
     }
 
     // 광전사
-    if (traits.includes('BERSERKER')) {
+    if (traits.includes('BRUISER')) {
       return 'BRAWLER';
     }
 

@@ -31,8 +31,8 @@ describe('resolveEffectiveGoldFloor', () => {
     const brain: BotBrainState = {
       botId: bot.id,
       persona: 'HYPER_ROLLER',
-      targetTrait: 'HOLY_EMPIRE',
-      secondaryTrait: 'ARCANE_TOWER',
+      targetTrait: 'ACADEMY',
+      secondaryTrait: 'SCHOLAR',
       deniedUnitInstanceIds: new Set(),
       pivotedCount: 0,
       isRolldownActive: false,

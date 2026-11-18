@@ -1,59 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { SkillRegistry } from '../SkillRegistry';
 import { UNIT_TEMPLATES } from './units';
 
-const PR2_UNITS = [
-  'u5_ignis',
-  'u5_luciel',
-  'u5_michael',
-  'u5_bahamut',
-  'u5_chronos',
-  'u5_lilith',
-  'u5_yggdrasil',
+const SET6_FIVE_COST = [
+  'u5_galio',
+  'u5_veigar',
+  'u5_viktor',
+  'u5_akali',
+  'u5_yuumi',
+  'u5_jayce',
+  'u5_jinx',
+  'u5_kaisa',
+  'u5_tahm_kench',
 ] as const;
 
-describe('5-cost PR2 balance (remaining 7 legends)', () => {
-  it('leaves u5_goldtooth untouched from PR1', () => {
-    const gt = UNIT_TEMPLATES.u5_goldtooth;
-    expect(gt.stats.startMana).toBe(35);
-    expect(gt.stats.maxMana).toBe(82);
-    expect(gt.skill.baseValueByStar[1]).toBe(990);
+describe('Set 6 five-cost baseline stats (lolchess)', () => {
+  it.each(SET6_FIVE_COST)('%s has Set 6 5-cost baselines', (unitId) => {
+    const u = UNIT_TEMPLATES[unitId];
+    expect(u.cost).toBe(5);
+    expect(u.stats.hp).toBeGreaterThanOrEqual(750);
+    expect(u.stats.maxMana).toBeGreaterThan(0);
+    expect(u.skill.baseValueByStar[0]).toBeGreaterThan(0);
+    expect(u.skill.baseValueByStar[2]).toBeGreaterThan(u.skill.baseValueByStar[0]);
   });
 
-  it.each([
-    ['u5_ignis', { startMana: 38, maxMana: 92, skill2: 1070, manaLockMs: 950 }],
-    ['u5_luciel', { startMana: 34, maxMana: 78, skill2: 920, manaLockMs: 820 }],
-    ['u5_michael', { startMana: 22, maxMana: 96, skill2: 860, manaLockMs: 1000 }],
-    ['u5_bahamut', { startMana: 38, maxMana: 88, skill2: 1040, manaLockMs: 1000 }],
-    ['u5_chronos', { startMana: 32, maxMana: 72, skill2: 960, manaLockMs: 700 }],
-    ['u5_lilith', { startMana: 24, maxMana: 54, skill2: 1360, manaLockMs: 420 }],
-    ['u5_yggdrasil', { startMana: 38, maxMana: 88, skill2: 1080, manaLockMs: 980 }],
-  ] as const)(
-    'tunes %s mana and 2★ skill base',
-    (unitId, tuned) => {
-      const u = UNIT_TEMPLATES[unitId];
-      expect(u.stats.startMana).toBe(tuned.startMana);
-      expect(u.stats.maxMana).toBe(tuned.maxMana);
-      expect(u.skill.baseValueByStar[1]).toBe(tuned.skill2);
-      expect(u.skill.manaLockMs).toBe(tuned.manaLockMs);
-    }
-  );
-
-  it('gives michael and yggdrasil stronger 2★ team shields', () => {
-    expect(UNIT_TEMPLATES.u5_michael.skill.secondaryValueByStar?.[1]).toBe(540);
-    expect(UNIT_TEMPLATES.u5_yggdrasil.skill.secondaryValueByStar?.[1]).toBe(920);
-  });
-
-  it('registers dedicated handlers for formerly fallback-only 5-cost units', () => {
-    for (const id of ['u5_michael', 'u5_bahamut', 'u5_chronos', 'u5_yggdrasil'] as const) {
-      expect(SkillRegistry.HANDLERS[id]).toBeTypeOf('function');
-    }
-  });
-
-  it('does not change skill2 bases outside PR2 scope', () => {
-    for (const id of PR2_UNITS) {
-      expect(id).not.toBe('u5_goldtooth');
-    }
-    expect(UNIT_TEMPLATES.u5_goldtooth.skill.baseValueByStar[1]).toBe(990);
+  it('Veigar uses Furyhorn Storm skill type', () => {
+    expect(UNIT_TEMPLATES.u5_veigar.skill.skillType).toBe('FURYHORN_STORM');
+    expect(UNIT_TEMPLATES.u5_veigar.skill.name).toBe('Furyhorn Storm');
   });
 });

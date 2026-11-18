@@ -27,7 +27,7 @@ export const PERSONA_BADGE_LABELS: Record<AIPersona, string> = {
   LOW_COST_REROLLER: '🎲리롤',
   FAST_NINE_GREEDY: '👑9렙',
   FAST_NINE_ECONOMIST: '👑9렙',
-  GOBLIN_GAMBLER: '🪙고블린',
+  MERCENARY_GAMBLER: '🎲용병',
   FLEX_MASTER: '⚖️유연',
   FLEX_BALANCED: '⚖️유연',
 };
