@@ -222,9 +222,9 @@ export function renderTopHud(app: FantasyAutoBattlerApp): void {
 export function renderLeftFloatingDock(app: FantasyAutoBattlerApp): void {
     const viewed = app.game.getViewedParticipant();
 
-    const vaultEl = document.getElementById('goblin-vault-stacks');
+    const vaultEl = document.getElementById('mercenary-armory-loot');
     if (vaultEl) {
-      vaultEl.textContent = `${viewed.goblinVaultStacks}`;
+      vaultEl.textContent = `${viewed.mercenaryArmoryLoot}`;
     }
 
     const synContainer = document.getElementById('synergy-list');

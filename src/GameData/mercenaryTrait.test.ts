@@ -15,10 +15,13 @@ function boardMercenaries(participant: Participant, count: number): void {
 describe('MERCENARY trait definitions (3/5/7)', () => {
   const fx = TRAIT_DEFINITIONS.MERCENARY.effects;
 
-  it('exposes stack multipliers at breakpoints', () => {
+  it('exposes Set 6 loot multipliers and dice counts', () => {
     expect(fx[0].mercenaryStackMultiplier).toBe(1);
+    expect(fx[0].mercenaryDiceCount).toBe(1);
     expect(fx[1].mercenaryStackMultiplier).toBe(2);
+    expect(fx[1].mercenaryDiceCount).toBe(2);
     expect(fx[2].mercenaryStackMultiplier).toBe(3);
+    expect(fx[2].mercenaryDiceCount).toBe(3);
   });
 
   it('has no GOLDEN_GOBLIN legacy id', () => {
@@ -26,20 +29,29 @@ describe('MERCENARY trait definitions (3/5/7)', () => {
   });
 });
 
-describe('DopamineEngine MERCENARY economy', () => {
-  it('stacks on defeat and cashes out on win', () => {
+describe('DopamineEngine Set 6 MERCENARY economy', () => {
+  it('stores loot on defeat (no lose-streak vault) and cashes out on win', () => {
     const p = new Participant('p1', '플레이어', false);
+    p.loseStreak = 5;
     boardMercenaries(p, 3);
     const pool = new SharedPoolManager();
     const state = SynergyEngine.getActiveSynergyMap(p).get('MERCENARY')!;
 
     DopamineEngine.processMercenaryTrait(p, state, false, pool);
-    expect(p.goblinVaultStacks).toBeGreaterThan(0);
+    expect(p.mercenaryArmoryLoot).toBe(1);
 
-    const stacksBefore = p.goblinVaultStacks;
-    const orbs = DopamineEngine.processMercenaryTrait(p, state, true, pool);
-    expect(p.goblinVaultStacks).toBe(0);
+    p.mercenaryArmoryLoot = 0;
+    p.loseStreak = 0;
+    boardMercenaries(p, 5);
+    const state5 = SynergyEngine.getActiveSynergyMap(p).get('MERCENARY')!;
+    DopamineEngine.processMercenaryTrait(p, state5, false, pool);
+    expect(p.mercenaryArmoryLoot).toBe(2);
+
+    const lootBefore = 3;
+    p.mercenaryArmoryLoot = lootBefore;
+    const orbs = DopamineEngine.processMercenaryTrait(p, state5, true, pool);
+    expect(p.mercenaryArmoryLoot).toBe(0);
     expect(orbs.length).toBeGreaterThan(0);
-    expect(stacksBefore).toBeGreaterThan(0);
+    expect(orbs.length).toBeLessThanOrEqual(2);
   });
 });

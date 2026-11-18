@@ -11,6 +11,7 @@ import {
   ItemId,
   UNITS_BY_COST,
 } from './GameData';
+import type { TraitEffectTier } from './GameData/traits';
 import { Participant } from './Participant';
 import { SharedPoolManager } from './SharedPoolManager';
 import { ActiveSynergyState, SynergyEngine } from './SynergyEngine';
@@ -41,12 +42,10 @@ let globalOrbCounter = 1;
 
 export class DopamineEngine {
   /**
-   * 1) 용병(GOLDEN_GOBLIN) 연패 코인 & 캐시아웃(Cash-out) 처리
-   * - activeMercenaryCount >= 3 일 때 작동.
-   * - 전투 패배 시: 기본 +4 스택 + (현재 연패 수 * 2) 스택 추가 (5용병이면 획득량 2배).
-   * - 전투 승리 시(didWinCombat === true && goblinVaultStacks > 0):
-   *   누적된 goblinVaultStacks 구간(1~9, 10+, 25+, 45+, 70+, 100+)에 따라 폭발적인 보상이 담긴
-   *   LootOrb[]를 생성하여 반환하고 goblinVaultStacks = 0으로 초기화한다.
+   * Set 6 용병(MERCENARY): 패배 시 무기고 전리품 적립, 승리 시 주사위로 캐시인.
+   * - 3+ 용병 시너지 + 보드에 용병 유닛 필요.
+   * - 패배: `mercenaryLootPerLoss × mercenaryStackMultiplier` 만큼 무기고 적립 (연패 스택 공식 없음).
+   * - 승리: `mercenaryDiceCount` 주사위를 굴려 적립 전리품 1개당 보상 1회 (무기고 비우기).
    */
   public static hasMercenaryUnitOnBoard(participant: Participant): boolean {
     for (let r = 0; r < Participant.BOARD_ROWS; r++) {
@@ -127,29 +126,33 @@ export class DopamineEngine {
     const activeMercenaryCount = mercenaryState?.count ?? 0;
     if (participant.isEliminated || activeMercenaryCount < 3) return [];
 
-    const stackMultiplier = mercenaryState?.activeEffect?.mercenaryStackMultiplier ?? 1;
+    if (!DopamineEngine.hasMercenaryUnitOnBoard(participant)) return [];
 
-    // 1. 전투 패배 시: 용병 3시너지 이상 활성화 중이면 금고 스택 축적
+    const effect = mercenaryState?.activeEffect;
+    const lootPerLoss = effect?.mercenaryLootPerLoss ?? 1;
+    const stackMultiplier = effect?.mercenaryStackMultiplier ?? 1;
+    const diceCount = effect?.mercenaryDiceCount ?? 1;
+
     if (!didWinCombat) {
-      const baseGain = 4 + participant.loseStreak * 2;
-      const totalGain = baseGain * stackMultiplier;
-      participant.goblinVaultStacks += totalGain;
-      participant.lastActionMessage = `🪙 [용병 금고] 패배 스택 +${totalGain} 축적! (현재 총 ${participant.goblinVaultStacks} 스택)`;
+      const gain = lootPerLoss * stackMultiplier;
+      participant.mercenaryArmoryLoot += gain;
+      participant.lastActionMessage = `🎲 [용병] 패배 — 무기고 전리품 +${gain} (보유 ${participant.mercenaryArmoryLoot})`;
       return [];
     }
 
-    // 2. 전투 승리 시: 누적된 금고 스택이 있으면 즉시 금고 폭발(Cash-out)!
-    if (participant.goblinVaultStacks > 0) {
-      const stacks = participant.goblinVaultStacks;
-      participant.goblinVaultStacks = 0;
+    if (participant.mercenaryArmoryLoot > 0) {
+      const lootBefore = participant.mercenaryArmoryLoot;
+      participant.mercenaryArmoryLoot = 0;
 
-      const orbs = DopamineEngine.buildMercenaryCashoutOrbs(
+      const orbs = DopamineEngine.rollMercenaryArmoryCashout(
         participant,
-        stacks,
+        lootBefore,
+        diceCount,
+        effect ?? undefined,
         sharedPool
       );
 
-      participant.lastActionMessage = `💥 [용병 금고 대폭발!] ${stacks} 스택 캐시아웃! 전리품 구슬 ${orbs.length}개 드랍!`;
+      participant.lastActionMessage = `🎲 [용병] 승리 — 주사위 ${Math.min(diceCount, lootBefore)}개·무기고 ${lootBefore} 캐시인! 구슬 ${orbs.length}개`;
       return orbs;
     }
 
@@ -203,92 +206,73 @@ export class DopamineEngine {
     ];
   }
 
-  /**
-   * 누적 금고 스택 구간별 초호화 캐시아웃 전리품 구슬 생성
-   */
-  private static buildMercenaryCashoutOrbs(
+  /** Set 6 용병 승리: 주사위마다 무기고 전리품 1개를 소비하며 보상 구슬 생성 */
+  private static rollMercenaryArmoryCashout(
     participant: Participant,
-    stacks: number,
+    armoryLoot: number,
+    diceCount: number,
+    effect: TraitEffectTier | undefined,
     sharedPool: SharedPoolManager
   ): LootOrb[] {
     const orbs: LootOrb[] = [];
+    const rolls = Math.min(diceCount, armoryLoot);
+    const fiveCostChance = effect?.mercenaryFiveCostUnitChance ?? 0;
+    let lootLeft = armoryLoot;
 
-    if (stacks >= 100) {
-      // 100+ 스택: 프리즘 구슬 3개 (총 60골드 + 완성 아이템 3개 + 챔피언 복제기 3개 + 5코스트 전설 기물 3기)
-      orbs.push(
-        DopamineEngine.createLootOrb('PRISMATIC', 0.25, 0.55, '👑 100+ 잭팟 금고 I', {
-          gold: 25,
-          items: [DopamineEngine.randomCompletedItem(), DopamineEngine.randomCompletedItem()],
-          duplicators: 2,
-        }),
-        DopamineEngine.createLootOrb('PRISMATIC', 0.5, 0.5, '👑 100+ 잭팟 금고 II', {
-          gold: 20,
-          items: [DopamineEngine.randomCompletedItem()],
-          units: DopamineEngine.pickAvailableUnitsFromPool(sharedPool, participant, 5, 2),
-        }),
-        DopamineEngine.createLootOrb('PRISMATIC', 0.75, 0.55, '👑 100+ 잭팟 금고 III', {
-          gold: 15,
-          duplicators: 1,
-          units: DopamineEngine.pickAvailableUnitsFromPool(sharedPool, participant, 5, 1),
-        })
-      );
-    } else if (stacks >= 70) {
-      // 70~99 스택: 완성 아이템 2개 + 챔피언 복제기 1~2개 + 5코스트 기물 + 30골드 도파민 대폭발
-      orbs.push(
-        DopamineEngine.createLootOrb('PRISMATIC', 0.35, 0.52, '💎 70+ 프리즘 금고 I', {
-          gold: 18,
-          items: [DopamineEngine.randomCompletedItem(), DopamineEngine.randomCompletedItem()],
-          duplicators: 1,
-        }),
-        DopamineEngine.createLootOrb('GOLD', 0.65, 0.52, '🪙 70+ 황금 금고 II', {
-          gold: 12,
-          duplicators: 1,
-          units: DopamineEngine.pickAvailableUnitsFromPool(sharedPool, participant, 5, 1),
-        })
-      );
-    } else if (stacks >= 45) {
-      // 45~69 스택: 완성 아이템 1개 + 기본 아이템 1개 + 챔피언 복제기 1개 + 4코스트 2기 + 20골드
-      orbs.push(
-        DopamineEngine.createLootOrb('GOLD', 0.38, 0.54, '🪙 45+ 황금 금고 I', {
-          gold: 12,
-          items: [DopamineEngine.randomCompletedItem(), DopamineEngine.randomBaseItem()],
-        }),
-        DopamineEngine.createLootOrb('GOLD', 0.62, 0.54, '🪙 45+ 황금 금고 II', {
-          gold: 8,
-          duplicators: 1,
-          units: DopamineEngine.pickAvailableUnitsFromPool(sharedPool, participant, 4, 2),
-        })
-      );
-    } else if (stacks >= 25) {
-      // 25~44 스택: 완성 아이템 1개 + 4코스트 1기 + 14골드
-      orbs.push(
-        DopamineEngine.createLootOrb('GOLD', 0.42, 0.55, '🪙 25+ 황금 금고', {
-          gold: 14,
-          items: [DopamineEngine.randomCompletedItem()],
-          units: DopamineEngine.pickAvailableUnitsFromPool(sharedPool, participant, 4, 1),
-        }),
-        DopamineEngine.createLootOrb('BLUE', 0.6, 0.58, '🔹 보너스 구슬', {
+    for (let i = 0; i < rolls; i++) {
+      lootLeft -= 1;
+      const face = Math.floor(Math.random() * 6) + 1;
+      const x = 0.35 + (i % 3) * 0.12;
+      const y = 0.48 + (i % 2) * 0.08;
+
+      if (face <= 2) {
+        orbs.push(
+          DopamineEngine.createLootOrb('GRAY', x, y, `🎲 용병 주사위 ${face}`, {
+            gold: 2 + face,
+          })
+        );
+      } else if (face <= 4) {
+        orbs.push(
+          DopamineEngine.createLootOrb('BLUE', x, y, `🎲 용병 주사위 ${face}`, {
+            gold: 3,
+            items: [DopamineEngine.randomBaseItem()],
+          })
+        );
+      } else {
+        const rewards: LootOrbRewards = {
+          gold: 5 + face,
           items: [DopamineEngine.randomBaseItem()],
-        })
-      );
-    } else if (stacks >= 10) {
-      // 10~24 스택: 기본 아이템 1개 + 3코스트 1기 + 10골드
-      orbs.push(
-        DopamineEngine.createLootOrb('BLUE', 0.48, 0.55, '🔹 10+ 용병 금고', {
-          gold: 10,
-          items: [DopamineEngine.randomBaseItem()],
-          units: DopamineEngine.pickAvailableUnitsFromPool(sharedPool, participant, 3, 1),
-        })
-      );
-    } else {
-      // 1~9 스택: 소형 금고 (6골드 + 기본 아이템 1개)
-      orbs.push(
-        DopamineEngine.createLootOrb('GRAY', 0.5, 0.55, '⚪ 소형 용병 금고', {
-          gold: 6,
-          items: [DopamineEngine.randomBaseItem()],
-        })
-      );
+        };
+        if (face === 6) {
+          rewards.items = [
+            ...(rewards.items ?? []),
+            Math.random() < 0.45
+              ? DopamineEngine.randomCompletedItem()
+              : DopamineEngine.randomBaseItem(),
+          ];
+        }
+        if (fiveCostChance > 0 && Math.random() < fiveCostChance) {
+          rewards.units = DopamineEngine.pickAvailableUnitsFromPool(
+            sharedPool,
+            participant,
+            5,
+            1
+          );
+        }
+        orbs.push(
+          DopamineEngine.createLootOrb(
+            face === 6 ? 'GOLD' : 'BLUE',
+            x,
+            y,
+            `🎲 용병 주사위 ${face}`,
+            rewards
+          )
+        );
+      }
     }
+
+    // 남은 전리품은 승리 캐시인 시 소멸 (Set 6 무기고 비우기)
+    void lootLeft;
 
     return orbs;
   }

@@ -260,13 +260,11 @@ export function bindGlobalDOMEvents(app: FantasyAutoBattlerApp): void {
     });
 
     document
-      .getElementById('goblin-vault-box')
+      .getElementById('mercenary-armory-box')
       ?.addEventListener('pointerup', () => {
         const p = app.game.getViewedParticipant();
-        const estGold =
-          p.goblinVaultStacks * 3 + Math.floor(p.goblinVaultStacks / 4) * 5;
         app.showTapTooltip(
-          `<strong>🪙 황금 고블린 금고 (${p.goblinVaultStacks} 스택)</strong><br/>고블린 시너지 활성화 중 패배할 때마다 스택이 쌓이며, 다음 전투 승리 시 한꺼번에 캐시아웃 보상을 드랍합니다! (예상 가치: 약 ${estGold}G)`
+          `<strong>🎲 용병 무기고 (${p.mercenaryArmoryLoot} 전리품)</strong><br/>패배 시 전리품이 무기고에 쌓이고, 다음 PvP 승리 시 주사위로 캐시인합니다 (Set 6 MERCENARY).`
         );
       });
 

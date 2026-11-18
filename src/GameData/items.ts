@@ -1,6 +1,7 @@
 // src/GameData/items.ts
 
 import type { BaseItemId, CompletedItemId, ItemId } from './types';
+import { UNIT_TEMPLATES } from './units';
 
 // ============================================================================
 // D. 5종 기본 아이템 & 15종 완성 아이템 (ITEM_DEFINITIONS)
@@ -308,81 +309,31 @@ export function getRecipeForCompletedItem(completedId: CompletedItemId): [BaseIt
   return null;
 }
 
+const DEFAULT_BIS: [CompletedItemId, CompletedItemId, CompletedItemId] = [
+  'INFINITY_EDGE',
+  'BLOODTHIRSTER',
+  'SUNFIRE_CAPE',
+];
 
-/**
- * 60종 판타지 챔피언별 실제 TFT 기준 최적 추천 완성 아이템(BiS: Best in Slot) 3종 매핑
- */
-export const CHAMPION_RECOMMENDED_ITEMS: Record<string, [CompletedItemId, CompletedItemId, CompletedItemId]> = {
-  // ---- 1코스트 (14종) ----
-  u1_garen: ['SUNFIRE_CAPE', 'BLOODTHIRSTER', 'BRAMBLE_VEST'],
-  u1_pip: ['INFINITY_EDGE', 'BLOODTHIRSTER', 'GIANT_SLAYER'],
-  u1_aria: ['GUINSOOS_RAGEBLADE', 'INFINITY_EDGE', 'GIANT_SLAYER'],
-  u1_skel: ['BLOODTHIRSTER', 'TITANS_RESOLVE', 'INFINITY_EDGE'],
-  u1_lumi: ['SPEAR_OF_SHOJIN', 'RABADONS_DEATHCAP', 'ARCHANGELS_STAFF'],
-  u1_valen: ['BRAMBLE_VEST', 'SUNFIRE_CAPE', 'PROTECTORS_VOW'],
-  u1_imp: ['BLUE_BUFF', 'RABADONS_DEATHCAP', 'STATIKK_SHIV'],
-  u1_thorn: ['BRAMBLE_VEST', 'SUNFIRE_CAPE', 'PROTECTORS_VOW'],
-  u1_whelp: ['GUINSOOS_RAGEBLADE', 'STATIKK_SHIV', 'GIANT_SLAYER'],
-  u1_ghoul: ['INFINITY_EDGE', 'BLOODTHIRSTER', 'GIANT_SLAYER'],
-  u1_chrona: ['PROTECTORS_VOW', 'SUNFIRE_CAPE', 'BRAMBLE_VEST'],
-  u1_snatch: ['GUINSOOS_RAGEBLADE', 'INFINITY_EDGE', 'GIANT_SLAYER'],
-  u1_shieldmaiden: ['BLOODTHIRSTER', 'TITANS_RESOLVE', 'INFINITY_EDGE'],
-  u1_ember: ['SUNFIRE_CAPE', 'BRAMBLE_VEST', 'PROTECTORS_VOW'],
+function bisForUnit(unitId: string): [CompletedItemId, CompletedItemId, CompletedItemId] {
+  const t = UNIT_TEMPLATES[unitId];
+  if (!t) return DEFAULT_BIS;
+  if (t.stats.range >= 4) return ['INFINITY_EDGE', 'GIANT_SLAYER', 'RAPID_FIRECANNON'];
+  if (t.traits.includes('ARCANIST') || t.stats.range >= 3) {
+    return ['RABADONS_DEATHCAP', 'ARCHANGELS_STAFF', 'SPEAR_OF_SHOJIN'];
+  }
+  if (t.traits.includes('BODYGUARD') || t.traits.includes('COLOSSUS')) {
+    return ['BRAMBLE_VEST', 'SUNFIRE_CAPE', 'PROTECTORS_VOW'];
+  }
+  if (t.traits.includes('ASSASSIN')) return ['INFINITY_EDGE', 'BLOODTHIRSTER', 'GIANT_SLAYER'];
+  return DEFAULT_BIS;
+}
 
-  // ---- 2코스트 (13종) ----
-  u2_tink: ['SPEAR_OF_SHOJIN', 'RABADONS_DEATHCAP', 'STATIKK_SHIV'],
-  u2_jeanne: ['PROTECTORS_VOW', 'SUNFIRE_CAPE', 'BRAMBLE_VEST'],
-  u2_kyle: ['GUINSOOS_RAGEBLADE', 'INFINITY_EDGE', 'GIANT_SLAYER'],
-  u2_ent: ['BRAMBLE_VEST', 'SUNFIRE_CAPE', 'PROTECTORS_VOW'],
-  u2_zed: ['INFINITY_EDGE', 'BLOODTHIRSTER', 'GIANT_SLAYER'],
-  u2_zephyr: ['INFINITY_EDGE', 'BLOODTHIRSTER', 'GIANT_SLAYER'],
-  u2_elowen: ['SPEAR_OF_SHOJIN', 'PROTECTORS_VOW', 'ARCHANGELS_STAFF'],
-  u2_boulder: ['BRAMBLE_VEST', 'SUNFIRE_CAPE', 'TITANS_RESOLVE'],
-  u2_boom: ['STATIKK_SHIV', 'GUINSOOS_RAGEBLADE', 'GIANT_SLAYER'],
-  u2_vayne: ['GUINSOOS_RAGEBLADE', 'INFINITY_EDGE', 'GIANT_SLAYER'],
-  u2_pyre: ['BLOODTHIRSTER', 'TITANS_RESOLVE', 'INFINITY_EDGE'],
-  u2_boneknight: ['SUNFIRE_CAPE', 'BRAMBLE_VEST', 'TITANS_RESOLVE'],
-  u2_malice: ['SPEAR_OF_SHOJIN', 'RABADONS_DEATHCAP', 'BLUE_BUFF'],
-
-  // ---- 3코스트 (13종 - 리롤 캐리 핵심 기물) ----
-  u3_grom: ['BLOODTHIRSTER', 'TITANS_RESOLVE', 'INFINITY_EDGE'],
-  u3_sieg: ['TITANS_RESOLVE', 'BLOODTHIRSTER', 'BRAMBLE_VEST'],
-  u3_sylphie: ['SPEAR_OF_SHOJIN', 'RABADONS_DEATHCAP', 'ARCHANGELS_STAFF'],
-  u3_vlad: ['HEXTECH_GUNBLADE', 'TITANS_RESOLVE', 'ARCHANGELS_STAFF'],
-  u3_drake: ['BLOODTHIRSTER', 'TITANS_RESOLVE', 'INFINITY_EDGE'],
-  u3_leona: ['SUNFIRE_CAPE', 'BRAMBLE_VEST', 'PROTECTORS_VOW'],
-  u3_kazu: ['INFINITY_EDGE', 'BLOODTHIRSTER', 'GIANT_SLAYER'],
-  u3_malakor: ['SPEAR_OF_SHOJIN', 'RABADONS_DEATHCAP', 'ARCHANGELS_STAFF'],
-  u3_seraphina: ['SPEAR_OF_SHOJIN', 'PROTECTORS_VOW', 'ARCHANGELS_STAFF'],
-  u3_grizzle: ['SUNFIRE_CAPE', 'BRAMBLE_VEST', 'PROTECTORS_VOW'],
-  u3_orion: ['GUINSOOS_RAGEBLADE', 'INFINITY_EDGE', 'GIANT_SLAYER'],
-  u3_nyx: ['INFINITY_EDGE', 'BLOODTHIRSTER', 'BLUE_BUFF'],
-  u3_fenrir: ['BLOODTHIRSTER', 'TITANS_RESOLVE', 'INFINITY_EDGE'],
-
-  // ---- 4코스트 (12종) ----
-  u4_arthur: ['SUNFIRE_CAPE', 'BRAMBLE_VEST', 'TITANS_RESOLVE'],
-  u4_merlin: ['SPEAR_OF_SHOJIN', 'RABADONS_DEATHCAP', 'ARCHANGELS_STAFF'],
-  u4_thanatos: ['INFINITY_EDGE', 'BLOODTHIRSTER', 'GIANT_SLAYER'],
-  u4_sylph: ['GUINSOOS_RAGEBLADE', 'INFINITY_EDGE', 'GIANT_SLAYER'],
-  u4_astaroth: ['BLOODTHIRSTER', 'TITANS_RESOLVE', 'INFINITY_EDGE'],
-  u4_velkora: ['SPEAR_OF_SHOJIN', 'RABADONS_DEATHCAP', 'BLUE_BUFF'],
-  u4_valkyrie: ['SUNFIRE_CAPE', 'PROTECTORS_VOW', 'TITANS_RESOLVE'],
-  u4_fafnir: ['BRAMBLE_VEST', 'SUNFIRE_CAPE', 'TITANS_RESOLVE'],
-  u4_lichking: ['SPEAR_OF_SHOJIN', 'RABADONS_DEATHCAP', 'ARCHANGELS_STAFF'],
-  u4_midas: ['SPEAR_OF_SHOJIN', 'RABADONS_DEATHCAP', 'GUINSOOS_RAGEBLADE'],
-  u4_artemis: ['GUINSOOS_RAGEBLADE', 'INFINITY_EDGE', 'GIANT_SLAYER'],
-  u4_diablo: ['SUNFIRE_CAPE', 'BRAMBLE_VEST', 'PROTECTORS_VOW'],
-
-  // ---- 5코스트 (8종) ----
-  u5_ignis: ['BLOODTHIRSTER', 'TITANS_RESOLVE', 'RABADONS_DEATHCAP'],
-  u5_galio: ['SUNFIRE_CAPE', 'BRAMBLE_VEST', 'PROTECTORS_VOW'],
-  u5_luciel: ['INFINITY_EDGE', 'GUINSOOS_RAGEBLADE', 'GIANT_SLAYER'],
-  u5_michael: ['BRAMBLE_VEST', 'SUNFIRE_CAPE', 'TITANS_RESOLVE'],
-  u5_bahamut: ['SPEAR_OF_SHOJIN', 'RABADONS_DEATHCAP', 'ARCHANGELS_STAFF'],
-  u5_chronos: ['SPEAR_OF_SHOJIN', 'RABADONS_DEATHCAP', 'BLUE_BUFF'],
-  u5_lilith: ['BLOODTHIRSTER', 'INFINITY_EDGE', 'TITANS_RESOLVE'],
-  u5_yggdrasil: ['SUNFIRE_CAPE', 'BRAMBLE_VEST', 'PROTECTORS_VOW'],
-};
+/** Set 6 (59) champion BiS — derived from role/traits. */
+export const CHAMPION_RECOMMENDED_ITEMS: Record<
+  string,
+  [CompletedItemId, CompletedItemId, CompletedItemId]
+> = Object.fromEntries(Object.keys(UNIT_TEMPLATES).map((id) => [id, bisForUnit(id)]));
 
 export function getUnitRecommendedItems(unitId: string): CompletedItemId[] {
   return CHAMPION_RECOMMENDED_ITEMS[unitId] ?? ['INFINITY_EDGE', 'BLOODTHIRSTER', 'SUNFIRE_CAPE'];

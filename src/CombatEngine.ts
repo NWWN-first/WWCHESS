@@ -59,7 +59,7 @@ export class CombatEngine implements SkillCombatContext {
   private currentTickEvents: CombatEvent[] = [];
   private initialEventsBuffer: CombatEvent[] = [];
 
-  private elvenTickTimerMs: number = 0;
+  private scholarTickTimerMs: number = 0;
   private sunfireTickTimerMs: number = 0;
   private archangelTickTimerMs: number = 0;
 
@@ -68,11 +68,7 @@ export class CombatEngine implements SkillCombatContext {
    * - 원본 기물 상태가 오염되지 않도록 양쪽 보드 기물을 깊은 복사(Deep Clone)하여 CombatUnit 생성
    *   (하단 4~7행은 HOME 아군, 상단 0~3행은 AWAY 적군 점대칭 배치)
    * - 양쪽의 활성화된 시너지(SynergyEngine)와 장착된 아이템, 증강체 효과를 완벽히 반영
-   * - 전투 시작 특수 효과 발동:
-   *   1) 신성 제국(HOLY_EMPIRE) 보호막 부여
-   *   2) 용족(DRAGONKIN) 시작 화염 브레스 피해 및 스킬 치명타 활성화
-   *   3) 그림자 암살자(SHADOW_ASSASSIN) 적진 최후방 빈 타일로 은신 도약(Leap)
-   *   4) 5코스트 3성 황금 고블린 왕 골드투스(u5_goldtooth) 개전 즉시 적 전체 99,999 폭격 및 +50G
+   * - 전투 시작: Set6TraitCombat + BODYGUARD 실드 / ASSASSIN 후방 도약 등
    */
   public initCombat(home: Participant, away: Participant): CombatEvent[] {
     this.currentTick = 0;
@@ -84,7 +80,7 @@ export class CombatEngine implements SkillCombatContext {
     this.awayGoldEarned = 0;
     this.currentTickEvents = [];
     this.initialEventsBuffer = [];
-    this.elvenTickTimerMs = 0;
+    this.scholarTickTimerMs = 0;
     this.sunfireTickTimerMs = 0;
     this.archangelTickTimerMs = 0;
 
@@ -150,7 +146,7 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // 3. 개전 특수 효과 발동 (신성 제국 보호막, 용족 브레스, 그림자 암살자 후방 도약, 5코 3성 골드투스 개전 권능)
+    // 3. 개전 특수 효과 (경호대 실드, 암살자 도약, Set 6 trait hooks)
     this.triggerCombatStartEffects('HOME', this.homeSynergies);
     this.triggerCombatStartEffects('AWAY', this.awaySynergies);
     this.applySet6TraitCombatStart('HOME', this.homeSynergies, home);
@@ -182,35 +178,30 @@ export class CombatEngine implements SkillCombatContext {
 
   /**
    * 유닛의 고유 역할군/시너지/체형 특성에 따른 1칸 보행 소요 시간(ms)을 산출한다.
-   * - 암살자/고블린 경보병: 360~400ms (재빠르고 날렵한 발걸음)
-   * - 광전사/비룡 기병/대천사: 450~470ms (기동형 돌격)
-   * - 순찰자/마법사/일반 보병: 500~540ms (표준 보행)
-   * - 중장갑 선봉대/거대 나무 정령/마군주: 580~650ms (묵직하고 위압감 있는 중갑 행군)
+   * - 암살자/도전자: 빠른 보행, 경호대/거신: 느린 보행 (Set 6 로스터)
    */
   private computeCharacteristicMoveIntervalMs(source: UnitInstance): number {
     const unitCustomMap: Record<string, number> = {
-      u1_gob: 360, // 고블린 소매치기: 가장 가볍고 재빠름
-      u3_kazu: 380, // 환영 자객 카즈: 닌자 질주
-      u1_zix: 390, // 그림자 단검 카직: 날렵한 암살자
-      u2_vayne: 430, // 은화살 사냥꾼 베인: 경장 추격자
-      u2_fenrir: 440, // 광전사 펜리르: 야수 질주 (광기 발동 시 310ms로 폭주)
-      u3_drake: 450, // 화염 기병 드레이크: 비룡 기병
-      u5_michael: 460, // 대천사 미카엘: 날개 강림 비행
-      u5_ignis: 470, // 고대 화염용 이그니스: 거룡 비행
-      u1_pip: 480, // 숲의 요정 핍: 경쾌한 발걸음
-      u4_sylph: 490, // 바람의 신궁 실피: 바람 걸음
-      u1_elise: 500, // 성전사 수습생 엘리스
-      u2_boom: 500, // 폭탄광 붐
-      u2_lyra: 510, // 달빛 무녀 라이라
-      u3_malakor: 510, // 영혼 수확자 말라코르
-      u1_vex: 520, // 비전 학도 벡스
-      u5_goldtooth: 530, // 황금 고블린 왕 골드투스
-      u4_velkora: 540, // 대현자 벨코라
-      u1_garen: 580, // 신성 수호병 가렌: 중갑 보병
-      u1_bone: 600, // 해골 방패병 본즈: 중장갑 방패병
-      u3_leona: 610, // 태양의 성기사 레오나: 중갑 대방패
-      u4_astaroth: 630, // 심연의 군주 아스타로스: 거대 마군주
-      u2_thorn: 650, // 가시 덩굴 수호자 쏜: 거대 고목 정령 (가장 묵직함)
+      u1_twitch: 370,
+      u1_ezreal: 400,
+      u1_camille: 390,
+      u2_katarina: 385,
+      u2_talon: 385,
+      u2_warwick: 420,
+      u3_ekko: 390,
+      u3_shaco: 380,
+      u3_kogmaw: 430,
+      u3_samira: 440,
+      u3_kai_sa: 400,
+      u4_yone: 420,
+      u4_fiora: 410,
+      u1_garen: 580,
+      u1_poppy: 560,
+      u2_blitzcrank: 600,
+      u3_leona: 610,
+      u3_sion: 620,
+      u4_braum: 630,
+      u5_galio: 650,
     };
 
     if (unitCustomMap[source.unitId] !== undefined) {
@@ -351,6 +342,12 @@ export class CombatEngine implements SkillCombatContext {
       cu.def += syndicate.bonusDef ?? 0;
       cu.baseDef += syndicate.bonusDef ?? 0;
       cu.omnivamp += syndicate.omnivamp ?? 0;
+      if (syndicate.damageReductionFirst8s) {
+        cu.damageReductionRatio = Math.max(
+          cu.damageReductionRatio,
+          syndicate.damageReductionFirst8s
+        );
+      }
     }
 
     // - 경호대(BODYGUARD): 방어력 상승
@@ -358,9 +355,6 @@ export class CombatEngine implements SkillCombatContext {
     if (bodyguard && cu.traits.includes('BODYGUARD')) {
       cu.def += bodyguard.bonusDef ?? 0;
       cu.baseDef += bodyguard.bonusDef ?? 0;
-      if (bodyguard.damageReductionFirst8s) {
-        cu.damageReductionRatio = bodyguard.damageReductionFirst8s;
-      }
     }
 
     // - 저격수(SNIPER): 사거리 증가
@@ -375,7 +369,7 @@ export class CombatEngine implements SkillCombatContext {
       cu.spellPower = Number((cu.spellPower + arcanist.spellPowerBonus).toFixed(2));
     }
 
-    // - 그림자 암살자(SHADOW_ASSASSIN): 치명타 확률 및 치명타 피해량 증가
+    // - 암살자(ASSASSIN): 치명타 확률 및 치명타 피해량 
     const assassin = synergyMap.get('ASSASSIN')?.activeEffect;
     if (assassin && cu.traits.includes('ASSASSIN')) {
       cu.critChance = Math.min(1.0, cu.critChance + (assassin.bonusCritChance ?? 0));
@@ -748,7 +742,7 @@ export class CombatEngine implements SkillCombatContext {
     for (const unit of this.units) {
       if (this.isFinished) break;
 
-      // 언데드 군단(UNDEAD_SCOURGE) 부활 대기 상태 처리
+      // 부활 스킬 대기 상태 처리
       if (unit.isReviving) {
         unit.reviveTimerMs -= deltaMs;
         if (unit.reviveTimerMs <= 0) {
@@ -881,7 +875,7 @@ export class CombatEngine implements SkillCombatContext {
   }
 
   /**
-   * 스킬 시전 처리 (5코스트 3성 FIVE_COST_3STAR_CATACLYSM 특수 이벤트 및 대마법사 연쇄 번개 포함)
+   * 스킬 시전 처리 (5코 3성 연출 이벤트 포함)
    */
   private castUnitSkill(unit: CombatUnit, target: CombatUnit): void {
     const template = UNIT_TEMPLATES[unit.unitId];
@@ -943,28 +937,6 @@ export class CombatEngine implements SkillCombatContext {
 
     const owner = unit.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
 
-    // 대마법사(ARCHMAGE) 시너지 활성화 시: 스킬 시전할 때 체력이 가장 낮은 적에게 연쇄 번개 추가 낙하!
-    const archmageEffect = synergyMap.get('ARCANIST')?.activeEffect;
-    if (
-      archmageEffect &&
-      unit.traits.includes('ARCANIST') &&
-      archmageEffect.chainLightningDamage
-    ) {
-      const aliveEnemies = this.units
-        .filter((e) => e.team !== unit.team && e.currentHp > 0 && !e.isReviving)
-        .sort((a, b) => a.currentHp - b.currentHp);
-
-      if (aliveEnemies.length > 0) {
-        this.dealDamage(
-          unit,
-          aliveEnemies[0],
-          archmageEffect.chainLightningDamage * unit.spellPower,
-          'MAGICAL',
-          unit.enableSkillCrit,
-          true
-        );
-      }
-    }
   }
 
 
@@ -1039,12 +1011,7 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // 2. 공격자 마나 회복: 기본 +10 + 마탑(ARCANE_TOWER) 보너스 + 쇼진의 창(SPEAR_OF_SHOJIN) 보너스
-    const synergyMap =
-      attacker.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
-    const arcaneBonus =
-      synergyMap.get('SCHOLAR')?.activeEffect?.teamManaPerAttack ?? 0;
-
+    // 2. 공격자 마나 회복: 기본 +10 + 쇼진의 창(SPEAR_OF_SHOJIN) 등
     let shojinBonus = 0;
     for (const itemId of attacker.items) {
       const pf = ITEM_DEFINITIONS[itemId]?.passiveFlags;
@@ -1059,10 +1026,12 @@ export class CombatEngine implements SkillCombatContext {
     }
 
     const socialiteMana = attacker.set6SocialiteManaPerAttack ?? 0;
-    this.grantMana(attacker, 10 + arcaneBonus + shojinBonus + socialiteMana);
+    this.grantMana(attacker, 10 + shojinBonus + socialiteMana);
     this.incrementTitansResolve(attacker);
 
-    // 3. 광전사(BERSERKER) 광폭화 중 스플래시 피해 처리
+    const synergyMap =
+      attacker.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
+    // 3. 난동꾼(BRUISER) 광폭 중 스플래시 (화학공학 버스트 연계)
     const berserkerEffect = synergyMap.get('BRUISER')?.activeEffect;
     if (
       berserkerEffect &&
@@ -1179,12 +1148,12 @@ export class CombatEngine implements SkillCombatContext {
       mitigatedDamage = modifiedRaw * (100 / (100 + effectiveDef));
     }
 
-    // 선봉대(VANGUARD) 개전 8초간 피해 감소 적용
+    // 시너지/버프 피해 감소
     if (target.damageReductionRatio > 0 && damageType !== 'TRUE') {
       mitigatedDamage *= 1 - target.damageReductionRatio;
     }
 
-    // 심연의 악마(ABYSSAL_DEMON) 추가 고정 피해 합산
+    // 시너지 추가 피해 비율
     if (attacker.trueDamageBonusRatio > 0 && damageType !== 'TRUE') {
       mitigatedDamage += modifiedRaw * attacker.trueDamageBonusRatio;
     }
@@ -1256,7 +1225,7 @@ export class CombatEngine implements SkillCombatContext {
         }
       }
     } else {
-      // 사망 또는 언데드 군단(UNDEAD_SCOURGE) 부활 대기 진입
+      // 사망 또는 부활 스킬 대기 진입
       if (target.hasReviveAvailable) {
         target.hasReviveAvailable = false;
         target.isReviving = true;
@@ -1563,7 +1532,7 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // 선봉대(VANGUARD) 개전 8초 경과 시 추가 피해감소 해제
+    // 범죄조직(SYNDICATE) 7단: 개전 8초 후 피해 감소 해제
     if (this.elapsedMs >= 8000) {
       for (const u of this.units) {
         if (u.damageReductionRatio > 0) {
@@ -1572,26 +1541,17 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    // 엘프 숲(ELVEN_SYLVAN): 매 2초마다 공속 중첩 및 체력 회복
-    this.elvenTickTimerMs += deltaMs;
-    if (this.elvenTickTimerMs >= 2000) {
-      this.elvenTickTimerMs -= 2000;
-      for (const u of this.units) {
-        if (u.currentHp <= 0 || u.isReviving || !u.traits.includes('SCHOLAR')) {
-          continue;
-        }
-        const synergyMap =
-          u.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
-        const elven = synergyMap.get('SCHOLAR')?.activeEffect;
-        if (elven) {
-          if (elven.atkSpeedPerStack) {
-            u.atkSpeed = Number(
-              Math.min(5.0, u.atkSpeed * (1 + elven.atkSpeedPerStack)).toFixed(3)
-            );
-          }
-          if (elven.hpRegenRatioPerTick) {
-            this.healUnit(u, u, Math.round(u.maxHp * elven.hpRegenRatioPerTick));
-          }
+    // 학자(SCHOLAR): 2초마다 아군 전체 마나 (Set 6)
+    this.scholarTickTimerMs += deltaMs;
+    if (this.scholarTickTimerMs >= 2000) {
+      this.scholarTickTimerMs -= 2000;
+      for (const team of ['HOME', 'AWAY'] as const) {
+        const synergyMap = team === 'HOME' ? this.homeSynergies : this.awaySynergies;
+        const manaPerTick = synergyMap.get('SCHOLAR')?.activeEffect?.teamManaPerAttack;
+        if (!manaPerTick) continue;
+        for (const u of this.units) {
+          if (u.team !== team || u.currentHp <= 0 || u.isReviving) continue;
+          this.grantMana(u, manaPerTick);
         }
       }
     }

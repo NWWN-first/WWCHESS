@@ -29,6 +29,9 @@ export interface TraitEffectTier {
   mercenarySmallOrbChanceOnWin?: number;
   mercenaryWinStreakForGoldOrb?: number;
   mercenaryPerRoundJackpot?: boolean;
+  mercenaryDiceCount?: number;
+  mercenaryLootPerLoss?: number;
+  mercenaryFiveCostUnitChance?: number;
   damageReductionFirst8s?: number;
   berserkAtkMultiplier?: number;
   berserkAtkSpeedMultiplier?: number;
@@ -221,29 +224,38 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     icon: '🎲',
     color: '#E67E22',
     thresholds: [3, 5, 7],
-    description: 'TFT Set 6 용병 — 상세 기믹은 후속 PR(T3~T7).',
+    description:
+      '패배 시 무기고에 전리품 적립, 승리 시 주사위를 굴려 적립 전리품을 캐시인(Set 6 용병).',
     effects: [
-            {
-                  "threshold": 3,
-                  "label": "(3) 패배 스택 1x",
-                  "mercenaryStackMultiplier": 1
-            },
-            {
-                  "threshold": 5,
-                  "label": "(5) 스택 2x",
-                  "mercenaryStackMultiplier": 2,
-                  "mercenaryWinGoldMin": 2,
-                  "mercenaryWinGoldMax": 4
-            },
-            {
-                  "threshold": 7,
-                  "label": "(7) 스택 3x",
-                  "mercenaryStackMultiplier": 3,
-                  "mercenaryWinGoldMin": 3,
-                  "mercenaryWinGoldMax": 6,
-                  "mercenaryPerRoundJackpot": true
-            }
-      ],
+      {
+        threshold: 3,
+        label: '(3) 패배 전리품 1x, 승리 주사위 1개',
+        mercenaryStackMultiplier: 1,
+        mercenaryLootPerLoss: 1,
+        mercenaryDiceCount: 1,
+      },
+      {
+        threshold: 5,
+        label: '(5) 패배 전리품 2x, 주사위 2개·소형 아이템 확률',
+        mercenaryStackMultiplier: 2,
+        mercenaryLootPerLoss: 1,
+        mercenaryDiceCount: 2,
+        mercenaryWinGoldMin: 2,
+        mercenaryWinGoldMax: 4,
+        mercenarySmallOrbChanceOnWin: 0.22,
+      },
+      {
+        threshold: 7,
+        label: '(7) 패배 전리품 3x, 주사위 3개·5코 1★ 소량',
+        mercenaryStackMultiplier: 3,
+        mercenaryLootPerLoss: 1,
+        mercenaryDiceCount: 3,
+        mercenaryWinGoldMin: 3,
+        mercenaryWinGoldMax: 6,
+        mercenaryPerRoundJackpot: true,
+        mercenaryFiveCostUnitChance: 0.08,
+      },
+    ],
   },
   YORDLE: {
     id: 'YORDLE',
