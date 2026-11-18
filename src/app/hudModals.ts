@@ -452,25 +452,35 @@ export function renderShopAndControls(app: FantasyAutoBattlerApp): void {
     const shopBar = document.getElementById('bottom-shop-bar');
     const toggleBar = document.getElementById('shop-drawer-toggle-bar');
     const toggleBtn = document.getElementById('toggle-shop-btn');
-    const quickBar = document.getElementById('Collapsed-quick-bar');
-    const quickGold = document.getElementById('quick-gold-text');
+    const quickBar = document.getElementById('collapsed-quick-bar');
     const quickCombatBtn = document.getElementById('quick-start-combat-btn');
 
-    if (shopBar && toggleBar && quickBar) {
+    if (shopBar) {
       shopBar.classList.toggle('hidden', !isExpanded);
+    }
+    if (toggleBar) {
       toggleBar.classList.toggle('hidden', !isExpanded);
-      quickBar.classList.toggle('hidden', isExpanded || inCombat);
+    }
+    if (quickBar) {
+      quickBar.classList.remove('hidden');
     }
     if (toggleBtn) {
-      toggleBtn.textContent = isExpanded ? '🛒 상점 접기 ▼' : '🛒 상점 열기 ▲';
+      toggleBtn.title = isExpanded ? '상점 접기' : '상점 열기';
+      toggleBtn.classList.toggle('shop-open-active', isExpanded);
+      const shopLabel = toggleBtn.querySelector('span:last-child');
+      if (shopLabel) {
+        shopLabel.textContent = isExpanded ? '접기' : '상점';
+      }
     }
-    if (quickGold) {
-      quickGold.textContent = `${player.gold}G`;
-    }
+    document.getElementById('app')?.classList.toggle('shop-dock-top-expanded', isExpanded);
+
     if (quickCombatBtn) {
       quickCombatBtn.classList.toggle('hidden', inCombat);
       if (app.game.phase === 'PREPARATION_PHASE') {
-        quickCombatBtn.textContent = `⏱️ ${app.game.prepRemainingSec}s (출격)`;
+        const isUrgent = app.game.prepRemainingSec <= 5;
+        quickCombatBtn.classList.toggle('urgent-pulse', isUrgent);
+        quickCombatBtn.textContent = String(app.game.prepRemainingSec);
+        quickCombatBtn.title = `즉시 출격 (${app.game.prepRemainingSec}s)`;
       }
     }
 
@@ -485,9 +495,11 @@ export function renderShopAndControls(app: FantasyAutoBattlerApp): void {
 
     const goldText = document.getElementById('player-gold-text');
     const intText = document.getElementById('player-interest-text');
-    if (goldText && intText) {
-      goldText.textContent = `🪙${player.gold}G`;
-      intText.textContent = `+${player.calculateInterestGold()}G`;
+    if (goldText) {
+      goldText.textContent = `🪙${player.gold}`;
+    }
+    if (intText) {
+      intText.textContent = `+${player.calculateInterestGold()}`;
     }
 
     const buyXpBtn = document.getElementById('buy-xp-btn');
@@ -522,15 +534,7 @@ export function renderShopAndControls(app: FantasyAutoBattlerApp): void {
 
     const startCombatBtn = document.getElementById('start-combat-btn');
     if (startCombatBtn) {
-      startCombatBtn.classList.toggle('hidden', inCombat);
-      if (app.game.phase === 'PREPARATION_PHASE') {
-        const isUrgent = app.game.prepRemainingSec <= 5;
-        startCombatBtn.classList.toggle('urgent-pulse', isUrgent);
-        startCombatBtn.innerHTML = `
-          <span class="sword-emblem" style="font-size:15px;">⏱️${app.game.prepRemainingSec}s</span>
-          <span class="battle-label">즉시출격</span>
-        `;
-      }
+      startCombatBtn.classList.add('hidden');
     }
 
     const shopContainer = document.getElementById('shop-cards-container');

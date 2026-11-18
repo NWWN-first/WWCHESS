@@ -278,15 +278,6 @@ export function bindGlobalDOMEvents(app: FantasyAutoBattlerApp): void {
         app.renderShopAndControls();
       });
 
-    document
-      .getElementById('quick-open-shop-btn')
-      ?.addEventListener('pointerup', () => {
-        soundFX.playPickup();
-        app.isShopManuallyCollapsed = false;
-        app.pixelRenderer.recomputeLayoutMetrics(app.isShopCurrentlyExpanded());
-        app.renderShopAndControls();
-      });
-
     document.getElementById('buy-xp-btn')?.addEventListener('pointerup', (e) => {
       const pt = app.clientToCanvasPoint(e.clientX, e.clientY);
       if (app.game.player.buyXp(app.game.sharedPool)) {

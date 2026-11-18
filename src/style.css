@@ -462,15 +462,21 @@ img {
    ========================================================================== */
 .left-floating-dock {
   position: absolute;
-  top: 42px;
+  top: 132px;
   left: 5px;
-  bottom: 98px;
+  bottom: 100px;
   width: 60px;
   z-index: 8;
   display: flex;
   flex-direction: column;
   gap: 4px;
   pointer-events: none;
+  transition: top 0.2s ease;
+}
+
+#app:not(.shop-dock-top-expanded) .left-floating-dock {
+  top: 42px;
+  bottom: 100px;
 }
 
 .mercenary-armory-gem {
@@ -603,20 +609,30 @@ img {
    ========================================================================== */
 .right-player-dock {
   position: absolute;
-  top: 42px;
+  top: 40px;
   right: 5px;
-  bottom: 98px;
-  width: 76px;
+  bottom: 118px;
+  width: 100px;
   z-index: 15;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   pointer-events: none;
-  transition: bottom 0.2s ease;
+  transition: bottom 0.2s ease, top 0.2s ease;
 }
 
 .right-player-dock.shop-collapsed {
-  bottom: 20px;
+  bottom: 118px;
+}
+
+#app.shop-dock-top-expanded .right-player-dock {
+  top: 132px;
+  bottom: 148px;
+}
+
+#app:not(.shop-dock-top-expanded) .right-player-dock {
+  top: 42px;
+  bottom: 148px;
 }
 
 .compact-player-tabs {
@@ -798,18 +814,32 @@ img {
 }
 
 /* ==========================================================================
-   6. 접이식 슬림 하단 상점 드로어 (가로모드 시야 침범 제로: 높이 90px)
+   6. 접이식 상단 상점 드로어 (TFT 모바일식 — 필드 하단 시야 확보)
    ========================================================================== */
 .shop-drawer-toggle-bar {
   position: absolute;
-  bottom: 90px;
+  top: 124px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 11;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   pointer-events: auto;
+}
+
+.shop-drawer-toggle-bar .lock-gem-btn {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1e293b;
+  border: 1.5px solid #64748b;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
 }
 
 .shop-toggle-pill {
@@ -819,8 +849,8 @@ img {
   align-items: center;
   background: linear-gradient(180deg, #b45309 0%, #451a03 100%);
   border: 1.5px solid #facc15;
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
   font-size: 10px;
   color: #fef08a;
   cursor: pointer;
@@ -834,66 +864,222 @@ img {
   height: 18px;
   background: rgba(9, 13, 25, 0.92);
   border: 1px solid rgba(212, 175, 55, 0.45);
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
   font-size: 9px;
 }
 
 .bottom-shop-dock {
   position: absolute;
-  bottom: 0;
+  top: 34px;
+  bottom: auto;
   left: 6px;
-  right: 6px;
+  /* 우측 순위표(96px)와 겹치지 않도록 여백 */
+  right: 108px;
   height: 90px;
   z-index: 10;
   display: flex;
   align-items: stretch;
   gap: 6px;
   padding: 5px 8px;
-  background: linear-gradient(180deg, rgba(16, 23, 42, 0.96) 0%, #090d19 100%);
+  background: linear-gradient(180deg, #090d19 0%, rgba(16, 23, 42, 0.96) 100%);
   border: 2px solid #d4af37;
-  border-bottom: none;
-  border-radius: 12px 12px 0 0;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.85);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.85);
 }
 
-/* 상점이 접혔을 때 우하단에 뜨는 컴팩트 액션 바 */
-.collapsed-quick-bar {
+/* 1) 좌하단: 레벨업 고정 */
+.tft-left-controls {
   position: absolute;
-  bottom: 6px;
-  right: 8px;
-  z-index: 11;
+  left: 6px;
+  bottom: 10px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 92px;
+  pointer-events: auto;
+}
+
+.tft-level-chip {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 3px 6px;
+  background: rgba(9, 13, 25, 0.92);
+  border: 1.5px solid #38bdf8;
+  border-radius: 8px;
+  font-size: 11px;
+  color: #e0f2fe;
 }
 
-.quick-action-gem {
-  height: 34px;
-  padding: 0 14px;
+.tft-lvl {
+  font-weight: 800;
+  color: #7dd3fc;
+}
+.tft-xp {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.tft-xp-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 44px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  background: linear-gradient(180deg, #0284c7 0%, #1e3a8a 100%);
+  border: 2px solid #7dd3fc;
+  box-shadow: 0 2px 0 #05070e;
+  color: #fff;
+}
+.tft-xp-btn .btn-main-label {
+  font-size: 12px;
+  color: #fff;
+}
+.tft-xp-btn .btn-sub-cost {
+  font-size: 10px;
+  color: #fef08a;
+}
+
+/* 우하단: 위=리롤 → 골드 → 아래 줄=[작은즉시시작|상점] */
+.collapsed-quick-bar {
+  position: absolute;
+  right: 5px;
+  bottom: 10px;
+  top: auto;
+  width: 118px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  pointer-events: auto;
+}
+
+.tft-gold-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: rgba(9, 13, 25, 0.95);
+  border: 1.5px solid #facc15;
+  color: #fef08a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tft-shop-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+}
+
+.tft-mini-combat {
+  flex: 0 0 28px;
+  width: 28px;
+  min-height: 36px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  font-size: 12px;
+  border-radius: 8px;
   cursor: pointer;
-  box-shadow: 0 3px 0 #000;
+  font-size: 11px;
+  font-weight: 800;
+  background: linear-gradient(180deg, #dc2626 0%, #7f1d1d 100%);
+  border: 1.5px solid #fca5a5;
+  box-shadow: 0 2px 0 #000;
+  color: #fff;
+  box-sizing: border-box;
+  line-height: 1;
+}
+.tft-mini-combat.urgent-pulse {
+  animation: urgentPulse 0.55s infinite alternate;
+}
+
+.tft-shop-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.quick-action-gem {
+  width: 100%;
+  min-height: 34px;
+  padding: 3px 5px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border-radius: 9px;
+  font-size: 11px;
+  cursor: pointer;
+  box-shadow: 0 2px 0 #000;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  line-height: 1.1;
+}
+
+.quick-action-gem .btn-main-label {
+  font-size: 11px;
+}
+.quick-action-gem .btn-sub-cost {
+  font-size: 9px;
+  color: #fef08a;
 }
 
 .quick-action-gem.gold-gem {
   background: linear-gradient(180deg, #d97706 0%, #78350f 100%);
   border: 2px solid #facc15;
   color: #fef08a;
+  flex-direction: row;
+  gap: 4px;
+  min-height: 40px;
+  font-weight: 800;
 }
 
-.quick-action-gem.battle-gem {
-  background: linear-gradient(180deg, #dc2626 0%, #7f1d1d 100%);
-  border: 2px solid #fca5a5;
-  color: #ffffff;
+.quick-action-gem.reroll-gem {
+  background: linear-gradient(180deg, #ca8a04 0%, #854d0e 100%);
+  border: 2px solid #fde047;
+  color: #fffbeb;
+}
+
+.tft-shop-ico {
+  font-size: 12px;
+}
+
+.tft-interest-mini {
+  font-size: 9px;
+  color: #86efac;
+}
+
+#app.shop-dock-top-expanded .collapsed-quick-bar,
+#app.shop-dock-top-expanded .tft-left-controls {
+  bottom: 10px;
+}
+
+/* 상점 독이 right:108px 이라 순위표 top은 고정 — 열림 시 top 밀림으로 찌그러지지 않게 */
+#app.shop-dock-top-expanded .right-player-dock,
+#app:not(.shop-dock-top-expanded) .right-player-dock {
+  top: 40px;
+  bottom: 118px;
 }
 
 .dock-left-controls {
-  width: 138px;
+  width: 108px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
