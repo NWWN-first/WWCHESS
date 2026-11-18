@@ -72,6 +72,79 @@ function runBehavior(
   allUnits: CombatUnit[],
   ctx: SkillCombatContext
 ): void {
+  if (caster.unitId === 'u5_galio') {
+    const dmg = primary(caster);
+    const stunMs = 1500 + caster.starLevel * 250;
+    for (const t of enemies(caster, allUnits)) {
+      deal(ctx, caster, t, dmg);
+      ctx.applyStun(caster, t, stunMs);
+    }
+    return;
+  }
+  if (caster.unitId === 'u5_tahm_kench') {
+    const threshold = 0.35;
+    if (primaryTarget.currentHp / primaryTarget.maxHp <= threshold) {
+      deal(ctx, caster, primaryTarget, primary(caster), 'TRUE', false);
+      ctx.healUnit(caster, caster, secondary(caster) || 250);
+    } else {
+      deal(ctx, caster, primaryTarget, primary(caster));
+    }
+    return;
+  }
+  if (caster.unitId === 'u5_akali') {
+    const dashDmg = primary(caster);
+    const raw = secondary(caster) || 15;
+    const thresholdPct = (raw > 30 ? raw / 10 : raw) / 100;
+    const line = [...enemies(caster, allUnits)]
+      .sort((a, b) => dist(caster, a) - dist(caster, b))
+      .slice(0, 5);
+    for (const t of line) {
+      deal(ctx, caster, t, dashDmg);
+    }
+    for (const t of enemies(caster, allUnits)) {
+      if (t.currentHp / t.maxHp <= thresholdPct) {
+        deal(ctx, caster, t, dashDmg * 2.5, 'TRUE', false);
+        for (const adj of adjacentEnemies(caster, t, allUnits)) {
+          deal(ctx, caster, adj, dashDmg * 0.6);
+        }
+      }
+    }
+    return;
+  }
+  if (caster.unitId === 'u5_kaisa') {
+    const missiles = Math.round(primary(caster)) + (caster.basicAttackCount || 0);
+    const per = (secondary(caster) || 70) + caster.atk * 0.4;
+    const foes = enemies(caster, allUnits);
+    for (let i = 0; i < missiles; i += 1) {
+      if (foes.length === 0) break;
+      deal(ctx, caster, foes[i % foes.length], per);
+    }
+    return;
+  }
+  if (caster.unitId === 'u5_yuumi') {
+    const waves = secondary(caster) || 3;
+    const dmg = primary(caster);
+    for (let w = 0; w < waves; w += 1) {
+      for (const t of enemies(caster, allUnits)) {
+        deal(ctx, caster, t, dmg);
+        ctx.applyStun(caster, t, 750);
+      }
+      for (const a of allies(caster, allUnits)) {
+        ctx.healUnit(caster, a, dmg * 1.5);
+      }
+    }
+    return;
+  }
+  if (caster.unitId === 'u5_jinx') {
+    const rocket = primary(caster) + caster.atk * 2.1;
+    const burnPct = (secondary(caster) || 2) / 100;
+    for (const t of enemies(caster, allUnits)) {
+      deal(ctx, caster, t, rocket, 'MAGICAL');
+      deal(ctx, caster, t, t.maxHp * burnPct, 'TRUE', false);
+    }
+    return;
+  }
+
   switch (behavior) {
     case 'passive_only':
       return;

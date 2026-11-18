@@ -16,6 +16,7 @@ import {
   XP_REQUIRED_BY_LEVEL,
 } from './GameData';
 import { PoolParticipant, SharedPoolManager } from './SharedPoolManager';
+import type { MutantVariant, SocialiteSpotlight } from './set6/Set6MatchState';
 
 export type AIPersona =
   | 'HYPER_ROLLER'
@@ -79,8 +80,12 @@ export class Participant implements PoolParticipant {
   public loseStreak: number = 0;
 
   public goblinVaultStacks: number = 0;
-  /** 요들 군주(YORDLE_LORD) 베이가 1회 스폰되었는지 (Set 6 스텁) */
+  /** 요들 군주(YORDLE_LORD) 베이가 1회 스폰되었는지 */
   public yordleLordVeigarSpawned: boolean = false;
+  /** Set 6 Mutant: 이 플레이어 판 variant (매 게임 1종). */
+  public set6MutantVariant: MutantVariant | null = null;
+  /** Set 6 Socialite spotlight board coords (prep phase). */
+  public socialiteSpotlights: SocialiteSpotlight[] = [];
 
   public bench: (UnitInstance | null)[];
   public board: (UnitInstance | null)[][];

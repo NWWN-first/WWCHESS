@@ -124,6 +124,12 @@ export interface CombatUnit {
   /** Set 6 Kog'Maw Barrage end (combat elapsed ms). */
   set6KogmawBarrageUntilMs?: number;
   set6KogmawOnHitPct?: number;
+  set6MutantVariant?: string;
+  set6MutantAdrenaline?: boolean;
+  set6SocialiteManaPerAttack?: number;
+  set6Colossus?: boolean;
+  set6InnovatorSummon?: boolean;
+  set6ScrapTransformed?: boolean;
 }
 
 /**

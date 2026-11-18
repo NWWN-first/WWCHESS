@@ -19,6 +19,7 @@ import { Participant } from './Participant';
 import { RankManager, RankUpdateResult } from './RankManager';
 import { SharedPoolManager } from './SharedPoolManager';
 import { SynergyEngine } from './SynergyEngine';
+import { initParticipantSet6MatchState, tryYordleBenchSpawn } from './set6/Set6RoundTraits';
 
 export type GamePhase =
   | 'AUGMENT_PHASE'
@@ -252,6 +253,7 @@ export class GameLoopManager {
       }
 
       this.sharedPool.drawShopForParticipant(p);
+      initParticipantSet6MatchState(p);
     }
 
     this.pushBannerNotification(
@@ -1165,6 +1167,7 @@ export class GameLoopManager {
           }
         }
       }
+      tryYordleBenchSpawn(participant, this.sharedPool, isCreepMatch);
       this.tryYordleLordSummon(participant);
     }
   }
@@ -1218,7 +1221,7 @@ export class GameLoopManager {
     participant.bench[benchIdx] = Participant.createUnitInstance('u5_veigar', 1);
     participant.yordleLordVeigarSpawned = true;
     participant.lastActionMessage =
-      '🏰 [요들 군주] 모든 요들 3★ — 베이가 벤치에 소환되었습니다! (기믹 스텁)';
+      '🏰 [요들 군주] 모든 요들 3★ — 베이가 벤치에 소환되었습니다!';
   }
 
   /**

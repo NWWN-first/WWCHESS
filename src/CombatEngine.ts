@@ -12,6 +12,8 @@ import {
   SkillRegistry,
 } from './SkillRegistry';
 import { ActiveSynergyState, SynergyEngine } from './SynergyEngine';
+import { Set6TraitCombat } from './set6/Set6TraitCombat';
+import { defaultSocialiteSpotlights } from './set6/Set6MatchState';
 
 export interface CombatSummary {
   winner: 'HOME' | 'AWAY' | 'DRAW';
@@ -48,6 +50,7 @@ export class CombatEngine implements SkillCombatContext {
 
   private homeParticipant: Participant | null = null;
   private awayParticipant: Participant | null = null;
+  private readonly set6TraitCombat = new Set6TraitCombat();
   private homeSynergies: Map<TraitId, ActiveSynergyState> = new Map();
   private awaySynergies: Map<TraitId, ActiveSynergyState> = new Map();
 
@@ -87,6 +90,21 @@ export class CombatEngine implements SkillCombatContext {
     this.awayParticipant = away;
     this.homeSynergies = SynergyEngine.getActiveSynergyMap(home);
     this.awaySynergies = SynergyEngine.getActiveSynergyMap(away);
+    this.set6TraitCombat.homeAcademyStacks = 0;
+    this.set6TraitCombat.awayAcademyStacks = 0;
+
+    if (home.socialiteSpotlights.length === 0) {
+      const sc = this.homeSynergies.get('SOCIALITE')?.count ?? 0;
+      if (sc > 0) {
+        home.socialiteSpotlights = defaultSocialiteSpotlights(sc);
+      }
+    }
+    if (away.socialiteSpotlights.length === 0) {
+      const sc = this.awaySynergies.get('SOCIALITE')?.count ?? 0;
+      if (sc > 0) {
+        away.socialiteSpotlights = defaultSocialiteSpotlights(sc);
+      }
+    }
 
     // 1. HOME(아군) 기물 깊은 복사 및 배치 (4~7행, 0~6열)
     for (let r = 0; r < Participant.BOARD_ROWS; r++) {
@@ -101,7 +119,9 @@ export class CombatEngine implements SkillCombatContext {
           combatRow,
           combatCol,
           home,
-          this.homeSynergies
+          this.homeSynergies,
+          r,
+          c
         );
         this.units.push(cloned);
       }
@@ -120,7 +140,9 @@ export class CombatEngine implements SkillCombatContext {
           combatRow,
           combatCol,
           away,
-          this.awaySynergies
+          this.awaySynergies,
+          r,
+          c
         );
         this.units.push(cloned);
       }
@@ -129,6 +151,8 @@ export class CombatEngine implements SkillCombatContext {
     // 3. 개전 특수 효과 발동 (신성 제국 보호막, 용족 브레스, 그림자 암살자 후방 도약, 5코 3성 골드투스 개전 권능)
     this.triggerCombatStartEffects('HOME', this.homeSynergies);
     this.triggerCombatStartEffects('AWAY', this.awaySynergies);
+    this.applySet6TraitCombatStart('HOME', this.homeSynergies, home);
+    this.applySet6TraitCombatStart('AWAY', this.awaySynergies, away);
 
     // 4. 개전 직후 이미 한쪽이 전멸했는지 확인
     this.checkCombatEndCondition();
@@ -207,7 +231,9 @@ export class CombatEngine implements SkillCombatContext {
     row: number,
     col: number,
     owner: Participant,
-    synergyMap: Map<TraitId, ActiveSynergyState>
+    synergyMap: Map<TraitId, ActiveSynergyState>,
+    boardRow: number,
+    boardCol: number
   ): CombatUnit {
     const baseMoveIntervalMs = this.computeCharacteristicMoveIntervalMs(source);
     // 개전 직후 기물마다 자연스러운 출발 차이를 두어 기계적인 동시 이동을 방지
@@ -496,7 +522,98 @@ export class CombatEngine implements SkillCombatContext {
       cu.ccDurationReduction = paladin.ccDurationReduction;
     }
 
+    this.set6TraitCombat.applyPreCombatUnitBonuses(
+      cu,
+      owner,
+      synergyMap,
+      boardRow,
+      boardCol
+    );
+
     return cu;
+  }
+
+  private createInnovatorSummon(
+    team: CombatTeam,
+    cfg: { name: string; hp: number; atk: number; row: number; col: number }
+  ): CombatUnit {
+    return {
+      instanceId: `${team}_innovator_${cfg.name}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
+      unitId: 'set6_innovator_mech',
+      name: cfg.name,
+      team,
+      cost: 1,
+      starLevel: 1,
+      traits: [],
+      icon: '🔧',
+      items: [],
+      row: cfg.row,
+      col: cfg.col,
+      maxHp: cfg.hp,
+      currentHp: cfg.hp,
+      shield: 0,
+      atk: cfg.atk,
+      baseAtk: cfg.atk,
+      def: 25,
+      baseDef: 25,
+      atkSpeed: 0.55,
+      baseAtkSpeed: 0.55,
+      range: 1,
+      startMana: 0,
+      maxMana: 0,
+      currentMana: 0,
+      spellPower: 1,
+      critChance: 0.1,
+      critDamage: 1.4,
+      omnivamp: 0,
+      enableSkillCrit: false,
+      trueDamageBonusRatio: 0,
+      damageReductionRatio: 0,
+      ccDurationReduction: 0,
+      stunTimerMs: 0,
+      manaLockTimerMs: 0,
+      attackCooldownMs: 600,
+      baseMoveIntervalMs: 520,
+      moveCooldownMs: 80,
+      basicAttackCount: 0,
+      titansStacks: 0,
+      berserkTriggered: false,
+      bloodthirsterTriggered: false,
+      protectorsVowTriggered: false,
+      hasReviveAvailable: false,
+      isReviving: false,
+      reviveTimerMs: 0,
+      reviveHpRatio: 0,
+      reviveBonusAtkSpeed: 0,
+      ownerGold: 0,
+      totalDamageDealt: 0,
+      set6InnovatorSummon: true,
+    };
+  }
+
+  private applySet6TraitCombatStart(
+    team: CombatTeam,
+    synergyMap: Map<TraitId, ActiveSynergyState>,
+    owner: Participant
+  ): void {
+    const teamUnits = this.units.filter((u) => u.team === team && u.currentHp > 0);
+    const enemyUnits = this.units.filter((u) => u.team !== team && u.currentHp > 0);
+
+    this.set6TraitCombat.applyScrapEffects(teamUnits, synergyMap, (cu, amt) => {
+      this.addShield(cu, cu, amt);
+    });
+
+    this.set6TraitCombat.spawnInnovatorMechs(team, synergyMap, teamUnits, (cfg) =>
+      this.createInnovatorSummon(team, cfg)
+    ).forEach((s) => this.units.push(s));
+
+    this.set6TraitCombat.applyEnforcerCombatStart(
+      team,
+      synergyMap,
+      teamUnits,
+      enemyUnits,
+      (source, target, ms) => this.applyStun(source, target, ms)
+    );
   }
 
   /**
@@ -755,7 +872,9 @@ export class CombatEngine implements SkillCombatContext {
 
     for (const u of this.units) {
       if (u.currentHp > 0 || u.isReviving) {
-        occupiedTiles.add(`${u.row},${u.col}`);
+        for (const key of Set6TraitCombat.occupiedTileKeys(u)) {
+          occupiedTiles.add(key);
+        }
       }
     }
 
@@ -944,6 +1063,18 @@ export class CombatEngine implements SkillCombatContext {
     // SkillRegistry 전략 핸들러 실행
     SkillRegistry.executeSkill(unit, target, this.units, this);
 
+    const synergyMap =
+      unit.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
+    this.set6TraitCombat.onAcademySkillCast(unit.team, synergyMap);
+    this.set6TraitCombat.applyAcademyOnCast(
+      unit.team,
+      this.units.filter((u) => u.team === unit.team && u.currentHp > 0),
+      synergyMap
+    );
+    if (unit.set6MutantAdrenaline) {
+      unit.atkSpeed = Number(Math.min(5, unit.atkSpeed * 1.35).toFixed(3));
+    }
+
     const owner = unit.team === 'HOME' ? this.homeParticipant : this.awayParticipant;
 
     // [영웅] 검기 투척수 가렌: 전장 관통 십자 칼바람 발사 (일직선상 모든 적 2.2배 강타)
@@ -1007,8 +1138,6 @@ export class CombatEngine implements SkillCombatContext {
     }
 
     // 대마법사(ARCHMAGE) 시너지 활성화 시: 스킬 시전할 때 체력이 가장 낮은 적에게 연쇄 번개 추가 낙하!
-    const synergyMap =
-      unit.team === 'HOME' ? this.homeSynergies : this.awaySynergies;
     const archmageEffect = synergyMap.get('ARCANIST')?.activeEffect;
     if (
       archmageEffect &&
@@ -1123,7 +1252,8 @@ export class CombatEngine implements SkillCombatContext {
       }
     }
 
-    this.grantMana(attacker, 10 + arcaneBonus + shojinBonus);
+    const socialiteMana = attacker.set6SocialiteManaPerAttack ?? 0;
+    this.grantMana(attacker, 10 + arcaneBonus + shojinBonus + socialiteMana);
     this.incrementTitansResolve(attacker);
 
     // 3. 광전사(BERSERKER) 광폭화 중 스플래시 피해 처리
