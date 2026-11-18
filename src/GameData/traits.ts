@@ -44,6 +44,22 @@ export interface TraitEffectTier {
   ccDurationReduction?: number;
   holyRadianceDps?: number;
   roundBonusGold?: number;
+  teamMaxHpRatio?: number;
+  bonusAtkSpeed?: number;
+  magicDamageReduction?: number;
+  dodgeChance?: number;
+  imperialDamageBonus?: number;
+  sniperDamagePerHex?: number;
+  sniperDamageCap?: number;
+  twinShotProcChance?: number;
+  twinShotSecondShotRatio?: number;
+  chemtechDamageReduction?: number;
+  chemtechRegenPerSec?: number;
+  chemtechBurstDurationMs?: number;
+  chemtechAtkSpeedBonus?: number;
+  enchanterHealShieldMult?: number;
+  challengerOnKillAsMult?: number;
+  challengerOnKillDurationMs?: number;
 }
 
 export interface TraitDefinition {
@@ -71,19 +87,19 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     thresholds: [2, 4, 6],
     description: 'TFT Set 6 고물상 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-            {
-                  "threshold": 2,
-                  "label": "(2) Set 6 — 엔진 스텁 (카운트만)"
-            },
-            {
-                  "threshold": 4,
-                  "label": "(4) Set 6 — 엔진 스텁 (카운트만)"
-            },
-            {
-                  "threshold": 6,
-                  "label": "(6) Set 6 — 엔진 스텁 (카운트만)"
-            }
-      ],
+      {
+        threshold: 2,
+        label: '(2) 착용 아이템당 실드 3% (최대 30%)',
+      },
+      {
+        threshold: 4,
+        label: '(4) 5% (최대 50%) + 고물상 DEF +15',
+      },
+      {
+        threshold: 6,
+        label: '(6) 8% (최대 80%) + 임시 변환 2슬롯',
+      },
+    ],
   },
   MUTANT: {
     id: 'MUTANT',
@@ -119,26 +135,29 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     thresholds: [3, 5, 7],
     description: 'TFT Set 6 범죄조직 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-            {
-                  "threshold": 3,
-                  "label": "(3) DEF/MR/흡혈",
-                  "bonusDef": 25,
-                  "omnivamp": 0.08
-            },
-            {
-                  "threshold": 5,
-                  "label": "(5) 강화",
-                  "bonusDef": 50,
-                  "omnivamp": 0.14
-            },
-            {
-                  "threshold": 7,
-                  "label": "(7) 개전 8초 2배",
-                  "bonusDef": 50,
-                  "omnivamp": 0.14,
-                  "damageReductionFirst8s": 0.12
-            }
-      ],
+      {
+        threshold: 3,
+        label: '(3) DEF +25, 마법 피감 12%, 흡혈 8%',
+        bonusDef: 25,
+        omnivamp: 0.08,
+        magicDamageReduction: 0.12,
+      },
+      {
+        threshold: 5,
+        label: '(5) DEF +50, 마법 피감 22%, 흡혈 14%',
+        bonusDef: 50,
+        omnivamp: 0.14,
+        magicDamageReduction: 0.22,
+      },
+      {
+        threshold: 7,
+        label: '(7) 개전 8초 동안 위 효과 2배',
+        bonusDef: 50,
+        omnivamp: 0.14,
+        magicDamageReduction: 0.22,
+        damageReductionFirst8s: 0.22,
+      },
+    ],
   },
   SOCIALITE: {
     id: 'SOCIALITE',
@@ -267,15 +286,17 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     thresholds: [3, 6],
     description: 'TFT Set 6 요들 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-            {
-                  "threshold": 3,
-                  "label": "(3) Set 6 — 엔진 스텁 (카운트만)"
-            },
-            {
-                  "threshold": 6,
-                  "label": "(6) Set 6 — 엔진 스텁 (카운트만)"
-            }
-      ],
+      {
+        threshold: 3,
+        label: '(3) 요들 회피 25%',
+        dodgeChance: 0.25,
+      },
+      {
+        threshold: 6,
+        label: '(6) 회피 40% + 최대 마나 -10',
+        dodgeChance: 0.4,
+      },
+    ],
   },
   IMPERIAL: {
     id: 'IMPERIAL',
@@ -287,15 +308,17 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     thresholds: [3, 5],
     description: 'TFT Set 6 제국 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-            {
-                  "threshold": 3,
-                  "label": "(3) Set 6 — 엔진 스텁 (카운트만)"
-            },
-            {
-                  "threshold": 5,
-                  "label": "(5) Set 6 — 엔진 스텁 (카운트만)"
-            }
-      ],
+      {
+        threshold: 3,
+        label: '(3) 폭군 피해 +18%',
+        imperialDamageBonus: 0.18,
+      },
+      {
+        threshold: 5,
+        label: '(5) 폭군 피해 +35%',
+        imperialDamageBonus: 0.35,
+      },
+    ],
   },
   ENFORCER: {
     id: 'ENFORCER',
@@ -327,35 +350,39 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     thresholds: [3, 5, 7, 9],
     description: 'TFT Set 6 화학공학 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-            {
-                  "threshold": 3,
-                  "label": "(3) 60% 이하 버스트",
-                  "berserkAtkMultiplier": 1.5,
-                  "berserkAtkSpeedMultiplier": 1.35,
-                  "berserkSplashRatio": 0.3
-            },
-            {
-                  "threshold": 5,
-                  "label": "(5) 단계 상승",
-                  "berserkAtkMultiplier": 1.7,
-                  "berserkAtkSpeedMultiplier": 1.5,
-                  "berserkSplashRatio": 0.45
-            },
-            {
-                  "threshold": 7,
-                  "label": "(7) 단계 상승",
-                  "berserkAtkMultiplier": 2,
-                  "berserkAtkSpeedMultiplier": 1.7,
-                  "berserkSplashRatio": 0.6
-            },
-            {
-                  "threshold": 9,
-                  "label": "(9) 최고 단계",
-                  "berserkAtkMultiplier": 2.3,
-                  "berserkAtkSpeedMultiplier": 1.9,
-                  "berserkSplashRatio": 0.75
-            }
-      ],
+      {
+        threshold: 3,
+        label: '(3) HP≤60%: 피감 15%, AS +30%, 2% HP/s (4초)',
+        chemtechDamageReduction: 0.15,
+        chemtechAtkSpeedBonus: 0.3,
+        chemtechRegenPerSec: 0.02,
+        chemtechBurstDurationMs: 4000,
+      },
+      {
+        threshold: 5,
+        label: '(5) 피감 22%, AS +45%, 3% HP/s (5초)',
+        chemtechDamageReduction: 0.22,
+        chemtechAtkSpeedBonus: 0.45,
+        chemtechRegenPerSec: 0.03,
+        chemtechBurstDurationMs: 5000,
+      },
+      {
+        threshold: 7,
+        label: '(7) 피감 28%, AS +60%, 4% HP/s (5초)',
+        chemtechDamageReduction: 0.28,
+        chemtechAtkSpeedBonus: 0.6,
+        chemtechRegenPerSec: 0.04,
+        chemtechBurstDurationMs: 5000,
+      },
+      {
+        threshold: 9,
+        label: '(9) 피감 35%, AS +80%, 5% HP/s (6초)',
+        chemtechDamageReduction: 0.35,
+        chemtechAtkSpeedBonus: 0.8,
+        chemtechRegenPerSec: 0.05,
+        chemtechBurstDurationMs: 6000,
+      },
+    ],
   },
   SISTER: {
     id: 'SISTER',
@@ -435,27 +462,31 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     thresholds: [2, 3, 4, 5],
     description: 'TFT Set 6 강화술사 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-            {
-                  "threshold": 2,
-                  "label": "(2) 힐/실드 효율",
-                  "healPerAttack": 40
-            },
-            {
-                  "threshold": 3,
-                  "label": "(3) 강화",
-                  "healPerAttack": 80
-            },
-            {
-                  "threshold": 4,
-                  "label": "(4) 강화",
-                  "healPerAttack": 130
-            },
-            {
-                  "threshold": 5,
-                  "label": "(5) 최대",
-                  "healPerAttack": 200
-            }
-      ],
+      {
+        threshold: 2,
+        label: '(2) 팀 마법 피감 10%, 힐/실드 +20%',
+        magicDamageReduction: 0.1,
+        enchanterHealShieldMult: 1.2,
+      },
+      {
+        threshold: 3,
+        label: '(3) 마법 피감 15%, 힐/실드 +35%',
+        magicDamageReduction: 0.15,
+        enchanterHealShieldMult: 1.35,
+      },
+      {
+        threshold: 4,
+        label: '(4) 마법 피감 20%, 힐/실드 +45%',
+        magicDamageReduction: 0.2,
+        enchanterHealShieldMult: 1.45,
+      },
+      {
+        threshold: 5,
+        label: '(5) 마법 피감 25%, 힐/실드 +55%',
+        magicDamageReduction: 0.25,
+        enchanterHealShieldMult: 1.55,
+      },
+    ],
   },
   BODYGUARD: {
     id: 'BODYGUARD',
@@ -503,35 +534,11 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     thresholds: [2, 4, 6, 8],
     description: 'TFT Set 6 난동꾼 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-            {
-                  "threshold": 2,
-                  "label": "(2) 체력 보너스",
-                  "berserkAtkMultiplier": 1.2,
-                  "berserkAtkSpeedMultiplier": 1.1,
-                  "berserkSplashRatio": 0.25
-            },
-            {
-                  "threshold": 4,
-                  "label": "(4) 단계 상승",
-                  "berserkAtkMultiplier": 1.35,
-                  "berserkAtkSpeedMultiplier": 1.2,
-                  "berserkSplashRatio": 0.35
-            },
-            {
-                  "threshold": 6,
-                  "label": "(6) 단계 상승",
-                  "berserkAtkMultiplier": 1.5,
-                  "berserkAtkSpeedMultiplier": 1.35,
-                  "berserkSplashRatio": 0.45
-            },
-            {
-                  "threshold": 8,
-                  "label": "(8) 최고 단계",
-                  "berserkAtkMultiplier": 2.3,
-                  "berserkAtkSpeedMultiplier": 1.9,
-                  "berserkSplashRatio": 0.75
-            }
-      ],
+      { threshold: 2, label: '(2) 팀 maxHP +8%', teamMaxHpRatio: 0.08 },
+      { threshold: 4, label: '(4) 팀 maxHP +13%', teamMaxHpRatio: 0.13 },
+      { threshold: 6, label: '(6) 팀 maxHP +18%', teamMaxHpRatio: 0.18 },
+      { threshold: 8, label: '(8) 팀 maxHP +22%', teamMaxHpRatio: 0.22 },
+    ],
   },
   CHALLENGER: {
     id: 'CHALLENGER',
@@ -543,23 +550,17 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     thresholds: [2, 4, 6, 8],
     description: 'TFT Set 6 도전자 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-            {
-                  "threshold": 2,
-                  "label": "(2) Set 6 — 엔진 스텁 (카운트만)"
-            },
-            {
-                  "threshold": 4,
-                  "label": "(4) Set 6 — 엔진 스텁 (카운트만)"
-            },
-            {
-                  "threshold": 6,
-                  "label": "(6) Set 6 — 엔진 스텁 (카운트만)"
-            },
-            {
-                  "threshold": 8,
-                  "label": "(8) Set 6 — 엔진 스텁 (카운트만)"
-            }
-      ],
+      { threshold: 2, label: '(2) AS +15%', bonusAtkSpeed: 0.15 },
+      { threshold: 4, label: '(4) AS +30%', bonusAtkSpeed: 0.3 },
+      { threshold: 6, label: '(6) AS +40%', bonusAtkSpeed: 0.4 },
+      {
+        threshold: 8,
+        label: '(8) AS +45%, 처치 관여 돌진+AS 2배',
+        bonusAtkSpeed: 0.45,
+        challengerOnKillAsMult: 2,
+        challengerOnKillDurationMs: 2500,
+      },
+    ],
   },
   INNOVATOR: {
     id: 'INNOVATOR',
@@ -627,27 +628,27 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     thresholds: [2, 4, 6, 8],
     description: 'TFT Set 6 비전 마법사 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-            {
-                  "threshold": 2,
-                  "label": "(2) 팀 주문력 +12%",
-                  "spellPowerBonus": 0.12
-            },
-            {
-                  "threshold": 4,
-                  "label": "(4) 팀 주문력 +22%",
-                  "spellPowerBonus": 0.22
-            },
-            {
-                  "threshold": 6,
-                  "label": "(6) 팀 주문력 +35%",
-                  "spellPowerBonus": 0.35
-            },
-            {
-                  "threshold": 8,
-                  "label": "(8) 팀 주문력 +50%",
-                  "spellPowerBonus": 0.5
-            }
-      ],
+      {
+        threshold: 2,
+        label: '(2) 팀 SP +12%, 비전 +15% SP',
+        spellPowerBonus: 0.12,
+      },
+      {
+        threshold: 4,
+        label: '(4) 팀 SP +22%, 비전 +22% SP',
+        spellPowerBonus: 0.22,
+      },
+      {
+        threshold: 6,
+        label: '(6) 팀 SP +35%, 비전 +32% SP',
+        spellPowerBonus: 0.35,
+      },
+      {
+        threshold: 8,
+        label: '(8) 팀 SP +50%, 비전 +40% SP',
+        spellPowerBonus: 0.5,
+      },
+    ],
   },
   TWINSHOT: {
     id: 'TWINSHOT',
@@ -659,22 +660,28 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     thresholds: [2, 4, 6],
     description: 'TFT Set 6 쌍발총 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-            {
-                  "threshold": 2,
-                  "label": "(2) 이중 사격",
-                  "pierceArrowDamageRatio": 0.25
-            },
-            {
-                  "threshold": 4,
-                  "label": "(4) 이중 사격 강화",
-                  "pierceArrowDamageRatio": 0.4
-            },
-            {
-                  "threshold": 6,
-                  "label": "(6) 이중 사격 최대",
-                  "pierceArrowDamageRatio": 0.6
-            }
-      ],
+      {
+        threshold: 2,
+        label: '(2) ATK +10%, 이중 사격 25%',
+        bonusAtkSpeed: 0.1,
+        twinShotProcChance: 0.25,
+        twinShotSecondShotRatio: 0.7,
+      },
+      {
+        threshold: 4,
+        label: '(4) ATK +18%, 이중 사격 40%',
+        bonusAtkSpeed: 0.18,
+        twinShotProcChance: 0.4,
+        twinShotSecondShotRatio: 0.7,
+      },
+      {
+        threshold: 6,
+        label: '(6) ATK +25%, 이중 사격 60%',
+        bonusAtkSpeed: 0.25,
+        twinShotProcChance: 0.6,
+        twinShotSecondShotRatio: 0.7,
+      },
+    ],
   },
   ASSASSIN: {
     id: 'ASSASSIN',
@@ -716,22 +723,28 @@ export const TRAIT_DEFINITIONS: Record<TraitId, TraitDefinition> = {
     thresholds: [2, 4, 6],
     description: 'TFT Set 6 저격수 — 상세 기믹은 후속 PR(T3~T7).',
     effects: [
-            {
-                  "threshold": 2,
-                  "label": "(2) 사거리 +1",
-                  "bonusRange": 1
-            },
-            {
-                  "threshold": 4,
-                  "label": "(4) 사거리 +1",
-                  "bonusRange": 1
-            },
-            {
-                  "threshold": 6,
-                  "label": "(6) 사거리 +2",
-                  "bonusRange": 2
-            }
-      ],
+      {
+        threshold: 2,
+        label: '(2) 사거리 +1, 헥스당 피해 +4% (최대 35%)',
+        bonusRange: 1,
+        sniperDamagePerHex: 0.04,
+        sniperDamageCap: 0.35,
+      },
+      {
+        threshold: 4,
+        label: '(4) 사거리 +1, 헥스당 +7%',
+        bonusRange: 1,
+        sniperDamagePerHex: 0.07,
+        sniperDamageCap: 0.35,
+      },
+      {
+        threshold: 6,
+        label: '(6) 사거리 +2, 헥스당 +11%',
+        bonusRange: 2,
+        sniperDamagePerHex: 0.11,
+        sniperDamageCap: 0.35,
+      },
+    ],
   },
   SCHOLAR: {
     id: 'SCHOLAR',

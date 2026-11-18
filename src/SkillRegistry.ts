@@ -95,6 +95,8 @@ export interface CombatUnit {
   enableSkillCrit: boolean;
   trueDamageBonusRatio: number;
   damageReductionRatio: number;
+  magicDamageReduction: number;
+  dodgeChance: number;
   ccDurationReduction: number;
 
   stunTimerMs: number;
@@ -118,6 +120,8 @@ export interface CombatUnit {
 
   ownerGold: number;
   totalDamageDealt: number;
+  /** Prep-phase instance id (without team prefix). */
+  sourceInstanceId: string;
 
   /** Set 6 Jayce: true = hammer melee form. */
   set6JayceHammerForm?: boolean;
@@ -130,6 +134,13 @@ export interface CombatUnit {
   set6Colossus?: boolean;
   set6InnovatorSummon?: boolean;
   set6ScrapTransformed?: boolean;
+  set6ScrapOriginalItems?: ItemId[];
+  set6ImperialTyrant?: boolean;
+  set6SyndicateAmpUntilMs?: number;
+  set6SyndicateCombatDr?: number;
+  set6ChemtechBurstUntilMs?: number;
+  set6ChemtechRegenPerSec?: number;
+  set6ChallengerAsBoostUntilMs?: number;
 }
 
 /**

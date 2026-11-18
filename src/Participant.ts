@@ -89,6 +89,8 @@ export class Participant implements PoolParticipant {
   public set6MutantVariant: MutantVariant | null = null;
   /** Set 6 Socialite spotlight board coords (prep phase). */
   public socialiteSpotlights: SocialiteSpotlight[] = [];
+  /** Set 6 Imperial: board instanceId of prior fight top-damage imperial unit. */
+  public set6ImperialTyrantInstanceId: string | null = null;
 
   public bench: (UnitInstance | null)[];
   public board: (UnitInstance | null)[][];

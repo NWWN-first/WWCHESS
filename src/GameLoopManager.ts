@@ -961,12 +961,14 @@ export class GameLoopManager {
         if (!pairing.engine.isFinished) {
           pairing.engine.simulateToCompletion();
         }
+        pairing.engine.persistSet6PostCombatState(pairing.home, pairing.away);
         summary = pairing.engine.getCombatSummary(this.stage);
       } else {
         // 백업: 엔진이 없었던 경우 즉시 시뮬레이션
         const bgEngine = new CombatEngine();
         bgEngine.initCombat(pairing.home, pairing.away);
         bgEngine.simulateToCompletion();
+        bgEngine.persistSet6PostCombatState(pairing.home, pairing.away);
         summary = bgEngine.getCombatSummary(this.stage);
       }
 
