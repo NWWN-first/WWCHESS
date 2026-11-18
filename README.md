@@ -16,6 +16,19 @@ npm run dev
 
 기본 주소: `http://localhost:5173`
 
+### 브라우저 봇 매크로 ONNX
+
+웹·WebView에서는 `public/models/wwchess_bot.onnx`를 `onnxruntime-web`으로 로드합니다. 세션이 준비되면 **모든 봇** 매크로가 ONNX 추론으로 갱신되고, 로드 실패·대기 중에는 인라인 `predictSync`가 그대로 사용됩니다.
+
+| 환경 변수 | 의미 |
+|-----------|------|
+| *(미설정)* | 브라우저에서 ONNX 매크로 사용 (기본) |
+| `VITE_USE_ONNX_BOT=0` | 브라우저에서도 SYNC만 (`preferOnnxBackend` 봇만 예외적으로 ONNX 재시도) |
+
+```bash
+VITE_USE_ONNX_BOT=0 npm run dev   # 디버그: SYNC 고정
+```
+
 ## 프로덕션 빌드
 
 ```bash

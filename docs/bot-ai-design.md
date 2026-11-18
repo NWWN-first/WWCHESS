@@ -6,14 +6,14 @@
 
 | 환경 | 동작 |
 |------|------|
-| 브라우저(WebView) | `NeuralBotEngine.tryInitOnnx()` → 세션 준비 시 `predictONNX`, 실패·대기 중 `predictSync` |
+| 브라우저(WebView) | `ensureBrowserOnnxReady()` 선로딩 → 세션 준비 시 전 봇 `predictONNX` 매크로 갱신 (`VITE_USE_ONNX_BOT=0`이면 페르소나 일부만), 실패·대기 중 `predictSync` |
 | Node 시뮬 (기본) | `window` 없음 → `predictSync` (가중치는 ONNX export와 동일) |
 | Node 시뮬 (`USE_ONNX_SIM=1`) | 시작 시 ONNX·SYNC 패리티 검증 → 게임 본문 SYNC |
 
 `AIBotController.runNeuralInferenceForBrain()`:
 
 1. 봇별 `decisionSeed`·`policyTemperature`·`logitBias(페르소나)`로 **동일 상태도 다른 매크로** 샘플링
-2. `preferOnnxBackend` 봇은 ONNX 결과가 오면 매크로·골드 하한을 **재적용**
+2. 브라우저 기본: ONNX 결과가 오면 **전 봇** 매크로·골드 하한 재적용 (`VITE_USE_ONNX_BOT=0`일 때만 `preferOnnxBackend` 봇)
 3. **게임당 1회** DevTools: `[WWCHESS AI] … inference backend: ONNX|SYNC`
 
 ## 페르소나 배정 (로비)
