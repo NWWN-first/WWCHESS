@@ -7,3 +7,4 @@ export * from './units';
 export * from './items';
 export * from './augments';
 export * from './contentStats';
+export * from './tierLadder';
