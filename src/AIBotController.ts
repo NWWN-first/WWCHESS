@@ -1093,28 +1093,7 @@ export class AIBotController {
     const ownedLocations = bot.getAllUnitLocations();
     const ownedUnitIds = new Set(ownedLocations.map((l) => l.unit.unitId));
 
-    // 1. 영웅 증강 (Hero Augment) 정밀 평가
-    if (aug.category === 'HERO' && aug.heroUnitId) {
-      const heroTemplate = UNIT_TEMPLATES[aug.heroUnitId];
-      const heroUnit = ownedLocations.find((l) => l.unit.unitId === aug.heroUnitId)?.unit;
-      const ownsHero = !!heroUnit;
-      const isTwoStar = heroUnit && heroUnit.starLevel >= 2;
-      const matchesTrait =
-        heroTemplate &&
-        (heroTemplate.traits.includes(brain.targetTrait) ||
-          heroTemplate.traits.includes(brain.secondaryTrait));
-
-      if (ownsHero) {
-        score += 85;
-        if (isTwoStar) score += 35; // 이미 2성이면 3성 스파이크 각이 매우 높음!
-      } else if (matchesTrait) {
-        score += 65;
-      } else {
-        score -= 25;
-      }
-    }
-
-    // 2. 시너지 문장 / 왕관 증강 평가 (8~9단계 프리즘 필수 트리거)
+    // 1. 시너지 문장 / 왕관 증강 평가 (8~9단계 프리즘 필수 트리거)
     if (aug.bonusTrait) {
       if (aug.bonusTrait === brain.targetTrait) {
         score += 95;
@@ -1140,26 +1119,21 @@ export class AIBotController {
 
     // 아이템 관련 증강 여부
     const isItemAug =
-      aug.effectKey === 'ITEM_PACK_1' ||
-      aug.effectKey === 'SMALL_PACK' ||
-      aug.effectKey === 'USEFUL_METAL' ||
-      aug.effectKey === 'THIEF_GLOVES' ||
-      aug.effectKey === 'RADIANT_RELICS' ||
-      aug.effectKey === 'LIVING_FORGE' ||
-      aug.effectKey === 'MAKE_WAY';
+      aug.effectKey === 'ITEM_GRAB_BAG_1' ||
+      aug.effectKey === 'ITEM_GRAB_BAG_2' ||
+      aug.effectKey === 'SALVAGE_BIN' ||
+      aug.effectKey === 'BAND_OF_THIEVES' ||
+      aug.effectKey === 'BINARY_AIRDROP';
 
     if (isCrisis) {
       // 즉발 전투력/체력 증강에 대폭 가산점!
       if (
-        aug.effectKey === 'TINY_TITANS' ||
-        aug.effectKey === 'CELESTIAL_BLESSING' ||
+        aug.effectKey.startsWith('CELESTIAL_BLESSING') ||
         aug.effectKey === 'ASCENSION' ||
-        aug.effectKey === 'INCOMPLETE_ASCENSION' ||
-        aug.effectKey === 'FINAL_ASCENSION' ||
-        aug.effectKey === 'GROUP_HUG' ||
-        aug.effectKey === 'STAND_UNITED' ||
-        aug.effectKey === 'STAND_UNITED_1' ||
-        aug.effectKey === 'LAST_STAND'
+        aug.effectKey.startsWith('STAND_UNITED') ||
+        aug.effectKey.startsWith('BUILT_DIFFERENT') ||
+        aug.effectKey.startsWith('EXILES') ||
+        aug.effectKey === 'FIRST_AID_KIT'
       ) {
         score += 90;
       } else if (aug.category === 'COMBAT') {
@@ -1168,12 +1142,10 @@ export class AIBotController {
 
       // 장기적 이자/골드 증강은 죽기 전에 쓸모없으므로 강력 감점!
       if (
-        aug.effectKey === 'HEDGE_FUND' ||
-        aug.effectKey === 'DIABOLIC_FINANCE' ||
         aug.effectKey === 'LEVEL_UP' ||
         aug.effectKey === 'RICH_GET_RICHER' ||
-        aug.effectKey === 'CAPITAL_GAIN_1' ||
-        aug.effectKey === 'GOLDEN_EGG'
+        aug.effectKey === 'WINDFALL' ||
+        aug.effectKey === 'HIGH_ROLLER'
       ) {
         score -= 70;
       } else if (aug.category === 'ECONOMY') {
@@ -1184,9 +1156,9 @@ export class AIBotController {
       if (
         aug.category === 'ECONOMY' ||
         aug.effectKey === 'LEVEL_UP' ||
-        aug.effectKey === 'DIABOLIC_FINANCE' ||
-        aug.effectKey === 'HEDGE_FUND' ||
-        aug.effectKey === 'RICH_GET_RICHER'
+        aug.effectKey === 'RICH_GET_RICHER' ||
+        aug.effectKey === 'WISE_SPENDING' ||
+        aug.effectKey === 'MARCH_OF_PROGRESS'
       ) {
         score += 55;
       }
@@ -1195,13 +1167,11 @@ export class AIBotController {
     // 4. 페르소나 및 덱 상황별 가치평가
     const isRerollAug =
       aug.effectKey === 'GOLDEN_TICKET' ||
-      aug.effectKey === 'CLEARANCE_SALE' ||
-      aug.effectKey === 'PANDORA_BENCH' ||
-      aug.effectKey === 'FATED_DUPLICATION' ||
+      aug.effectKey === 'PANDORA_S_ITEMS' ||
       aug.effectKey === 'TRADE_SECTOR' ||
-      aug.effectKey === 'REROLL_DAY' ||
       aug.effectKey === 'HYPER_ROLL' ||
-      aug.effectKey === 'PRISMATIC_TICKET';
+      aug.effectKey === 'CALCULATED_LOSS' ||
+      aug.effectKey === 'WISE_SPENDING';
 
     if (brain.persona === 'HYPER_ROLLER' || brain.persona === 'LOW_COST_REROLLER') {
       if (threeStarCount >= 2) {
@@ -1221,8 +1191,8 @@ export class AIBotController {
         if (
           aug.category === 'ECONOMY' ||
           aug.effectKey === 'LEVEL_UP' ||
-          aug.effectKey === 'SILVER_SPOON' ||
-          aug.effectKey === 'HEDGE_FUND'
+          aug.effectKey === 'CLEAR_MIND' ||
+          aug.effectKey === 'MARCH_OF_PROGRESS'
         ) {
           score += 70;
         }
@@ -1231,8 +1201,9 @@ export class AIBotController {
       }
     } else if (brain.persona === 'MERCENARY_GAMBLER') {
       if (
-        aug.effectKey === 'GOBLIN_CROWN' ||
-        aug.effectKey === 'DIABOLIC_FINANCE' ||
+        aug.effectKey === 'MERCENARY_HEART' ||
+        aug.effectKey === 'MERCENARY_CREST' ||
+        aug.effectKey === 'MERCENARY_SOUL' ||
         aug.effectKey === 'CALCULATED_LOSS' ||
         aug.category === 'ECONOMY'
       ) {
@@ -1276,11 +1247,6 @@ export class AIBotController {
         bestScore = score;
         bestAug = aug;
       }
-    }
-
-    // 영웅 증강을 선택했다면 두뇌에 영웅 타겟 등록 (3성 올인 지시)
-    if (bestAug.category === 'HERO' && bestAug.heroUnitId) {
-      brain.heroTargetUnitId = bestAug.heroUnitId;
     }
 
     bot.applyAugment(bestAug.id, sharedPool);
