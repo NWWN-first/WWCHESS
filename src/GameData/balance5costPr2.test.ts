@@ -13,11 +13,13 @@ const PR2_UNITS = [
 ] as const;
 
 describe('5-cost PR2 balance (remaining 7 legends)', () => {
-  it('leaves u5_goldtooth untouched from PR1', () => {
+  it('keeps u5_goldtooth at tier-ladder anchor ⑦ retune (not PR2 scope)', () => {
     const gt = UNIT_TEMPLATES.u5_goldtooth;
     expect(gt.stats.startMana).toBe(35);
     expect(gt.stats.maxMana).toBe(82);
-    expect(gt.skill.baseValueByStar[1]).toBe(990);
+    expect(gt.skill.baseValueByStar[1]).toBe(1475);
+    expect(gt.stats.hp).toBe(1780);
+    expect(gt.stats.atk).toBe(118);
   });
 
   it.each([
@@ -54,6 +56,6 @@ describe('5-cost PR2 balance (remaining 7 legends)', () => {
     for (const id of PR2_UNITS) {
       expect(id).not.toBe('u5_goldtooth');
     }
-    expect(UNIT_TEMPLATES.u5_goldtooth.skill.baseValueByStar[1]).toBe(990);
+    expect(UNIT_TEMPLATES.u5_goldtooth.skill.baseValueByStar[1]).toBe(1475);
   });
 });

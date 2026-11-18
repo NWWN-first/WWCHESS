@@ -14,7 +14,7 @@ describe('5-cost PR1 balance (v2)', () => {
     const gt = UNIT_TEMPLATES.u5_goldtooth;
     expect(gt.stats.startMana).toBe(35);
     expect(gt.stats.maxMana).toBe(82);
-    expect(gt.skill.baseValueByStar[1]).toBe(990);
+    expect(gt.skill.baseValueByStar[1]).toBe(1475);
     expect(gt.skill.baseValueByStar[0]).toBe(480);
     expect(gt.skill.baseValueByStar[2]).toBe(99999);
   });
