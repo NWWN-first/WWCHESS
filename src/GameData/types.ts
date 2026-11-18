@@ -77,6 +77,7 @@ export type SkillType =
   | 'EXECUTE_RESET'
   | 'APOCALYPSE_BREATH'
   | 'GOLDEN_VAULT_BOMBARD'
-  | 'JUDGMENT_BARRAGE';
+  | 'JUDGMENT_BARRAGE'
+  | 'FURYHORN_STORM';
 
 export type TraitKind = 'NORMAL' | 'UNIQUE' | 'PAIR' | 'CHAMPION_ONLY';

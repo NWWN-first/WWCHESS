@@ -5,7 +5,6 @@ import {
   ItemId,
   SkillType,
   StarLevel,
-  STAR_STAT_MULTIPLIER,
   TraitId,
   UNIT_TEMPLATES,
 } from './GameData';
@@ -171,27 +170,19 @@ function chebyshevDist(
   return HexGridMath.hexDistance(r1, c1, r2, c2);
 }
 
-function getStarSkillMult(caster: CombatUnit): number {
-  const template = UNIT_TEMPLATES[caster.unitId];
-  if (!template) return 1;
-  const star = Math.max(1, Math.min(3, caster.starLevel)) as StarLevel;
-  return STAR_STAT_MULTIPLIER[template.cost][star].skillMult;
-}
-
 function getSkillPrimaryValue(caster: CombatUnit): number {
   const template = UNIT_TEMPLATES[caster.unitId];
   if (!template) return 200;
   const idx = Math.max(0, Math.min(2, caster.starLevel - 1));
-  return (
-    template.skill.baseValueByStar[idx] * caster.spellPower * getStarSkillMult(caster)
-  );
+  // Set 6: per-star coefficients already live in baseValueByStar (lolchess tables).
+  return template.skill.baseValueByStar[idx] * caster.spellPower;
 }
 
 function getSkillSecondaryValue(caster: CombatUnit): number {
   const template = UNIT_TEMPLATES[caster.unitId];
   if (!template || !template.skill.secondaryValueByStar) return 0;
   const idx = Math.max(0, Math.min(2, caster.starLevel - 1));
-  return template.skill.secondaryValueByStar[idx] * getStarSkillMult(caster);
+  return template.skill.secondaryValueByStar[idx] * caster.spellPower;
 }
 
 // ============================================================================
@@ -203,22 +194,55 @@ const UNIT_SKILL_HANDLERS: Record<string, SkillHandler> = {
    * 1. [1코] 제국 보병 가렌 (u1_garen): 심판의 회전참
    * 주변 1칸 적들에게 물리 피해를 입히고 자신에게 신성 보호막 생성
    */
-  u1_garen: (caster, primaryTarget, allUnits, ctx) => {
-    const damage = getSkillPrimaryValue(caster) + caster.atk * 0.8;
-    const shieldAmount = getSkillSecondaryValue(caster) * caster.spellPower;
+  u1_garen: (caster, primaryTarget, _allUnits, ctx) => {
+    const missingRatio = getSkillPrimaryValue(caster) / 100;
+    const missingBonus = (caster.maxHp - caster.currentHp) * missingRatio;
+    const damage = caster.atk * 2 + missingBonus;
+    ctx.dealDamage(caster, primaryTarget, damage, 'PHYSICAL', caster.enableSkillCrit, true);
+  },
 
-    ctx.addShield(caster, caster, shieldAmount);
-
-    const nearbyEnemies = getLivingEnemies(caster, allUnits).filter(
+  u1_darius: (caster, primaryTarget, allUnits, ctx) => {
+    const damage = getSkillPrimaryValue(caster);
+    const healPerHit = getSkillSecondaryValue(caster);
+    const radiusEnemies = getLivingEnemies(caster, allUnits).filter(
       (e) => chebyshevDist(caster.row, caster.col, e.row, e.col) <= 1
     );
-    const targets = nearbyEnemies.length > 0 ? nearbyEnemies : [primaryTarget];
-
+    const targets = radiusEnemies.length > 0 ? radiusEnemies : [primaryTarget];
+    let hits = 0;
     for (const enemy of targets) {
-      if (enemy.currentHp > 0) {
-        ctx.dealDamage(caster, enemy, damage, 'PHYSICAL', caster.enableSkillCrit, true);
-      }
+      if (enemy.currentHp <= 0) continue;
+      ctx.dealDamage(caster, enemy, damage, 'MAGICAL', caster.enableSkillCrit, true);
+      hits += 1;
     }
+    if (hits > 0 && healPerHit > 0) {
+      ctx.healUnit(caster, caster, healPerHit * hits);
+    }
+  },
+
+  u5_veigar: (caster, _primaryTarget, allUnits, ctx) => {
+    const boltDamage = getSkillPrimaryValue(caster);
+    const hornCount = Math.max(1, Math.round(getSkillSecondaryValue(caster) || 20));
+    const enemies = getLivingEnemies(caster, allUnits);
+    if (enemies.length === 0) return;
+    for (let i = 0; i < hornCount; i += 1) {
+      const target = enemies[i % enemies.length];
+      if (target.currentHp <= 0) continue;
+      ctx.dealDamage(caster, target, boltDamage, 'MAGICAL', caster.enableSkillCrit, true);
+    }
+  },
+
+  u5_jayce: (caster, primaryTarget, allUnits, ctx) => {
+    const cleave = getSkillPrimaryValue(caster) + caster.atk * 1.6;
+    const shield = getSkillSecondaryValue(caster) || cleave * 0.8;
+    ctx.addShield(caster, caster, shield);
+    const cone = getLivingEnemies(caster, allUnits).filter(
+      (e) => chebyshevDist(caster.row, caster.col, e.row, e.col) <= 1
+    );
+    const targets = cone.length > 0 ? cone : [primaryTarget];
+    for (const enemy of targets) {
+      ctx.dealDamage(caster, enemy, cleave, 'PHYSICAL', caster.enableSkillCrit, true);
+    }
+    caster.range = caster.range <= 1 ? 4 : 1;
   },
 
   /**
@@ -939,6 +963,7 @@ const SKILL_TYPE_FALLBACK_MAP: Record<SkillType, string> = {
   APOCALYPSE_BREATH: 'u5_ignis',
   GOLDEN_VAULT_BOMBARD: 'u5_goldtooth',
   JUDGMENT_BARRAGE: 'u5_luciel',
+  FURYHORN_STORM: 'u5_veigar',
 };
 
 export class SkillRegistry {

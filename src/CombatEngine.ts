@@ -266,6 +266,12 @@ export class CombatEngine implements SkillCombatContext {
       totalDamageDealt: 0,
     };
 
+    if (cu.unitId === 'u4_jhin') {
+      const jhinAttackSpeed = [0.9, 0.9, 1.4][Math.max(0, cu.starLevel - 1)] ?? 0.9;
+      cu.atkSpeed = jhinAttackSpeed;
+      cu.baseAtkSpeed = jhinAttackSpeed;
+      cu.attackCooldownMs = Math.round(1000 / Math.max(0.2, jhinAttackSpeed));
+    }
 
     // 아이템 고유 패시브(무한의 대검 스킬 치명타) 반영
     for (const itemId of cu.items) {
@@ -1044,6 +1050,32 @@ export class CombatEngine implements SkillCombatContext {
 
     // 1. 기본 물리 공격 피해 적용 (공식: rawAtk * (100 / (100 + targetDef))는 dealDamage 내부에서 수행)
     this.dealDamage(attacker, target, attacker.atk, 'PHYSICAL', true, false);
+
+    const skillTemplate = UNIT_TEMPLATES[attacker.unitId]?.skill;
+    if (skillTemplate) {
+      const starIdx = Math.max(0, Math.min(2, attacker.starLevel - 1));
+      const skillPrimary =
+        skillTemplate.baseValueByStar[starIdx] * attacker.spellPower;
+      const skillSecondary = skillTemplate.secondaryValueByStar?.[starIdx] ?? 0;
+
+      if (attacker.unitId === 'u2_warwick' && attacker.maxMana === 0) {
+        const onHit = target.currentHp * (skillPrimary / 100);
+        this.dealDamage(attacker, target, onHit, 'MAGICAL', false, true);
+        if (skillSecondary > 0) {
+          this.healUnit(attacker, attacker, skillSecondary);
+        }
+      }
+
+      if (attacker.unitId === 'u2_talon' && attacker.maxMana === 0) {
+        if (attacker.basicAttackCount === 1 || attacker.basicAttackCount % 3 === 0) {
+          this.dealDamage(attacker, target, skillPrimary, 'MAGICAL', false, true);
+        }
+      }
+
+      if (attacker.unitId === 'u5_viktor') {
+        target.def = Math.max(5, Math.round(target.def * 0.3));
+      }
+    }
 
     // 2. 공격자 마나 회복: 기본 +10 + 마탑(ARCANE_TOWER) 보너스 + 쇼진의 창(SPEAR_OF_SHOJIN) 보너스
     const synergyMap =
