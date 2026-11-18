@@ -1,0 +1,780 @@
+{
+  "transcript": "/tmp/cursor/cloud-agent-transcripts/2026-11-18T02-20-12Z-87b2/bc-c613bb32-5eab-4307-b100-c2773894cd0c/transcript.json (message ~1078)",
+  "paste_file": "/cursor/stores/bc-c613bb32-5eab-4307-b100-c2773894cd0c/internal/set6-augment-user-paste-extract.txt",
+  "tier_counts_paste_banner": {
+    "SILVER": 57,
+    "GOLD": 49,
+    "PRISMATIC": 43,
+    "TOTAL": 149
+  },
+  "tier_counts_parsed_rows": {
+    "SILVER": 58,
+    "GOLD": 49,
+    "PRISMATIC": 43
+  },
+  "SILVER_general_table": [
+    "Ancient Archives",
+    "Ardent Censer",
+    "Ascension",
+    "Built Different I",
+    "Calculated Loss",
+    "Celestial Blessing I",
+    "Chemical Overload I",
+    "Cutthroat",
+    "Cybernetic Implants I",
+    "Dominance",
+    "Dual Rule",
+    "Duet",
+    "En Garde",
+    "Exiles I",
+    "Featherweights I",
+    "First Aid Kit",
+    "Hyper Roll",
+    "Item Grab Bag I",
+    "Knife’s Edge I",
+    "Lifelong Learning",
+    "Makeshift Armor I",
+    "One For All",
+    "Pandora’s Items",
+    "Phony Frontline",
+    "Pirates",
+    "Runic Shield I",
+    "Scoped Weapons",
+    "Self-Repair",
+    "Sniper’s Nest",
+    "So Small",
+    "Stand Behind Me",
+    "Stand United I",
+    "Thrill of the Hunt I",
+    "Tinker",
+    "Underdogs",
+    "Unstable Evolution",
+    "Weakspot"
+  ],
+  "SILVER_hearts": [
+    "Academy Heart",
+    "Arcanist Heart",
+    "Assassin Heart",
+    "Bodyguard Heart",
+    "Bruiser Heart",
+    "Challenger Heart",
+    "Chemtech Heart",
+    "Clockwork Heart",
+    "Enchanter Heart",
+    "Enforcer Heart",
+    "Imperial Heart",
+    "Innovator Heart",
+    "Mercenary Heart",
+    "Mutant Heart",
+    "Protector Heart",
+    "Scholar Heart",
+    "Scrap Heart",
+    "Sniper Heart",
+    "Socialite Heart",
+    "Syndicate Heart",
+    "Twinshot Heart"
+  ],
+  "SILVER_combined_sorted": [
+    "Academy Heart",
+    "Ancient Archives",
+    "Arcanist Heart",
+    "Ardent Censer",
+    "Ascension",
+    "Assassin Heart",
+    "Bodyguard Heart",
+    "Bruiser Heart",
+    "Built Different I",
+    "Calculated Loss",
+    "Celestial Blessing I",
+    "Challenger Heart",
+    "Chemical Overload I",
+    "Chemtech Heart",
+    "Clockwork Heart",
+    "Cutthroat",
+    "Cybernetic Implants I",
+    "Dominance",
+    "Dual Rule",
+    "Duet",
+    "En Garde",
+    "Enchanter Heart",
+    "Enforcer Heart",
+    "Exiles I",
+    "Featherweights I",
+    "First Aid Kit",
+    "Hyper Roll",
+    "Imperial Heart",
+    "Innovator Heart",
+    "Item Grab Bag I",
+    "Knife’s Edge I",
+    "Lifelong Learning",
+    "Makeshift Armor I",
+    "Mercenary Heart",
+    "Mutant Heart",
+    "One For All",
+    "Pandora’s Items",
+    "Phony Frontline",
+    "Pirates",
+    "Protector Heart",
+    "Runic Shield I",
+    "Scholar Heart",
+    "Scoped Weapons",
+    "Scrap Heart",
+    "Self-Repair",
+    "Sniper Heart",
+    "Sniper’s Nest",
+    "So Small",
+    "Socialite Heart",
+    "Stand Behind Me",
+    "Stand United I",
+    "Syndicate Heart",
+    "Thrill of the Hunt I",
+    "Tinker",
+    "Twinshot Heart",
+    "Underdogs",
+    "Unstable Evolution",
+    "Weakspot"
+  ],
+  "GOLD_general_table": [
+    "All For One",
+    "Armor Plating",
+    "Binary Airdrop",
+    "Broken Stopwatch",
+    "Built Different II",
+    "Celestial Blessing II",
+    "Chemical Overload II",
+    "Clear Mind",
+    "Cram Session",
+    "Cybernetic Implants II",
+    "Exiles II",
+    "Featherweights II",
+    "Gold Reserves",
+    "Instant Injection",
+    "Junkyard",
+    "Knife’s Edge II",
+    "Makeshift Armor II",
+    "Metabolic Accelerator",
+    "Payday",
+    "Rich Get Richer",
+    "Runic Shield II",
+    "Salvage Bin",
+    "Sharpshooter",
+    "Shrug It Off",
+    "Smoke Bomb",
+    "Spell Blade",
+    "Stand United II",
+    "Sunfire Board",
+    "Thrill of the Hunt II",
+    "Titanic Force",
+    "Trade Sector"
+  ],
+  "GOLD_crests": [
+    "Academy Crest",
+    "Arcanist Crest",
+    "Assassin Crest",
+    "Bodyguard Crest",
+    "Bruiser Crest",
+    "Challenger Crest",
+    "Chemtech Crest",
+    "Clockwork Crest",
+    "Imperial Crest",
+    "Mercenary Crest",
+    "Mutant Crest",
+    "Protector Crest",
+    "Scholar Crest",
+    "Scrap Crest",
+    "Sniper Crest",
+    "Syndicate Crest"
+  ],
+  "GOLD_plus_endgame_gold_tier_notes": [
+    "High Roller",
+    "Wise Spending"
+  ],
+  "GOLD_combined_sorted": [
+    "Academy Crest",
+    "All For One",
+    "Arcanist Crest",
+    "Armor Plating",
+    "Assassin Crest",
+    "Binary Airdrop",
+    "Bodyguard Crest",
+    "Broken Stopwatch",
+    "Bruiser Crest",
+    "Built Different II",
+    "Celestial Blessing II",
+    "Challenger Crest",
+    "Chemical Overload II",
+    "Chemtech Crest",
+    "Clear Mind",
+    "Clockwork Crest",
+    "Cram Session",
+    "Cybernetic Implants II",
+    "Exiles II",
+    "Featherweights II",
+    "Gold Reserves",
+    "High Roller",
+    "Imperial Crest",
+    "Instant Injection",
+    "Junkyard",
+    "Knife’s Edge II",
+    "Makeshift Armor II",
+    "Mercenary Crest",
+    "Metabolic Accelerator",
+    "Mutant Crest",
+    "Payday",
+    "Protector Crest",
+    "Rich Get Richer",
+    "Runic Shield II",
+    "Salvage Bin",
+    "Scholar Crest",
+    "Scrap Crest",
+    "Sharpshooter",
+    "Shrug It Off",
+    "Smoke Bomb",
+    "Sniper Crest",
+    "Spell Blade",
+    "Stand United II",
+    "Sunfire Board",
+    "Syndicate Crest",
+    "Thrill of the Hunt II",
+    "Titanic Force",
+    "Trade Sector",
+    "Wise Spending"
+  ],
+  "PRISMATIC_general_table": [
+    "Band of Thieves",
+    "Built Different III",
+    "Celestial Blessing III",
+    "Chemical Overload III",
+    "Cybernetic Implants III",
+    "Exiles III",
+    "Featherweights III",
+    "Golden Ticket",
+    "High End Shopping",
+    "Item Grab Bag II",
+    "Knife’s Edge III",
+    "Level Up!",
+    "Makeshift Armor III",
+    "March of Progress",
+    "New Recruit",
+    "Portable Forge",
+    "Runic Shield III",
+    "Share the Spotlight",
+    "Stand United III",
+    "Thrill of the Hunt III",
+    "Windfall",
+    "Woodland Charm"
+  ],
+  "PRISMATIC_crowns": [
+    "Academy Crown",
+    "Arcanist Crown",
+    "Assassin Crown",
+    "Bodyguard Crown",
+    "Bruiser Crown",
+    "Challenger Crown",
+    "Chemtech Crown",
+    "Imperial Crown",
+    "Mutant Crown",
+    "Protector Crown",
+    "Sniper Crown",
+    "Syndicate Crown"
+  ],
+  "PRISMATIC_souls": [
+    "Clockwork Soul",
+    "Enchanter Soul",
+    "Enforcer Soul",
+    "Innovator Soul",
+    "Mercenary Soul",
+    "Scholar Soul",
+    "Scrap Soul",
+    "Socialite Soul",
+    "Twinshot Soul"
+  ],
+  "PRISMATIC_combined_sorted": [
+    "Academy Crown",
+    "Arcanist Crown",
+    "Assassin Crown",
+    "Band of Thieves",
+    "Bodyguard Crown",
+    "Bruiser Crown",
+    "Built Different III",
+    "Celestial Blessing III",
+    "Challenger Crown",
+    "Chemical Overload III",
+    "Chemtech Crown",
+    "Clockwork Soul",
+    "Cybernetic Implants III",
+    "Enchanter Soul",
+    "Enforcer Soul",
+    "Exiles III",
+    "Featherweights III",
+    "Golden Ticket",
+    "High End Shopping",
+    "Imperial Crown",
+    "Innovator Soul",
+    "Item Grab Bag II",
+    "Knife’s Edge III",
+    "Level Up!",
+    "Makeshift Armor III",
+    "March of Progress",
+    "Mercenary Soul",
+    "Mutant Crown",
+    "New Recruit",
+    "Portable Forge",
+    "Protector Crown",
+    "Runic Shield III",
+    "Scholar Soul",
+    "Scrap Soul",
+    "Share the Spotlight",
+    "Sniper Crown",
+    "Socialite Soul",
+    "Stand United III",
+    "Syndicate Crown",
+    "Thrill of the Hunt III",
+    "Twinshot Soul",
+    "Windfall",
+    "Woodland Charm"
+  ],
+  "trait_augments_table_verbatim": [
+    {
+      "trait": "Academy",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Academy Heart",
+        "champion_grant": null,
+        "note": "아카데미 +1"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Academy Crest",
+        "champion_grant": null,
+        "note": "엠블럼"
+      },
+      "prism": {
+        "type": "Crown",
+        "name": "Academy Crown",
+        "note": "Crown: 엠블럼 2"
+      }
+    },
+    {
+      "trait": "Arcanist",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Arcanist Heart",
+        "champion_grant": null,
+        "note": "+1"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Arcanist Crest",
+        "champion_grant": "Twisted Fate",
+        "note": "엠블럼 (+Twisted Fate)"
+      },
+      "prism": {
+        "type": "Crown",
+        "name": "Arcanist Crown",
+        "note": "Crown: 엠블럼 2"
+      }
+    },
+    {
+      "trait": "Assassin",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Assassin Heart",
+        "champion_grant": "Talon",
+        "note": "+1 (+Talon)"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Assassin Crest",
+        "champion_grant": "Ekko",
+        "note": "엠블럼 (+Ekko)"
+      },
+      "prism": {
+        "type": "Crown",
+        "name": "Assassin Crown",
+        "note": "Crown: 엠블럼 2"
+      }
+    },
+    {
+      "trait": "Bodyguard",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Bodyguard Heart",
+        "champion_grant": "Leona",
+        "note": "+1 (+Leona)"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Bodyguard Crest",
+        "champion_grant": "Leona",
+        "note": "엠블럼 (+Leona)"
+      },
+      "prism": {
+        "type": "Crown",
+        "name": "Bodyguard Crown",
+        "note": "Crown: 엠블럼 2"
+      }
+    },
+    {
+      "trait": "Bruiser",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Bruiser Heart",
+        "champion_grant": "Trundle",
+        "note": "+1 (+Trundle)"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Bruiser Crest",
+        "champion_grant": "Trundle",
+        "note": "엠블럼 (+Trundle)"
+      },
+      "prism": {
+        "type": "Crown",
+        "name": "Bruiser Crown",
+        "note": "Crown: 엠블럼 2"
+      }
+    },
+    {
+      "trait": "Challenger",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Challenger Heart",
+        "champion_grant": "Warwick",
+        "note": "+1 (+Warwick)"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Challenger Crest",
+        "champion_grant": "Warwick",
+        "note": "엠블럼 (+Warwick)"
+      },
+      "prism": {
+        "type": "Crown",
+        "name": "Challenger Crown",
+        "note": "Crown: 엠블럼 2"
+      }
+    },
+    {
+      "trait": "Chemtech",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Chemtech Heart",
+        "champion_grant": null,
+        "note": "+1"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Chemtech Crest",
+        "champion_grant": "Zac",
+        "note": "엠블럼 (+Zac)"
+      },
+      "prism": {
+        "type": "Crown",
+        "name": "Chemtech Crown",
+        "note": "Crown: 엠블럼 2"
+      }
+    },
+    {
+      "trait": "Clockwork",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Clockwork Heart",
+        "champion_grant": "Zilean",
+        "note": "+1 (+Zilean)"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Clockwork Crest",
+        "champion_grant": null,
+        "note": "엠블럼"
+      },
+      "prism": {
+        "type": "Soul",
+        "name": "Clockwork Soul",
+        "note": "Soul: +2, 8골드"
+      }
+    },
+    {
+      "trait": "Enchanter",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Enchanter Heart",
+        "champion_grant": "Taric",
+        "note": "+1 (+Taric)"
+      },
+      "crest": null,
+      "prism": {
+        "type": "Soul",
+        "name": "Enchanter Soul",
+        "note": "Soul: +2, 8골드"
+      }
+    },
+    {
+      "trait": "Enforcer",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Enforcer Heart",
+        "champion_grant": "Vi",
+        "note": "+1 (+Vi)"
+      },
+      "crest": null,
+      "prism": {
+        "type": "Soul",
+        "name": "Enforcer Soul",
+        "note": "Soul: +2, 8골드"
+      }
+    },
+    {
+      "trait": "Imperial",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Imperial Heart",
+        "champion_grant": "Swain",
+        "note": "+1 (+Swain)"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Imperial Crest",
+        "champion_grant": "Talon",
+        "note": "엠블럼 (+Talon)"
+      },
+      "prism": {
+        "type": "Crown",
+        "name": "Imperial Crown",
+        "note": "Crown: 엠블럼 2"
+      }
+    },
+    {
+      "trait": "Innovator",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Innovator Heart",
+        "champion_grant": null,
+        "note": "+1"
+      },
+      "crest": null,
+      "prism": {
+        "type": "Soul",
+        "name": "Innovator Soul",
+        "note": "Soul: +2"
+      }
+    },
+    {
+      "trait": "Mercenary",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Mercenary Heart",
+        "champion_grant": null,
+        "note": "+1 (12.3: 1골드 제거)"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Mercenary Crest",
+        "champion_grant": null,
+        "note": "엠블럼"
+      },
+      "prism": {
+        "type": "Soul",
+        "name": "Mercenary Soul",
+        "note": "Soul: +2"
+      }
+    },
+    {
+      "trait": "Mutant",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Mutant Heart",
+        "champion_grant": "Kog’Maw",
+        "note": "+1 (+Kog’Maw)"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Mutant Crest",
+        "champion_grant": "Kog’Maw",
+        "note": "엠블럼 (+Kog’Maw)"
+      },
+      "prism": {
+        "type": "Crown",
+        "name": "Mutant Crown",
+        "note": "Crown: 엠블럼 2"
+      }
+    },
+    {
+      "trait": "Protector",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Protector Heart",
+        "champion_grant": "Blitzcrank",
+        "note": "+1 (+Blitzcrank)"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Protector Crest",
+        "champion_grant": null,
+        "note": "엠블럼"
+      },
+      "prism": {
+        "type": "Crown",
+        "name": "Protector Crown",
+        "note": "Crown: 엠블럼 2"
+      }
+    },
+    {
+      "trait": "Scholar",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Scholar Heart",
+        "champion_grant": "Lissandra",
+        "note": "+1 (+Lissandra)"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Scholar Crest",
+        "champion_grant": "Heimerdinger",
+        "note": "엠블럼 (+Heimerdinger)"
+      },
+      "prism": {
+        "type": "Soul",
+        "name": "Scholar Soul",
+        "note": "Soul: +2, 8골드"
+      }
+    },
+    {
+      "trait": "Scrap",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Scrap Heart",
+        "champion_grant": "Ekko",
+        "note": "+1 (+Ekko)"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Scrap Crest",
+        "champion_grant": "Ekko",
+        "note": "엠블럼 (+Ekko)"
+      },
+      "prism": {
+        "type": "Soul",
+        "name": "Scrap Soul",
+        "note": "Soul: +2, 8골드"
+      }
+    },
+    {
+      "trait": "Sniper",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Sniper Heart",
+        "champion_grant": "Tristana",
+        "note": "+1 (+Tristana)"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Sniper Crest",
+        "champion_grant": "Tristana",
+        "note": "엠블럼 (+Tristana)"
+      },
+      "prism": {
+        "type": "Crown",
+        "name": "Sniper Crown",
+        "note": "Crown: 엠블럼 2"
+      }
+    },
+    {
+      "trait": "Socialite",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Socialite Heart",
+        "champion_grant": null,
+        "note": "+1 (12.3: 1골드 제거)"
+      },
+      "crest": null,
+      "prism": {
+        "type": "Soul",
+        "name": "Socialite Soul",
+        "note": "Soul: +2"
+      }
+    },
+    {
+      "trait": "Syndicate",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Syndicate Heart",
+        "champion_grant": "Zyra",
+        "note": "+1 (+Zyra)"
+      },
+      "crest": {
+        "tier": "GOLD",
+        "name": "Syndicate Crest",
+        "champion_grant": "Zyra",
+        "note": "엠블럼 (+Zyra)"
+      },
+      "prism": {
+        "type": "Crown",
+        "name": "Syndicate Crown",
+        "note": "Crown: 엠블럼 2"
+      }
+    },
+    {
+      "trait": "Twinshot",
+      "heart": {
+        "tier": "SILVER",
+        "name": "Twinshot Heart",
+        "champion_grant": "Graves",
+        "note": "+1 (+Graves)"
+      },
+      "crest": null,
+      "prism": {
+        "type": "Soul",
+        "name": "Twinshot Soul",
+        "note": "Soul: +2"
+      }
+    }
+  ],
+  "lolchess_135_path": "/agent/repos/WWCHESS/scripts/set6_lolchess_augments.json",
+  "missing_from_lolchess_by_user_tier": {
+    "SILVER": [
+      "Dual Rule",
+      "Scoped Weapons",
+      "Tinker",
+      "Academy Heart",
+      "Imperial Heart",
+      "Protector Heart"
+    ],
+    "GOLD": [
+      "All For One",
+      "Cram Session",
+      "Academy Crest",
+      "Imperial Crest",
+      "Protector Crest"
+    ],
+    "PRISMATIC": [
+      "Thrill of the Hunt III",
+      "Academy Crown",
+      "Imperial Crown",
+      "Protector Crown"
+    ]
+  },
+  "missing_from_lolchess_flat_sorted": [
+    "Academy Crest",
+    "Academy Crown",
+    "Academy Heart",
+    "All For One",
+    "Cram Session",
+    "Dual Rule",
+    "Imperial Crest",
+    "Imperial Crown",
+    "Imperial Heart",
+    "Protector Crest",
+    "Protector Crown",
+    "Protector Heart",
+    "Scoped Weapons",
+    "Thrill of the Hunt III",
+    "Tinker"
+  ],
+  "missing_count_flat": 15,
+  "external_sources": {
+    "tftset.com/set-6/augments/": "404 at fetch time",
+    "namu.wiki set6 augments": "confirms 21 Heart augment types (○○의 심장); dual/synergy augments documented but not full machine-readable 149 list"
+  }
+}

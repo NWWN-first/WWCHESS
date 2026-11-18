@@ -104,9 +104,6 @@ export function applySet6AugmentSpawnBonuses(
     cu.trueDamageBonusRatio = Math.max(cu.trueDamageBonusRatio, 0.2);
   }
 
-  if (participantHasEffect(aug, 'SO_SMALL') && cu.traits.includes('YORDLE')) {
-    cu.damageReductionRatio = Math.max(cu.damageReductionRatio, 0.25);
-  }
 }
 
 export function celestialBlessingShieldCap(augmentIds: readonly string[]): number {

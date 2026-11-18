@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate src/GameData/augments.ts from scripts/set6_lolchess_augments.json."""
+"""Generate src/GameData/augments.ts from scripts/set6_user_augment_roster.json."""
 from __future__ import annotations
 
 import json
@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-JSON_PATH = ROOT / "scripts" / "set6_lolchess_augments.json"
+JSON_PATH = ROOT / "scripts" / "set6_user_augment_roster.json"
 CHAMPS_PATH = ROOT / "scripts" / "set6_lolchess_champions.json"
 KO_LOCALE_PATH = ROOT / "scripts" / "set6_augment_ko_locale.json"
 TRAITS_PATH = ROOT / "src" / "GameData" / "traits.ts"
@@ -25,6 +25,9 @@ TRAIT_MAP = {
     "Enchanter": "ENCHANTER",
     "Enforcer": "ENFORCER",
     "Innovator": "INNOVATOR",
+    "Imperial": "IMPERIAL",
+    "Academy": "ACADEMY",
+    "Protector": "PROTECTOR",
     "Mercenary": "MERCENARY",
     "Mutant": "MUTANT",
     "Scholar": "SCHOLAR",
@@ -62,6 +65,11 @@ CHAMP_UNIT_OVERRIDES = {
     "Zyra": "u2_zyra",
     "Zilean": "u2_zilean",
     "Warwick": "u2_warwick",
+    "Graves": "u2_graves",
+    "Leona": "u3_leona",
+    "Lissandra": "u2_lissandra",
+    "Twisted Fate": "u2_twisted_fate",
+    "Ekko": "u2_ekko",
     "Zac": "u3_zac",
     "Taric": "u3_taric",
     "Kog'Maw": "u2_kogmaw",
@@ -243,7 +251,22 @@ TIERED_KO_PREFIX = {
 
 FIXED_KO_NAME = {
     "Ancient Archives": "고대의 기록 보관소",
-    "Arcane Crest": "비전 마법사 문장",
+    "Arcanist Crest": "비전 마법사 문장",
+    "Dual Rule": "이중 규율",
+    "Scoped Weapons": "조준 무기",
+    "Tinker": "땜장이",
+    "Self-Repair": "자가 복구",
+    "All For One": "모든 것을 위해",
+    "Cram Session": "벼락치기",
+    "Academy Heart": "아카데미 심장",
+    "Academy Crest": "아카데미 문장",
+    "Academy Crown": "아카데미 왕관",
+    "Imperial Heart": "제국 심장",
+    "Imperial Crest": "제국 문장",
+    "Imperial Crown": "제국 왕관",
+    "Protector Heart": "봉쇄자의 심장",
+    "Protector Crest": "봉쇄자 문장",
+    "Protector Crown": "봉쇄자 왕관",
     "Ardent Censer": "불타는 향로",
     "Ascension": "초월",
     "Armor Plating": "철갑",
@@ -279,7 +302,6 @@ FIXED_KO_NAME = {
     "Portable Forge": "휴대용 대장간",
     "Rich Get Richer": "부익부",
     "Salvage Bin": "재활용 쓰레기통",
-    "Self Repair": "자가 복구",
     "Share the Spotlight": "스포트라이트 공유",
     "Sharpshooter": "명사수",
     "Shrug It Off": "강인함",
@@ -330,7 +352,7 @@ def ko_name(en_name: str, trait_en_to_ko: dict[str, str]) -> str:
     if m := re.match(r"^([A-Za-z ]+) Heart$", en_name):
         trait_en = m.group(1)
         label = trait_en_to_ko.get(trait_en, trait_en)
-        if trait_en == "Arcanist":
+        if trait_en in {"Arcanist", "Academy"}:
             return f"{label} 심장"
         return f"{label}의 심장"
 
@@ -456,7 +478,8 @@ def emit_ts(augments: list[dict]) -> str:
 
 
 def main() -> None:
-    rows = json.loads(JSON_PATH.read_text())
+    blob = json.loads(JSON_PATH.read_text())
+    rows = blob["augments"] if isinstance(blob, dict) and "augments" in blob else blob
     champs = load_champion_units()
     trait_en_to_ko = load_trait_en_to_ko()
     locale = load_ko_locale()
@@ -464,15 +487,20 @@ def main() -> None:
     missing_ko: list[str] = []
     for row in rows:
         name = row["name"]
-        desc = row["descriptionEn"]
+        desc = row.get("descriptionEn") or row.get("description", "")
         effect_key = effect_key_from_name(name)
         trait, trait_count = detect_trait(name, desc)
-        unit = detect_unit(desc, champs)
+        unit = None
+        if row.get("championGrant"):
+            cg = row["championGrant"]
+            unit = champs.get(cg) or champs.get(slug_key(cg))
+        if unit is None:
+            unit = detect_unit(desc, champs)
         cat = category_for(name, desc, trait)
         display_ko = ko_name(name, trait_en_to_ko)
         if display_ko == name:
             missing_ko.append(name)
-        desc_ko = ko_description(display_ko, locale, desc)
+        desc_ko = row.get("descriptionKo") or ko_description(display_ko, locale, desc)
         if "Innovator" in name or (trait and trait == "INNOVATOR"):
             desc_ko = desc_ko.replace("혁신가", "발명가")
             display_ko = display_ko.replace("혁신가", "발명가")

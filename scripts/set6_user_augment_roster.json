@@ -1,0 +1,940 @@
+{
+  "meta": {
+    "source": "user-paste bc-c613bb32 + lolchess gap-fill",
+    "tierCounts": {
+      "SILVER": 57,
+      "GOLD": 49,
+      "PRISMATIC": 43
+    },
+    "total": 149,
+    "bannerTierCounts": {
+      "SILVER": 57,
+      "GOLD": 49,
+      "PRISMATIC": 43,
+      "TOTAL": 149
+    }
+  },
+  "augments": [
+    {
+      "name": "Academy Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Academy.",
+      "descriptionKo": "Your team counts as having 1 additional Academy."
+    },
+    {
+      "name": "Ancient Archives",
+      "tier": "SILVER",
+      "descriptionEn": "Gain 1 Tome of Traits.",
+      "descriptionKo": "Gain 1 Tome of Traits."
+    },
+    {
+      "name": "Arcanist Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Arcanist. Gain a Swain.",
+      "descriptionKo": "Your team counts as having 1 additional Arcanist. Gain a Swain."
+    },
+    {
+      "name": "Ardent Censer",
+      "tier": "SILVER",
+      "descriptionEn": "Allies healed or shielded by Enchanters gain 50% stacking Attack Speed for the rest of combat (maximum once every 4 seconds).",
+      "descriptionKo": "Allies healed or shielded by Enchanters gain 50% stacking Attack Speed for the rest of combat (maximum once every 4 seconds)."
+    },
+    {
+      "name": "Ascension",
+      "tier": "SILVER",
+      "descriptionEn": "After 15 seconds of combat, your units deal 50% more damage.",
+      "descriptionKo": "After 15 seconds of combat, your units deal 50% more damage."
+    },
+    {
+      "name": "Assassin Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Assassin. Gain a Talon.",
+      "descriptionKo": "Your team counts as having 1 additional Assassin. Gain a Talon.",
+      "championGrant": "Talon"
+    },
+    {
+      "name": "Bodyguard Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Bodyguard. Gain a Blitzcrank.",
+      "descriptionKo": "Your team counts as having 1 additional Bodyguard. Gain a Blitzcrank.",
+      "championGrant": "Leona"
+    },
+    {
+      "name": "Bruiser Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Bruiser. Gain a Trundle.",
+      "descriptionKo": "Your team counts as having 1 additional Bruiser. Gain a Trundle.",
+      "championGrant": "Trundle"
+    },
+    {
+      "name": "Built Different I",
+      "tier": "SILVER",
+      "descriptionEn": "Your units with no Traits active gain 300 Health and 50% Attack Speed.",
+      "descriptionKo": "Your units with no Traits active gain 300 Health and 50% Attack Speed."
+    },
+    {
+      "name": "Calculated Loss",
+      "tier": "SILVER",
+      "descriptionEn": "After losing your combat, gain 2 gold and a free Shop refresh.",
+      "descriptionKo": "After losing your combat, gain 2 gold and a free Shop refresh."
+    },
+    {
+      "name": "Celestial Blessing I",
+      "tier": "SILVER",
+      "descriptionEn": "Your units heal for 12% of the damage dealt by attacks and Abilities. Excess healing is converted to a shield up to 300 Health.",
+      "descriptionKo": "Your units heal for 12% of the damage dealt by attacks and Abilities. Excess healing is converted to a shield up to 300 Health."
+    },
+    {
+      "name": "Challenger Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Challenger. Gain a Quinn.",
+      "descriptionKo": "Your team counts as having 1 additional Challenger. Gain a Quinn.",
+      "championGrant": "Warwick"
+    },
+    {
+      "name": "Chemical Overload I",
+      "tier": "SILVER",
+      "descriptionEn": "Chemtechs explode on death, dealing 20% of their max Health as magic damage to enemies within 2 hexes.",
+      "descriptionKo": "Chemtechs explode on death, dealing 20% of their max Health as magic damage to enemies within 2 hexes."
+    },
+    {
+      "name": "Chemtech Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Chemtech. Gain a Zac.",
+      "descriptionKo": "Your team counts as having 1 additional Chemtech. Gain a Zac."
+    },
+    {
+      "name": "Clockwork Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Clockwork. Gain a Zilean.",
+      "descriptionKo": "Your team counts as having 1 additional Clockwork. Gain a Zilean.",
+      "championGrant": "Zilean"
+    },
+    {
+      "name": "Cutthroat",
+      "tier": "SILVER",
+      "descriptionEn": "Assassins Mana Reave the first unit they attack, increasing their maximum Mana by 65% until they cast.",
+      "descriptionKo": "Assassins Mana Reave the first unit they attack, increasing their maximum Mana by 65% until they cast."
+    },
+    {
+      "name": "Cybernetic Implants I",
+      "tier": "SILVER",
+      "descriptionEn": "Your champions holding an item gain 150 Health and 10 Attack Damage.",
+      "descriptionKo": "Your champions holding an item gain 150 Health and 10 Attack Damage."
+    },
+    {
+      "name": "Dominance",
+      "tier": "SILVER",
+      "descriptionEn": "After winning your player combat, gain 1 bonus gold for every 2 surviving units.",
+      "descriptionKo": "After winning your player combat, gain 1 bonus gold for every 2 surviving units."
+    },
+    {
+      "name": "Dual Rule",
+      "tier": "SILVER",
+      "descriptionEn": "Your team has 2 Tyrants.",
+      "descriptionKo": "Your team has 2 Tyrants."
+    },
+    {
+      "name": "Duet",
+      "tier": "SILVER",
+      "descriptionEn": "Summon 1 additional Socialite spotlight. Spotlighted units gain 400 Health.",
+      "descriptionKo": "Summon 1 additional Socialite spotlight. Spotlighted units gain 400 Health."
+    },
+    {
+      "name": "En Garde",
+      "tier": "SILVER",
+      "descriptionEn": "The first time an enemy is attacked by a Challenger, they are Disarmed for 3 seconds.",
+      "descriptionKo": "The first time an enemy is attacked by a Challenger, they are Disarmed for 3 seconds."
+    },
+    {
+      "name": "Enchanter Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Enchanter. Gain a Taric.",
+      "descriptionKo": "Your team counts as having 1 additional Enchanter. Gain a Taric.",
+      "championGrant": "Taric"
+    },
+    {
+      "name": "Enforcer Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Enforcer. Gain a Vi.",
+      "descriptionKo": "Your team counts as having 1 additional Enforcer. Gain a Vi.",
+      "championGrant": "Vi"
+    },
+    {
+      "name": "Exiles I",
+      "tier": "SILVER",
+      "descriptionEn": "Your units that start combat with no adajacent allies gain a 30% maximum Health shield for 8 seconds.",
+      "descriptionKo": "Your units that start combat with no adajacent allies gain a 30% maximum Health shield for 8 seconds."
+    },
+    {
+      "name": "Featherweights I",
+      "tier": "SILVER",
+      "descriptionEn": "Your 1 and 2 cost champions gain 25% Attack Speed and movement speed.",
+      "descriptionKo": "Your 1 and 2 cost champions gain 25% Attack Speed and movement speed."
+    },
+    {
+      "name": "First Aid Kit",
+      "tier": "SILVER",
+      "descriptionEn": "All healing and shielding on your units is increased by 35%.",
+      "descriptionKo": "All healing and shielding on your units is increased by 35%."
+    },
+    {
+      "name": "Hyper Roll",
+      "tier": "SILVER",
+      "descriptionEn": "If you have less than 10 gold at the end of a round, gain 2 gold.",
+      "descriptionKo": "If you have less than 10 gold at the end of a round, gain 2 gold."
+    },
+    {
+      "name": "Imperial Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Imperial. Gain a Swain.",
+      "descriptionKo": "Your team counts as having 1 additional Imperial. Gain a Swain.",
+      "championGrant": "Swain"
+    },
+    {
+      "name": "Innovator Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Innovator.",
+      "descriptionKo": "Your team counts as having 1 additional Innovator."
+    },
+    {
+      "name": "Item Grab Bag I",
+      "tier": "SILVER",
+      "descriptionEn": "Gain 1 random completed item(s).",
+      "descriptionKo": "Gain 1 random completed item(s)."
+    },
+    {
+      "name": "Knife's Edge I",
+      "tier": "SILVER",
+      "descriptionEn": "Your units that start combat in the front 2 rows gain 25 Attack Damage.",
+      "descriptionKo": "Your units that start combat in the front 2 rows gain 25 Attack Damage."
+    },
+    {
+      "name": "Lifelong Learning",
+      "tier": "SILVER",
+      "descriptionEn": "Scholars permanently gain 2 Ability Power after each combat, and an additional 2 if they survived.",
+      "descriptionKo": "Scholars permanently gain 2 Ability Power after each combat, and an additional 2 if they survived."
+    },
+    {
+      "name": "Makeshift Armor I",
+      "tier": "SILVER",
+      "descriptionEn": "Your units with no items gain 35 Armor and Magic Resist.",
+      "descriptionKo": "Your units with no items gain 35 Armor and Magic Resist."
+    },
+    {
+      "name": "Mercenary Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Mercenary.",
+      "descriptionKo": "Your team counts as having 1 additional Mercenary."
+    },
+    {
+      "name": "Mutant Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Mutant. Gain a Kog'Maw.",
+      "descriptionKo": "Your team counts as having 1 additional Mutant. Gain a Kog'Maw.",
+      "championGrant": "Kog’Maw"
+    },
+    {
+      "name": "One For All",
+      "tier": "SILVER",
+      "descriptionEn": "When your Syndicates die, they grant your other Syndicates 20 Attack Damage and Ability Power.",
+      "descriptionKo": "When your Syndicates die, they grant your other Syndicates 20 Attack Damage and Ability Power."
+    },
+    {
+      "name": "Pandora's Items",
+      "tier": "SILVER",
+      "descriptionEn": "Gain a random component. At the start of each round, items on your bench are randomized (excluding Tactician's Crown, Spatula, and consumables).",
+      "descriptionKo": "Gain a random component. At the start of each round, items on your bench are randomized (excluding Tactician's Crown, Spatula, and consumables)."
+    },
+    {
+      "name": "Phony Frontline",
+      "tier": "SILVER",
+      "descriptionEn": "Gain 2 Target Dummies.",
+      "descriptionKo": "Gain 2 Target Dummies."
+    },
+    {
+      "name": "Pirates",
+      "tier": "SILVER",
+      "descriptionEn": "Mercenary units have a 50% chance to drop 1 gold when they kill an enemy.",
+      "descriptionKo": "Mercenary units have a 50% chance to drop 1 gold when they kill an enemy."
+    },
+    {
+      "name": "Protector Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Protector. Gain a Blitzcrank.",
+      "descriptionKo": "Your team counts as having 1 additional Protector. Gain a Blitzcrank.",
+      "championGrant": "Blitzcrank"
+    },
+    {
+      "name": "Runic Shield I",
+      "tier": "SILVER",
+      "descriptionEn": "Arcanists start combat with a shield equal to 300% of their Ability Power for 8 seconds.",
+      "descriptionKo": "Arcanists start combat with a shield equal to 300% of their Ability Power for 8 seconds."
+    },
+    {
+      "name": "Scholar Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Scholar. Gain a Zyra.",
+      "descriptionKo": "Your team counts as having 1 additional Scholar. Gain a Zyra.",
+      "championGrant": "Lissandra"
+    },
+    {
+      "name": "Scoped Weapons",
+      "tier": "SILVER",
+      "descriptionEn": "Your units that attack from range gain infinite range and cannot miss their attacks.",
+      "descriptionKo": "Your units that attack from range gain infinite range and cannot miss their attacks."
+    },
+    {
+      "name": "Scrap Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Scrap. Gain a Blitzcrank.",
+      "descriptionKo": "Your team counts as having 1 additional Scrap. Gain a Blitzcrank.",
+      "championGrant": "Ekko"
+    },
+    {
+      "name": "Self-Repair",
+      "tier": "SILVER",
+      "descriptionEn": "Set 6 augment: Self-Repair.",
+      "descriptionKo": "Set 6 augment: Self-Repair."
+    },
+    {
+      "name": "Sniper Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Sniper. Gain a Tristana.",
+      "descriptionKo": "Your team counts as having 1 additional Sniper. Gain a Tristana.",
+      "championGrant": "Tristana"
+    },
+    {
+      "name": "Sniper's Nest",
+      "tier": "SILVER",
+      "descriptionEn": "Snipers gain +10% damage for each round fought from the same starting hex. (Maximum +40%)",
+      "descriptionKo": "Snipers gain +10% damage for each round fought from the same starting hex. (Maximum +40%)"
+    },
+    {
+      "name": "Socialite Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Socialite.",
+      "descriptionKo": "Your team counts as having 1 additional Socialite."
+    },
+    {
+      "name": "Stand Behind Me",
+      "tier": "SILVER",
+      "descriptionEn": "Increases the Bodyguard Armor bonus by 25%. At the start of combat, Bodyguards grant 100% of their Armor bonus to non-Bodyguard allies directly behind them (does not stack).",
+      "descriptionKo": "Increases the Bodyguard Armor bonus by 25%. At the start of combat, Bodyguards grant 100% of their Armor bonus to non-Bodyguard allies directly behind them (does not stack)."
+    },
+    {
+      "name": "Stand United I",
+      "tier": "SILVER",
+      "descriptionEn": "Your units gain 2 Attack Damage and Ability Power per Trait active across your army.",
+      "descriptionKo": "Your units gain 2 Attack Damage and Ability Power per Trait active across your army."
+    },
+    {
+      "name": "Syndicate Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Syndicate. Gain a Zyra.",
+      "descriptionKo": "Your team counts as having 1 additional Syndicate. Gain a Zyra.",
+      "championGrant": "Zyra"
+    },
+    {
+      "name": "Thrill of the Hunt I",
+      "tier": "SILVER",
+      "descriptionEn": "Your units heal 400 Health on kill.",
+      "descriptionKo": "Your units heal 400 Health on kill."
+    },
+    {
+      "name": "Tinker",
+      "tier": "SILVER",
+      "descriptionEn": "Gain a Scrap synergy effect: each combat round gain a Magnet Remover or Reforger.",
+      "descriptionKo": "Gain a Scrap synergy effect: each combat round gain a Magnet Remover or Reforger."
+    },
+    {
+      "name": "Twinshot Heart",
+      "tier": "SILVER",
+      "descriptionEn": "Your team counts as having 1 additional Twinshot. Gain a Kog'Maw.",
+      "descriptionKo": "Your team counts as having 1 additional Twinshot. Gain a Kog'Maw.",
+      "championGrant": "Graves"
+    },
+    {
+      "name": "Underdogs",
+      "tier": "SILVER",
+      "descriptionEn": "Whenever your team has fewer units alive than your opponent, your units regenerate 9% of their missing Health each second (maximum: 150).",
+      "descriptionKo": "Whenever your team has fewer units alive than your opponent, your units regenerate 9% of their missing Health each second (maximum: 150)."
+    },
+    {
+      "name": "Unstable Evolution",
+      "tier": "SILVER",
+      "descriptionEn": "Mutants randomly gain one of the following when they reach 2 star: 500 Health, 30% Attack Speed, 30 Attack Damage, or 30 Ability Power. These bonuses stack.",
+      "descriptionKo": "Mutants randomly gain one of the following when they reach 2 star: 500 Health, 30% Attack Speed, 30 Attack Damage, or 30 Ability Power. These bonuses stack."
+    },
+    {
+      "name": "Weakspot",
+      "tier": "SILVER",
+      "descriptionEn": "Your units' attacks ignore 20% of the target's Armor and reduce healing received by 50% for 5 seconds.",
+      "descriptionKo": "Your units' attacks ignore 20% of the target's Armor and reduce healing received by 50% for 5 seconds."
+    },
+    {
+      "name": "Academy Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain an Academy Emblem.",
+      "descriptionKo": "Gain an Academy Emblem."
+    },
+    {
+      "name": "All For One",
+      "tier": "GOLD",
+      "descriptionEn": "When an ally dies, they grant their Tyrant 33% of their maximum health.",
+      "descriptionKo": "When an ally dies, they grant their Tyrant 33% of their maximum health."
+    },
+    {
+      "name": "Arcanist Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain an Arcanist Emblem and Twisted Fate.",
+      "descriptionKo": "Gain an Arcanist Emblem and Twisted Fate.",
+      "championGrant": "Twisted Fate"
+    },
+    {
+      "name": "Armor Plating",
+      "tier": "GOLD",
+      "descriptionEn": "Colossus become invulnerable for 2 seconds when their Health drops to 60% and 30%.",
+      "descriptionKo": "Colossus become invulnerable for 2 seconds when their Health drops to 60% and 30%."
+    },
+    {
+      "name": "Assassin Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain an Assassin Emblem and a Talon.",
+      "descriptionKo": "Gain an Assassin Emblem and a Talon.",
+      "championGrant": "Ekko"
+    },
+    {
+      "name": "Binary Airdrop",
+      "tier": "GOLD",
+      "descriptionEn": "Your champions equipped with 2 items temporarily gain a random completed item at the start of combat.",
+      "descriptionKo": "Your champions equipped with 2 items temporarily gain a random completed item at the start of combat."
+    },
+    {
+      "name": "Bodyguard Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a Bodyguard Emblem and a Darius.",
+      "descriptionKo": "Gain a Bodyguard Emblem and a Darius.",
+      "championGrant": "Leona"
+    },
+    {
+      "name": "Broken Stopwatch",
+      "tier": "GOLD",
+      "descriptionEn": "5 seconds into combat, all enemies and non-Clockwork units are frozen in time for 4 seconds.",
+      "descriptionKo": "5 seconds into combat, all enemies and non-Clockwork units are frozen in time for 4 seconds."
+    },
+    {
+      "name": "Bruiser Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a Bruiser Emblem and a Trundle.",
+      "descriptionKo": "Gain a Bruiser Emblem and a Trundle.",
+      "championGrant": "Trundle"
+    },
+    {
+      "name": "Built Different II",
+      "tier": "GOLD",
+      "descriptionEn": "Your units with no Traits active gain 400 Health and 60% Attack Speed.",
+      "descriptionKo": "Your units with no Traits active gain 400 Health and 60% Attack Speed."
+    },
+    {
+      "name": "Celestial Blessing II",
+      "tier": "GOLD",
+      "descriptionEn": "Your units heal for 20% of the damage dealt by attacks and Abilities. Excess healing is converted to a shield up to 450 Health.",
+      "descriptionKo": "Your units heal for 20% of the damage dealt by attacks and Abilities. Excess healing is converted to a shield up to 450 Health."
+    },
+    {
+      "name": "Challenger Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a Challenger Emblem and a Quinn.",
+      "descriptionKo": "Gain a Challenger Emblem and a Quinn.",
+      "championGrant": "Warwick"
+    },
+    {
+      "name": "Chemical Overload II",
+      "tier": "GOLD",
+      "descriptionEn": "Chemtechs explode on death, dealing 30% of their max Health as magic damage to enemies within 2 hexes.",
+      "descriptionKo": "Chemtechs explode on death, dealing 30% of their max Health as magic damage to enemies within 2 hexes."
+    },
+    {
+      "name": "Chemtech Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a Chemtech Emblem and a Warwick.",
+      "descriptionKo": "Gain a Chemtech Emblem and a Warwick.",
+      "championGrant": "Zac"
+    },
+    {
+      "name": "Clear Mind",
+      "tier": "GOLD",
+      "descriptionEn": "If you have no champions on your bench at the end of a round, gain 3 experience points.",
+      "descriptionKo": "If you have no champions on your bench at the end of a round, gain 3 experience points."
+    },
+    {
+      "name": "Clockwork Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a Clockwork Emblem and a Zilean.",
+      "descriptionKo": "Gain a Clockwork Emblem and a Zilean."
+    },
+    {
+      "name": "Cram Session",
+      "tier": "GOLD",
+      "descriptionEn": "After the first cast, Academics recover 90% of their maximum mana.",
+      "descriptionKo": "After the first cast, Academics recover 90% of their maximum mana."
+    },
+    {
+      "name": "Cybernetic Implants II",
+      "tier": "GOLD",
+      "descriptionEn": "Your champions holding an item gain 250 Health and 20 Attack Damage.",
+      "descriptionKo": "Your champions holding an item gain 250 Health and 20 Attack Damage."
+    },
+    {
+      "name": "Exiles II",
+      "tier": "GOLD",
+      "descriptionEn": "Your units that start combat with no adajacent allies gain a 45% maximum Health shield for 8 seconds.",
+      "descriptionKo": "Your units that start combat with no adajacent allies gain a 45% maximum Health shield for 8 seconds."
+    },
+    {
+      "name": "Featherweights II",
+      "tier": "GOLD",
+      "descriptionEn": "Your 1 and 2 cost champions gain 35% Attack Speed and movement speed.",
+      "descriptionKo": "Your 1 and 2 cost champions gain 35% Attack Speed and movement speed."
+    },
+    {
+      "name": "Gold Reserves",
+      "tier": "GOLD",
+      "descriptionEn": "Mercenaries deal 1% more damage per 1 gold you have. (Maximum +60%)",
+      "descriptionKo": "Mercenaries deal 1% more damage per 1 gold you have. (Maximum +60%)"
+    },
+    {
+      "name": "High Roller",
+      "tier": "GOLD",
+      "descriptionEn": "Gain 3 Loaded Dice and 8 gold.",
+      "descriptionKo": "Gain 3 Loaded Dice and 8 gold."
+    },
+    {
+      "name": "Imperial Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain an Imperial Emblem and a Talon.",
+      "descriptionKo": "Gain an Imperial Emblem and a Talon.",
+      "championGrant": "Talon"
+    },
+    {
+      "name": "Instant Injection",
+      "tier": "GOLD",
+      "descriptionEn": "Chemtechs now additionally trigger their bonuses at the start of combat.",
+      "descriptionKo": "Chemtechs now additionally trigger their bonuses at the start of combat."
+    },
+    {
+      "name": "Junkyard",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a random component every 3 combat rounds with the Scrap Trait active.",
+      "descriptionKo": "Gain a random component every 3 combat rounds with the Scrap Trait active."
+    },
+    {
+      "name": "Knife's Edge II",
+      "tier": "GOLD",
+      "descriptionEn": "Your units that start combat in the front 2 rows gain 35 Attack Damage.",
+      "descriptionKo": "Your units that start combat in the front 2 rows gain 35 Attack Damage."
+    },
+    {
+      "name": "Makeshift Armor II",
+      "tier": "GOLD",
+      "descriptionEn": "Your units with no items gain 55 Armor and Magic Resist.",
+      "descriptionKo": "Your units with no items gain 55 Armor and Magic Resist."
+    },
+    {
+      "name": "Mercenary Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a Mercenary Emblem and 3 gold.",
+      "descriptionKo": "Gain a Mercenary Emblem and 3 gold."
+    },
+    {
+      "name": "Metabolic Accelerator",
+      "tier": "GOLD",
+      "descriptionEn": "Your Tactician moves faster and heals 2 Health at the end of each PVP round.",
+      "descriptionKo": "Your Tactician moves faster and heals 2 Health at the end of each PVP round."
+    },
+    {
+      "name": "Mutant Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a Mutant Emblem and a Kassadin.",
+      "descriptionKo": "Gain a Mutant Emblem and a Kassadin.",
+      "championGrant": "Kog’Maw"
+    },
+    {
+      "name": "Payday",
+      "tier": "GOLD",
+      "descriptionEn": "After winning your combat, gain 1 bonus gold for each surviving Syndicate.",
+      "descriptionKo": "After winning your combat, gain 1 bonus gold for each surviving Syndicate."
+    },
+    {
+      "name": "Protector Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a Protector Emblem.",
+      "descriptionKo": "Gain a Protector Emblem."
+    },
+    {
+      "name": "Rich Get Richer",
+      "tier": "GOLD",
+      "descriptionEn": "Gain 10 gold. Your maximum interest is increased to 7.",
+      "descriptionKo": "Gain 10 gold. Your maximum interest is increased to 7."
+    },
+    {
+      "name": "Runic Shield II",
+      "tier": "GOLD",
+      "descriptionEn": "Arcanists start combat with a shield equal to 450% of their Ability Power for 8 seconds.",
+      "descriptionKo": "Arcanists start combat with a shield equal to 450% of their Ability Power for 8 seconds."
+    },
+    {
+      "name": "Salvage Bin",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a random completed item. Selling champions breaks apart their full items into components (excluding Tactician's Crown).",
+      "descriptionKo": "Gain a random completed item. Selling champions breaks apart their full items into components (excluding Tactician's Crown)."
+    },
+    {
+      "name": "Scholar Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a Scholar Emblem and a Heimerdinger.",
+      "descriptionKo": "Gain a Scholar Emblem and a Heimerdinger.",
+      "championGrant": "Heimerdinger"
+    },
+    {
+      "name": "Scrap Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a Scrap Emblem and a Blitzcrank.",
+      "descriptionKo": "Gain a Scrap Emblem and a Blitzcrank.",
+      "championGrant": "Ekko"
+    },
+    {
+      "name": "Sharpshooter",
+      "tier": "GOLD",
+      "descriptionEn": "Twinshot's ranged attacks and Abilities can bounce once, dealing 45% less damage.",
+      "descriptionKo": "Twinshot's ranged attacks and Abilities can bounce once, dealing 45% less damage."
+    },
+    {
+      "name": "Shrug It Off",
+      "tier": "GOLD",
+      "descriptionEn": "Bruisers regenerate 2.5% of their maximum Health each second.",
+      "descriptionKo": "Bruisers regenerate 2.5% of their maximum Health each second."
+    },
+    {
+      "name": "Smoke Bomb",
+      "tier": "GOLD",
+      "descriptionEn": "The first time Assassins drops to 60% health, they briefly enter stealth, becoming untargetable and shedding all negative effects. Any excess damage is reduced by 80%.",
+      "descriptionKo": "The first time Assassins drops to 60% health, they briefly enter stealth, becoming untargetable and shedding all negative effects. Any excess damage is reduced by 80%."
+    },
+    {
+      "name": "Sniper Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a Sniper Emblem and a Tristana.",
+      "descriptionKo": "Gain a Sniper Emblem and a Tristana.",
+      "championGrant": "Tristana"
+    },
+    {
+      "name": "Spell Blade",
+      "tier": "GOLD",
+      "descriptionEn": "After casting their Ability, Arcanists' next attack deals bonus magic damage equal to 225% of their Ability Power. Spell Blade's damage is considered Ability damage.",
+      "descriptionKo": "After casting their Ability, Arcanists' next attack deals bonus magic damage equal to 225% of their Ability Power. Spell Blade's damage is considered Ability damage."
+    },
+    {
+      "name": "Stand United II",
+      "tier": "GOLD",
+      "descriptionEn": "Your units gain 3 Attack Damage and Ability Power per Trait active across your army.",
+      "descriptionKo": "Your units gain 3 Attack Damage and Ability Power per Trait active across your army."
+    },
+    {
+      "name": "Sunfire Board",
+      "tier": "GOLD",
+      "descriptionEn": "At the start of combat, burn all enemies for 20% of their maximum Health over 10 seconds and reduce healing received by 50%.",
+      "descriptionKo": "At the start of combat, burn all enemies for 20% of their maximum Health over 10 seconds and reduce healing received by 50%."
+    },
+    {
+      "name": "Syndicate Crest",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a Syndicate Emblem and a Zyra.",
+      "descriptionKo": "Gain a Syndicate Emblem and a Zyra.",
+      "championGrant": "Zyra"
+    },
+    {
+      "name": "Thrill of the Hunt II",
+      "tier": "GOLD",
+      "descriptionEn": "Your units heal 700 Health on kill.",
+      "descriptionKo": "Your units heal 700 Health on kill."
+    },
+    {
+      "name": "Titanic Force",
+      "tier": "GOLD",
+      "descriptionEn": "Your units with more than 1400 maximum Health gain Attack Damage equal to 3% of their maximum Health.",
+      "descriptionKo": "Your units with more than 1400 maximum Health gain Attack Damage equal to 3% of their maximum Health."
+    },
+    {
+      "name": "Trade Sector",
+      "tier": "GOLD",
+      "descriptionEn": "Gain a free Shop refresh each round.",
+      "descriptionKo": "Gain a free Shop refresh each round."
+    },
+    {
+      "name": "Wise Spending",
+      "tier": "GOLD",
+      "descriptionEn": "Gain 4 gold.Gain 2 experience points when you refresh your Shop.",
+      "descriptionKo": "Gain 4 gold.Gain 2 experience points when you refresh your Shop."
+    },
+    {
+      "name": "Academy Crown",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 Academy Emblems.",
+      "descriptionKo": "Gain 2 Academy Emblems."
+    },
+    {
+      "name": "Arcanist Crown",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 Arcanist Emblems.",
+      "descriptionKo": "Gain 2 Arcanist Emblems."
+    },
+    {
+      "name": "Assassin Crown",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 Assassin Emblems.",
+      "descriptionKo": "Gain 2 Assassin Emblems."
+    },
+    {
+      "name": "Band of Thieves",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 Thief's Gloves.",
+      "descriptionKo": "Gain 2 Thief's Gloves."
+    },
+    {
+      "name": "Bodyguard Crown",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 Bodyguard Emblems.",
+      "descriptionKo": "Gain 2 Bodyguard Emblems."
+    },
+    {
+      "name": "Bruiser Crown",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 Bruiser Emblems.",
+      "descriptionKo": "Gain 2 Bruiser Emblems."
+    },
+    {
+      "name": "Built Different III",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your units with no Traits active gain 500 Health and 70% Attack Speed.",
+      "descriptionKo": "Your units with no Traits active gain 500 Health and 70% Attack Speed."
+    },
+    {
+      "name": "Celestial Blessing III",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your units heal for 25% of the damage dealt by attacks and Abilities. Excess healing is converted to a shield up to 600 Health.",
+      "descriptionKo": "Your units heal for 25% of the damage dealt by attacks and Abilities. Excess healing is converted to a shield up to 600 Health."
+    },
+    {
+      "name": "Challenger Crown",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 Challenger Emblems.",
+      "descriptionKo": "Gain 2 Challenger Emblems."
+    },
+    {
+      "name": "Chemical Overload III",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Chemtechs explode on death, dealing 40% of their max Health as magic damage to enemies within 2 hexes.",
+      "descriptionKo": "Chemtechs explode on death, dealing 40% of their max Health as magic damage to enemies within 2 hexes."
+    },
+    {
+      "name": "Chemtech Crown",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 Chemtech Emblems.",
+      "descriptionKo": "Gain 2 Chemtech Emblems."
+    },
+    {
+      "name": "Clockwork Soul",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your team counts as having 2 additional Clockworks. Gain 8 gold.",
+      "descriptionKo": "Your team counts as having 2 additional Clockworks. Gain 8 gold."
+    },
+    {
+      "name": "Cybernetic Implants III",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your champions holding an item gain 350 Health and 30 Attack Damage.",
+      "descriptionKo": "Your champions holding an item gain 350 Health and 30 Attack Damage."
+    },
+    {
+      "name": "Enchanter Soul",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your team counts as having 2 additional Enchanters. Gain 8 gold.",
+      "descriptionKo": "Your team counts as having 2 additional Enchanters. Gain 8 gold."
+    },
+    {
+      "name": "Enforcer Soul",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your team counts as having 2 additional Enforcers. Gain 8 gold.",
+      "descriptionKo": "Your team counts as having 2 additional Enforcers. Gain 8 gold."
+    },
+    {
+      "name": "Exiles III",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your units that start combat with no adajacent allies gain a 70% maximum Health shield for 8 seconds.",
+      "descriptionKo": "Your units that start combat with no adajacent allies gain a 70% maximum Health shield for 8 seconds."
+    },
+    {
+      "name": "Featherweights III",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your 1 and 2 cost units gain 55% Attack Speed and movement speed.",
+      "descriptionKo": "Your 1 and 2 cost units gain 55% Attack Speed and movement speed."
+    },
+    {
+      "name": "Golden Ticket",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Each time your Shop is refreshed, you have a 40% chance to gain a free refresh.",
+      "descriptionKo": "Each time your Shop is refreshed, you have a 40% chance to gain a free refresh."
+    },
+    {
+      "name": "High End Shopping",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Champions appear in your Shop as if you were 1 level higher.",
+      "descriptionKo": "Champions appear in your Shop as if you were 1 level higher."
+    },
+    {
+      "name": "Imperial Crown",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 Imperial Emblems.",
+      "descriptionKo": "Gain 2 Imperial Emblems."
+    },
+    {
+      "name": "Innovator Soul",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your team counts as having 2 additional Innovators.",
+      "descriptionKo": "Your team counts as having 2 additional Innovators."
+    },
+    {
+      "name": "Item Grab Bag II",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 random completed item(s) and a Reforger.",
+      "descriptionKo": "Gain 2 random completed item(s) and a Reforger."
+    },
+    {
+      "name": "Knife's Edge III",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your units that start combat in the first 2 rows gain 50 Attack Damage.",
+      "descriptionKo": "Your units that start combat in the first 2 rows gain 50 Attack Damage."
+    },
+    {
+      "name": "Level Up!",
+      "tier": "PRISMATIC",
+      "descriptionEn": "When you buy experience points, gain an additional 3. You can now reach level 10.",
+      "descriptionKo": "When you buy experience points, gain an additional 3. You can now reach level 10."
+    },
+    {
+      "name": "Makeshift Armor III",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your units with no items gain 75 Armor and Magic Resist.",
+      "descriptionKo": "Your units with no items gain 75 Armor and Magic Resist."
+    },
+    {
+      "name": "March of Progress",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 5 bonus experience points per round. You can no longer use gold to level up.",
+      "descriptionKo": "Gain 5 bonus experience points per round. You can no longer use gold to level up."
+    },
+    {
+      "name": "Mercenary Soul",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your team counts as having 2 additional Mercenaries.",
+      "descriptionKo": "Your team counts as having 2 additional Mercenaries."
+    },
+    {
+      "name": "Mutant Crown",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 Mutant Emblems.",
+      "descriptionKo": "Gain 2 Mutant Emblems."
+    },
+    {
+      "name": "New Recruit",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain +1 maximum team size.",
+      "descriptionKo": "Gain +1 maximum team size."
+    },
+    {
+      "name": "Portable Forge",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Open an Armory and choose 1 of 3 unique Artifacts crafted by Ornn.",
+      "descriptionKo": "Open an Armory and choose 1 of 3 unique Artifacts crafted by Ornn."
+    },
+    {
+      "name": "Protector Crown",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 Protector Emblems.",
+      "descriptionKo": "Gain 2 Protector Emblems."
+    },
+    {
+      "name": "Runic Shield III",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Arcanists start combat with a shield equal to 600% of their Ability Power for 8 seconds.",
+      "descriptionKo": "Arcanists start combat with a shield equal to 600% of their Ability Power for 8 seconds."
+    },
+    {
+      "name": "Scholar Soul",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your team counts as having 2 additional Scholars. Gain 8 gold.",
+      "descriptionKo": "Your team counts as having 2 additional Scholars. Gain 8 gold."
+    },
+    {
+      "name": "Scrap Soul",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your team counts as having 2 additional Scraps. Gain 8 gold.",
+      "descriptionKo": "Your team counts as having 2 additional Scraps. Gain 8 gold."
+    },
+    {
+      "name": "Share the Spotlight",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Allies adjacent to a spotlight at the start of combat gain 100% of its bonuses.",
+      "descriptionKo": "Allies adjacent to a spotlight at the start of combat gain 100% of its bonuses."
+    },
+    {
+      "name": "Sniper Crown",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 Sniper Emblems.",
+      "descriptionKo": "Gain 2 Sniper Emblems."
+    },
+    {
+      "name": "Socialite Soul",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your team counts as having 2 additional Socialites.",
+      "descriptionKo": "Your team counts as having 2 additional Socialites."
+    },
+    {
+      "name": "Stand United III",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your units gain 5 Attack Damage and Ability Power per Trait active across your army.",
+      "descriptionKo": "Your units gain 5 Attack Damage and Ability Power per Trait active across your army."
+    },
+    {
+      "name": "Syndicate Crown",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain 2 Syndicate Emblems.",
+      "descriptionKo": "Gain 2 Syndicate Emblems."
+    },
+    {
+      "name": "Thrill of the Hunt III",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your units restore 750 Health on kill.",
+      "descriptionKo": "Your units restore 750 Health on kill."
+    },
+    {
+      "name": "Twinshot Soul",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Your team counts as having 2 additional Twinshots. Gain 8 gold.",
+      "descriptionKo": "Your team counts as having 2 additional Twinshots. Gain 8 gold."
+    },
+    {
+      "name": "Windfall",
+      "tier": "PRISMATIC",
+      "descriptionEn": "Gain gold based on the number of augments you have now. 0 = 18g, 1 = 30g, 2 = 45g",
+      "descriptionKo": "Gain gold based on the number of augments you have now. 0 = 18g, 1 = 30g, 2 = 45g"
+    },
+    {
+      "name": "Woodland Charm",
+      "tier": "PRISMATIC",
+      "descriptionEn": "At the start of combat, your highest Health Champion creates a 1600 Health copy of themself (excluding items).",
+      "descriptionKo": "At the start of combat, your highest Health Champion creates a 1600 Health copy of themself (excluding items)."
+    }
+  ]
+}
