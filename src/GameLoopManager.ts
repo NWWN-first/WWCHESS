@@ -13,6 +13,7 @@ import {
   ItemId,
   UNIT_TEMPLATES,
   UNITS_BY_COST,
+  YORDLE_UNIT_IDS,
 } from './GameData';
 import { Participant } from './Participant';
 import { RankManager, RankUpdateResult } from './RankManager';
@@ -942,7 +943,7 @@ export class GameLoopManager {
   }
 
   // ==========================================================================
-  // 4. 정산 페이즈 (RESOLUTION_PHASE): 아바타 레이저 피니시 연출, 공정성 ?/! 미스터리 상자, 황금 고블린, 이자 지급
+  // 4. 정산 페이즈 (RESOLUTION_PHASE): 아바타 레이저 피니시 연출, 공정성 ?/! 미스터리 상자, 용병, 이자 지급
   // ==========================================================================
 
   private resolveAllMatchesAndAdvance(): void {
@@ -1006,7 +1007,7 @@ export class GameLoopManager {
         }
       }
 
-      // 1) HOME 참가자 승패/연승/연패/체력/황금 고블린 처리
+      // 1) HOME 참가자 승패/연승/연패/체력/용병 처리
       this.applyCombatOutcomeToParticipant(
         pairing.home,
         summary.winner === 'HOME',
@@ -1097,7 +1098,7 @@ export class GameLoopManager {
   }
 
   /**
-   * 개별 참가자에게 전투 승패, 연승/연패, 체력 차감, 황금 고블린 스택/캐시아웃을 적용한다.
+   * 개별 참가자에게 전투 승패, 연승/연패, 체력 차감, 용병 스택/캐시아웃을 적용한다.
    */
   private applyCombatOutcomeToParticipant(
     participant: Participant,
@@ -1125,14 +1126,14 @@ export class GameLoopManager {
       participant.hp = Math.max(0, participant.hp - damageTaken);
     }
 
-    // 황금 고블린(GOLDEN_GOBLIN) 시너지 패배 스택 축적 또는 승리 캐시아웃 발동!
+    // 용병(GOLDEN_GOBLIN) 시너지 패배 스택 축적 또는 승리 캐시아웃 발동!
     if (!isCreepMatch && participant.hp > 0) {
       const synergies = SynergyEngine.getActiveSynergyMap(participant);
-      const goblinState = synergies.get('GOLDEN_GOBLIN') ?? null;
-      if (goblinState && goblinState.count >= 3) {
-        const cashoutOrbs = DopamineEngine.processGoldenGoblinTrait(
+      const mercenaryState = synergies.get('MERCENARY') ?? null;
+      if (mercenaryState && mercenaryState.count >= 3) {
+        const cashoutOrbs = DopamineEngine.processMercenaryTrait(
           participant,
-          goblinState,
+          mercenaryState,
           didWin,
           this.sharedPool
         );
@@ -1149,7 +1150,7 @@ export class GameLoopManager {
             this.playerLootOrbs.push(...dropOrbs);
             if (cashoutOrbs.length > 0) {
               this.pushBannerNotification(
-                `💥🪙 [황금 고블린 금고 대폭발!] ! 대박 미스터리 상자 ${cashoutOrbs.length}개가 보드에 쏟아졌습니다! 터치하여 오픈하세요!`
+                `💥🪙 [용병 금고 대폭발!] ! 대박 미스터리 상자 ${cashoutOrbs.length}개가 보드에 쏟아졌습니다! 터치하여 오픈하세요!`
               );
             }
           } else {
@@ -1158,12 +1159,13 @@ export class GameLoopManager {
             }
             if (cashoutOrbs.length > 0) {
               this.pushBannerNotification(
-                `💥🪙 [${participant.name}] 황금 고블린 금고 캐시아웃 성공!`
+                `💥🪙 [${participant.name}] 용병 금고 캐시아웃 성공!`
               );
             }
           }
         }
       }
+      this.tryYordleLordSummon(participant);
     }
   }
 
@@ -1191,6 +1193,32 @@ export class GameLoopManager {
         p.isShopLocked = false;
       }
     }
+  }
+
+  /**
+   * 요들 군주(YORDLE_LORD) 스텁: 보드·벤치의 모든 YORDLE 유닛이 3★이면 u5_veigar 1회 소환.
+   */
+  private tryYordleLordSummon(participant: Participant): void {
+    if (participant.isEliminated || participant.yordleLordVeigarSpawned) return;
+
+    const allUnits = [...participant.board.flat(), ...participant.bench].filter(
+      (u): u is NonNullable<typeof u> => u != null
+    );
+    if (allUnits.some((u) => u.unitId === 'u5_veigar')) return;
+
+    const allYordlesThreeStar = YORDLE_UNIT_IDS.every((yordleId) =>
+      allUnits.some((u) => u.unitId === yordleId && u.starLevel === 3)
+    );
+    if (!allYordlesThreeStar) return;
+
+    const benchIdx = participant.bench.findIndex((s) => s === null);
+    if (benchIdx < 0) return;
+    if (!this.sharedPool.pullSpecificUnitFromPool('u5_veigar')) return;
+
+    participant.bench[benchIdx] = Participant.createUnitInstance('u5_veigar', 1);
+    participant.yordleLordVeigarSpawned = true;
+    participant.lastActionMessage =
+      '🏰 [요들 군주] 모든 요들 3★ — 베이가 벤치에 소환되었습니다! (기믹 스텁)';
   }
 
   /**

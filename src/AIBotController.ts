@@ -49,7 +49,7 @@ export interface BotBrainState {
 
 /** ONNX Runtime 경로를 우선 시도하는 페르소나 (인라인 행렬과 혼합해 봇 전략 다양화) */
 const ONNX_PREFERRED_PERSONAS: ReadonlySet<AIPersona> = new Set([
-  'GOBLIN_GAMBLER',
+  'MERCENARY_GAMBLER',
   'HYPER_ROLLER',
   'FAST_NINE_GREEDY',
   'LOW_COST_REROLLER',
@@ -60,7 +60,7 @@ const PERSONA_POLICY_TEMPERATURE: Record<AIPersona, number> = {
   LOW_COST_REROLLER: 0.88,
   FAST_NINE_GREEDY: 0.42,
   FAST_NINE_ECONOMIST: 0.32,
-  GOBLIN_GAMBLER: 1.05,
+  MERCENARY_GAMBLER: 1.05,
   FLEX_MASTER: 0.55,
   FLEX_BALANCED: 0.62,
 };
@@ -83,12 +83,14 @@ function createSeededRng(seed: number): () => number {
 }
 
 const STANDARD_ORIGIN_TRAITS: TraitId[] = [
-  'HOLY_EMPIRE',
-  'ABYSSAL_DEMON',
-  'ELVEN_SYLVAN',
-  'DRAGONKIN',
-  'UNDEAD_SCOURGE',
-  'ARCANE_TOWER',
+  'ACADEMY',
+  'SYNDICATE',
+  'SCRAP',
+  'MERCENARY',
+  'YORDLE',
+  'CHEMTECH',
+  'IMPERIAL',
+  'CLOCKWORK',
 ];
 
 export type UnitRole = 'TANK' | 'AD_CARRY' | 'AP_CARRY' | 'BRUISER';
@@ -98,13 +100,13 @@ export function getUnitRole(unitId: string): UnitRole {
   if (!template) return 'BRUISER';
 
   if (
-    template.traits.includes('VANGUARD') ||
-    template.traits.includes('PALADIN') ||
+    template.traits.includes('BODYGUARD') ||
+    template.traits.includes('ENCHANTER') ||
     (template.stats.def >= 40 && template.stats.range === 1)
   ) {
     if (
-      template.traits.includes('SHADOW_ASSASSIN') ||
-      template.traits.includes('BERSERKER')
+      template.traits.includes('ASSASSIN') ||
+      template.traits.includes('BRUISER')
     ) {
       return 'BRUISER';
     }
@@ -112,20 +114,20 @@ export function getUnitRole(unitId: string): UnitRole {
   }
 
   if (
-    template.traits.includes('ARCHMAGE') ||
-    template.traits.includes('ARCANE_TOWER')
+    template.traits.includes('ARCANIST') ||
+    template.traits.includes('SCHOLAR')
   ) {
     return 'AP_CARRY';
   }
 
   if (
-    template.traits.includes('RANGER') ||
-    template.traits.includes('SHADOW_ASSASSIN')
+    template.traits.includes('SNIPER') ||
+    template.traits.includes('ASSASSIN')
   ) {
     return 'AD_CARRY';
   }
 
-  if (template.traits.includes('BERSERKER') || template.stats.range === 1) {
+  if (template.traits.includes('BRUISER') || template.stats.range === 1) {
     return 'BRUISER';
   }
 
@@ -174,13 +176,13 @@ const ITEM_ROLE_AFFINITY: Record<CompletedItemId, Record<UnitRole, number>> = {
 };
 
 const BOT_PRESETS: Array<{ name: string; persona: AIPersona; initialTrait: TraitId }> = [
-  { name: '봇1 [도박꾼 잭]', persona: 'HYPER_ROLLER', initialTrait: 'UNDEAD_SCOURGE' },
-  { name: '봇2 [리롤왕 볼트]', persona: 'LOW_COST_REROLLER', initialTrait: 'ELVEN_SYLVAN' },
-  { name: '봇3 [황금충 고블]', persona: 'GOBLIN_GAMBLER', initialTrait: 'GOLDEN_GOBLIN' },
-  { name: '봇4 [만수르 골드]', persona: 'FAST_NINE_GREEDY', initialTrait: 'DRAGONKIN' },
-  { name: '봇5 [이자왕 영희]', persona: 'FAST_NINE_ECONOMIST', initialTrait: 'HOLY_EMPIRE' },
-  { name: '봇6 [정석 마스터 린]', persona: 'FLEX_MASTER', initialTrait: 'ARCANE_TOWER' },
-  { name: '봇7 [유연한 카이]', persona: 'FLEX_BALANCED', initialTrait: 'ABYSSAL_DEMON' },
+  { name: '봇1 [도박꾼 잭]', persona: 'HYPER_ROLLER', initialTrait: 'MUTANT' },
+  { name: '봇2 [리롤왕 볼트]', persona: 'LOW_COST_REROLLER', initialTrait: 'YORDLE' },
+  { name: '봇3 [용병 도박]', persona: 'MERCENARY_GAMBLER', initialTrait: 'MERCENARY' },
+  { name: '봇4 [만수르 골드]', persona: 'FAST_NINE_GREEDY', initialTrait: 'IMPERIAL' },
+  { name: '봇5 [이자왕 영희]', persona: 'FAST_NINE_ECONOMIST', initialTrait: 'ACADEMY' },
+  { name: '봇6 [정석 마스터 린]', persona: 'FLEX_MASTER', initialTrait: 'SCRAP' },
+  { name: '봇7 [유연한 카이]', persona: 'FLEX_BALANCED', initialTrait: 'SYNDICATE' },
 ];
 
 /** 봇마다 독립 추첨(중복 허용). 가중치는 인구 대표성만 살짝 조정. */
@@ -189,7 +191,7 @@ const PERSONA_WEIGHT_TABLE: ReadonlyArray<{ persona: AIPersona; weight: number }
   { persona: 'LOW_COST_REROLLER', weight: 1.1 },
   { persona: 'FAST_NINE_GREEDY', weight: 1 },
   { persona: 'FAST_NINE_ECONOMIST', weight: 1 },
-  { persona: 'GOBLIN_GAMBLER', weight: 1 },
+  { persona: 'MERCENARY_GAMBLER', weight: 1 },
   { persona: 'FLEX_MASTER', weight: 1 },
   { persona: 'FLEX_BALANCED', weight: 1 },
 ];
@@ -208,9 +210,9 @@ function pickInitialTraitForPersona(
   persona: AIPersona,
   rng: () => number = Math.random
 ): TraitId {
-  if (persona === 'GOBLIN_GAMBLER') return 'GOLDEN_GOBLIN';
+  if (persona === 'MERCENARY_GAMBLER') return 'MERCENARY';
   const idx = Math.floor(rng() * STANDARD_ORIGIN_TRAITS.length);
-  return STANDARD_ORIGIN_TRAITS[idx] ?? 'HOLY_EMPIRE';
+  return STANDARD_ORIGIN_TRAITS[idx] ?? 'ACADEMY';
 }
 
 function lobbyNameForPersona(persona: AIPersona, botIndex: number): string {
@@ -285,17 +287,19 @@ export class AIBotController {
     initialTrait: TraitId
   ): BotBrainState {
     const secondaryTrait: TraitId =
-      initialTrait === 'HOLY_EMPIRE'
-        ? 'VANGUARD'
-        : initialTrait === 'ARCANE_TOWER'
-        ? 'ARCHMAGE'
-        : initialTrait === 'ELVEN_SYLVAN'
-        ? 'RANGER'
-        : initialTrait === 'UNDEAD_SCOURGE'
-        ? 'SHADOW_ASSASSIN'
-        : initialTrait === 'GOLDEN_GOBLIN'
-        ? 'BERSERKER'
-        : 'PALADIN';
+      initialTrait === 'ACADEMY'
+        ? 'BODYGUARD'
+        : initialTrait === 'SCRAP'
+        ? 'INNOVATOR'
+        : initialTrait === 'YORDLE'
+        ? 'SNIPER'
+        : initialTrait === 'MUTANT'
+        ? 'ASSASSIN'
+        : initialTrait === 'MERCENARY'
+        ? 'BRUISER'
+        : initialTrait === 'CHEMTECH'
+        ? 'BRUISER'
+        : 'ARCANIST';
 
     const decisionSeed = hashBotDecisionSeed(bot.id);
     const policyTemperature =
@@ -331,7 +335,7 @@ export class AIBotController {
     if (!brain) {
       const persona = bot.persona ?? 'FLEX_MASTER';
       const trait: TraitId =
-        persona === 'GOBLIN_GAMBLER' ? 'GOLDEN_GOBLIN' : 'HOLY_EMPIRE';
+        persona === 'MERCENARY_GAMBLER' ? 'MERCENARY' : 'ACADEMY';
       brain = this.initializeBotBrain(bot, persona, trait);
     }
     return brain;
@@ -348,7 +352,7 @@ export class AIBotController {
     const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
     const isEmergencySurvival = bot.hp <= 30;
     const isGoblinCashoutTurn =
-      persona === 'GOBLIN_GAMBLER' &&
+      persona === 'MERCENARY_GAMBLER' &&
       (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
     const isHighStageAllIn =
       (stageNum >= 4 && bot.gold >= 40) || bot.gold >= 50;
@@ -417,7 +421,7 @@ export class AIBotController {
       b[0] += 0.75;
       b[1] += 0.55;
       b[2] -= 0.35;
-    } else if (persona === 'GOBLIN_GAMBLER') {
+    } else if (persona === 'MERCENARY_GAMBLER') {
       b[2] += 0.65;
       b[3] += 0.45;
       b[0] -= 0.35;
@@ -512,7 +516,7 @@ export class AIBotController {
       tempoChance = 0.32;
     } else if (persona === 'FLEX_MASTER' || persona === 'FLEX_BALANCED') {
       tempoChance = 0.22;
-    } else if (persona === 'GOBLIN_GAMBLER') {
+    } else if (persona === 'MERCENARY_GAMBLER') {
       tempoChance = 0.12;
     } else if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
       tempoChance = 0.08;
@@ -549,7 +553,7 @@ export class AIBotController {
     if (persona === 'FLEX_MASTER' || persona === 'FLEX_BALANCED') {
       return Math.max(baseFloor, Math.min(cap, 36));
     }
-    if (persona === 'GOBLIN_GAMBLER') {
+    if (persona === 'MERCENARY_GAMBLER') {
       return Math.max(baseFloor, Math.min(cap, 40));
     }
     if (persona === 'HYPER_ROLLER' || persona === 'LOW_COST_REROLLER') {
@@ -566,7 +570,7 @@ export class AIBotController {
     const persona = brain.persona;
     const isEmergencySurvival = bot.hp <= 30;
     const isGoblinCashoutTurn =
-      persona === 'GOBLIN_GAMBLER' &&
+      persona === 'MERCENARY_GAMBLER' &&
       (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
     return this.getEffectiveGoldFloor(
       bot,
@@ -692,7 +696,7 @@ export class AIBotController {
     const stageNum = parseInt(currentRound.split('-')[0] || '1', 10);
     const isEmergencySurvival = bot.hp <= 30;
     const isGoblinCashoutTurn =
-      brain.persona === 'GOBLIN_GAMBLER' &&
+      brain.persona === 'MERCENARY_GAMBLER' &&
       (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
 
     const macro = brain.lastNeuralResult?.macroAction;
@@ -790,7 +794,7 @@ export class AIBotController {
       while (bot.gold - 4 >= xpGoldFloor && bot.level < 10) {
         if (!bot.buyXp(sharedPool)) break;
       }
-    } else if (persona === 'GOBLIN_GAMBLER') {
+    } else if (persona === 'MERCENARY_GAMBLER') {
       const isGoblinCashoutTurn = bot.hp <= 35 || bot.goblinVaultStacks >= 55;
       const desiredLevel = isGoblinCashoutTurn ? 9 : tempoBoost ? 8 : 6;
       if (bot.gold - 4 >= xpGoldFloor && bot.level < desiredLevel) {
@@ -952,18 +956,18 @@ export class AIBotController {
       }
 
       if (
-        (traits.get('HOLY_EMPIRE') ?? 0) >= 2 ||
-        (traits.get('PALADIN') ?? 0) >= 2 ||
-        (traits.get('UNDEAD_SCOURGE') ?? 0) >= 2
+        (traits.get('ACADEMY') ?? 0) >= 2 ||
+        (traits.get('ENCHANTER') ?? 0) >= 2 ||
+        (traits.get('BODYGUARD') ?? 0) >= 4
       ) {
         opponentHealShieldTraits++;
       }
-      if ((traits.get('VANGUARD') ?? 0) >= 2) {
+      if ((traits.get('BODYGUARD') ?? 0) >= 2) {
         opponentVanguardCount++;
       }
       if (
-        (traits.get('ARCANE_TOWER') ?? 0) >= 2 ||
-        (traits.get('ARCHMAGE') ?? 0) >= 2
+        (traits.get('SCHOLAR') ?? 0) >= 2 ||
+        (traits.get('ARCANIST') ?? 0) >= 2
       ) {
         opponentMagicCount++;
       }
@@ -1225,7 +1229,7 @@ export class AIBotController {
       } else {
         if (aug.category === 'COMBAT') score += 60;
       }
-    } else if (brain.persona === 'GOBLIN_GAMBLER') {
+    } else if (brain.persona === 'MERCENARY_GAMBLER') {
       if (
         aug.effectKey === 'GOBLIN_CROWN' ||
         aug.effectKey === 'DIABOLIC_FINANCE' ||
@@ -1333,7 +1337,7 @@ export class AIBotController {
       aiParams.skillLevel >= 0.7 &&
       Math.random() < aiParams.scoutingChance &&
       brain.pivotedCount < 2 &&
-      !(brain.persona === 'GOBLIN_GAMBLER' && bot.goblinVaultStacks >= 12);
+      !(brain.persona === 'MERCENARY_GAMBLER' && bot.goblinVaultStacks >= 12);
 
     if (shouldAttemptPivot) {
       const currentContested = traitContestedMap.get(brain.targetTrait) ?? 0;
@@ -1389,7 +1393,7 @@ export class AIBotController {
     const persona = brain.persona;
     const isEmergencySurvival = bot.hp <= 30;
     const isGoblinCashoutTurn =
-      persona === 'GOBLIN_GAMBLER' &&
+      persona === 'MERCENARY_GAMBLER' &&
       (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
 
     // A. 현재 상점(5칸)에서 즉시 구매할 기물 및 고티어 견제 기물 스캔
@@ -1440,7 +1444,7 @@ export class AIBotController {
       while (bot.gold - 4 >= targetGoldFloor && bot.level < 10) {
         if (!bot.buyXp(sharedPool)) break;
       }
-    } else if (persona === 'GOBLIN_GAMBLER') {
+    } else if (persona === 'MERCENARY_GAMBLER') {
       // 황금 고블린 코인충: 평상시에는 50골드를 모으면서 천천히 레벨업,
       // 체력 35 이하 또는 금고 55스택 이상 도달 시 골드를 전부 털어 레벨업+폭풍 리롤!
       const desiredLevel = isGoblinCashoutTurn ? 9 : 6;
@@ -1532,7 +1536,7 @@ export class AIBotController {
       return Math.max(10, 20 - mistakePenalty);
     }
 
-    if (persona === 'GOBLIN_GAMBLER') {
+    if (persona === 'MERCENARY_GAMBLER') {
       return Math.max(20, 40 - mistakePenalty);
     }
 
@@ -1711,8 +1715,8 @@ export class AIBotController {
       if (template.cost >= 4) score += 36;
       if (template.cost === 5) score += 22;
       if (template.cost === 1 && bot.level >= 7 && ownedCopies === 0) score -= 25;
-    } else if (brain.persona === 'GOBLIN_GAMBLER') {
-      if (template.traits.includes('GOLDEN_GOBLIN')) {
+    } else if (brain.persona === 'MERCENARY_GAMBLER') {
+      if (template.traits.includes('MERCENARY')) {
         score += 55; // 황금 고블린 기물 최우선 수집
       }
       if (
@@ -1753,7 +1757,7 @@ export class AIBotController {
 
       let keepScore = unit.cost * 6 + bot.getOwnedUnitCopiesCount(unit.unitId) * 12;
       if (unit.traits.includes(brain.targetTrait)) keepScore += 30;
-      if (unit.traits.includes('GOLDEN_GOBLIN') && brain.persona === 'GOBLIN_GAMBLER') {
+      if (unit.traits.includes('MERCENARY') && brain.persona === 'MERCENARY_GAMBLER') {
         keepScore += 45;
       }
 
@@ -1861,7 +1865,7 @@ export class AIBotController {
     if (allUnits.length === 0 && deniedUnits.length === 0) return;
 
     const isGoblinSandbagging =
-      brain.persona === 'GOBLIN_GAMBLER' &&
+      brain.persona === 'MERCENARY_GAMBLER' &&
       bot.hp > 35 &&
       bot.goblinVaultStacks < 55;
 
@@ -1874,8 +1878,8 @@ export class AIBotController {
       if (unit.traits.includes(brain.targetTrait)) power += 24;
       if (unit.traits.includes(brain.secondaryTrait)) power += 12;
       if (
-        brain.persona === 'GOBLIN_GAMBLER' &&
-        unit.traits.includes('GOLDEN_GOBLIN')
+        brain.persona === 'MERCENARY_GAMBLER' &&
+        unit.traits.includes('MERCENARY')
       ) {
         power += 70; // 황금 고블린 시너지 유지 최우선
       }
@@ -1938,13 +1942,13 @@ export class AIBotController {
     const backlineUnits: UnitInstance[] = [];
 
     for (const u of deployedUnits) {
-      if (u.traits.includes('SHADOW_ASSASSIN')) {
+      if (u.traits.includes('ASSASSIN')) {
         assassinUnits.push(u);
       } else if (
         u.range <= 1 ||
-        u.traits.includes('VANGUARD') ||
-        u.traits.includes('BERSERKER') ||
-        u.traits.includes('PALADIN')
+        u.traits.includes('BODYGUARD') ||
+        u.traits.includes('BRUISER') ||
+        u.traits.includes('ENCHANTER')
       ) {
         frontlineUnits.push(u);
       } else {
@@ -1954,11 +1958,11 @@ export class AIBotController {
 
     // 고티어 AI: CC 탱커(잔느, 엔트, 지크, 아서, 골드투스)를 플레이어 주력 캐리 맞은편 열(row 0, playerCarryCol)에 최우선 배치
     const ccTankIds = new Set([
-      'u2_jeanne',
-      'u2_ent',
-      'u3_sieg',
-      'u4_arthur',
-      'u5_goldtooth',
+      'u3_leona',
+      'u4_braum',
+      'u4_sion',
+      'u5_galio',
+      'u5_tahm_kench',
     ]);
     frontlineUnits.sort((a, b) => {
       const aCC = ccTankIds.has(a.unitId) ? 1 : 0;

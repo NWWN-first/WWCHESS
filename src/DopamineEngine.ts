@@ -41,25 +41,25 @@ let globalOrbCounter = 1;
 
 export class DopamineEngine {
   /**
-   * 1) 황금 고블린(GOLDEN_GOBLIN) 연패 코인 & 캐시아웃(Cash-out) 처리
-   * - activeGoblinCount >= 3 일 때 작동.
-   * - 전투 패배 시: 기본 +4 스택 + (현재 연패 수 * 2) 스택 추가 (5고블린이면 획득량 2배).
+   * 1) 용병(GOLDEN_GOBLIN) 연패 코인 & 캐시아웃(Cash-out) 처리
+   * - activeMercenaryCount >= 3 일 때 작동.
+   * - 전투 패배 시: 기본 +4 스택 + (현재 연패 수 * 2) 스택 추가 (5용병이면 획득량 2배).
    * - 전투 승리 시(didWinCombat === true && goblinVaultStacks > 0):
    *   누적된 goblinVaultStacks 구간(1~9, 10+, 25+, 45+, 70+, 100+)에 따라 폭발적인 보상이 담긴
    *   LootOrb[]를 생성하여 반환하고 goblinVaultStacks = 0으로 초기화한다.
    */
-  public static hasGoblinUnitOnBoard(participant: Participant): boolean {
+  public static hasMercenaryUnitOnBoard(participant: Participant): boolean {
     for (let r = 0; r < Participant.BOARD_ROWS; r++) {
       for (let c = 0; c < Participant.BOARD_COLS; c++) {
         const unit = participant.board[r][c];
-        if (unit && unit.traits.includes('GOLDEN_GOBLIN')) return true;
+        if (unit && unit.traits.includes('MERCENARY')) return true;
       }
     }
     return false;
   }
 
   /**
-   * 라운드 종료 경제: (5)(7) 승리 유지 보상 + (7) 매판 잭팝 (캐시아웃은 processGoldenGoblinTrait).
+   * 라운드 종료 경제: (5)(7) 승리 유지 보상 + (7) 매판 잭팝 (캐시아웃은 processMercenaryTrait).
    */
   public static processRoundEnd(
     participant: Participant,
@@ -69,42 +69,42 @@ export class DopamineEngine {
   ): LootOrb[] {
     if (participant.isEliminated || isCreepMatch) return [];
 
-    const goblinState = SynergyEngine.getActiveSynergyMap(participant).get('GOLDEN_GOBLIN');
-    if (!goblinState || goblinState.count < 3) return [];
-    if (!DopamineEngine.hasGoblinUnitOnBoard(participant)) return [];
+    const mercenaryState = SynergyEngine.getActiveSynergyMap(participant).get('MERCENARY');
+    if (!mercenaryState || mercenaryState.count < 3) return [];
+    if (!DopamineEngine.hasMercenaryUnitOnBoard(participant)) return [];
 
-    const effect = goblinState.activeEffect;
+    const effect = mercenaryState.activeEffect;
     if (!effect) return [];
 
     const orbs: LootOrb[] = [];
 
-    if (effect.goblinPerRoundJackpot) {
+    if (effect.mercenaryPerRoundJackpot) {
       orbs.push(
-        ...DopamineEngine.buildGoblinPerRoundJackpotOrbs(participant, sharedPool)
+        ...DopamineEngine.buildMercenaryPerRoundJackpotOrbs(participant, sharedPool)
       );
     }
 
-    if (didWinCombat && goblinState.count >= 5) {
-      const minG = effect.goblinWinGoldMin ?? 0;
-      const maxG = effect.goblinWinGoldMax ?? 0;
+    if (didWinCombat && mercenaryState.count >= 5) {
+      const minG = effect.mercenaryWinGoldMin ?? 0;
+      const maxG = effect.mercenaryWinGoldMax ?? 0;
       if (maxG > 0) {
         const span = Math.max(0, maxG - minG);
         const goldGain = minG + Math.floor(Math.random() * (span + 1));
         participant.gold += goldGain;
-        participant.lastActionMessage = `🪙 [황금 고블린] 승리 유지 +${goldGain}골드!`;
+        participant.lastActionMessage = `🪙 [용병] 승리 유지 +${goldGain}골드!`;
       }
 
-      const smallOrbChance = effect.goblinSmallOrbChanceOnWin ?? 0;
+      const smallOrbChance = effect.mercenarySmallOrbChanceOnWin ?? 0;
       if (smallOrbChance > 0 && Math.random() < smallOrbChance) {
         orbs.push(
-          DopamineEngine.createLootOrb('GRAY', 0.42, 0.5, '🔹 고블린 소박 구슬', {
+          DopamineEngine.createLootOrb('GRAY', 0.42, 0.5, '🔹 용병 소박 구슬', {
             gold: 2,
             items: [DopamineEngine.randomBaseItem()],
           })
         );
       }
 
-      const streakThreshold = effect.goblinWinStreakForGoldOrb ?? 0;
+      const streakThreshold = effect.mercenaryWinStreakForGoldOrb ?? 0;
       if (streakThreshold > 0 && participant.winStreak >= streakThreshold) {
         orbs.push(
           DopamineEngine.createLootOrb('GOLD', 0.58, 0.5, '🪙 연승 황금 구슬', {
@@ -118,23 +118,23 @@ export class DopamineEngine {
     return orbs;
   }
 
-  public static processGoldenGoblinTrait(
+  public static processMercenaryTrait(
     participant: Participant,
-    goblinState: ActiveSynergyState | null,
+    mercenaryState: ActiveSynergyState | null,
     didWinCombat: boolean,
     sharedPool: SharedPoolManager
   ): LootOrb[] {
-    const activeGoblinCount = goblinState?.count ?? 0;
-    if (participant.isEliminated || activeGoblinCount < 3) return [];
+    const activeMercenaryCount = mercenaryState?.count ?? 0;
+    if (participant.isEliminated || activeMercenaryCount < 3) return [];
 
-    const stackMultiplier = goblinState?.activeEffect?.goblinStackMultiplier ?? 1;
+    const stackMultiplier = mercenaryState?.activeEffect?.mercenaryStackMultiplier ?? 1;
 
-    // 1. 전투 패배 시: 황금 고블린 3시너지 이상 활성화 중이면 금고 스택 축적
+    // 1. 전투 패배 시: 용병 3시너지 이상 활성화 중이면 금고 스택 축적
     if (!didWinCombat) {
       const baseGain = 4 + participant.loseStreak * 2;
       const totalGain = baseGain * stackMultiplier;
       participant.goblinVaultStacks += totalGain;
-      participant.lastActionMessage = `🪙 [황금 고블린 금고] 패배 스택 +${totalGain} 축적! (현재 총 ${participant.goblinVaultStacks} 스택)`;
+      participant.lastActionMessage = `🪙 [용병 금고] 패배 스택 +${totalGain} 축적! (현재 총 ${participant.goblinVaultStacks} 스택)`;
       return [];
     }
 
@@ -143,20 +143,20 @@ export class DopamineEngine {
       const stacks = participant.goblinVaultStacks;
       participant.goblinVaultStacks = 0;
 
-      const orbs = DopamineEngine.buildGoblinCashoutOrbs(
+      const orbs = DopamineEngine.buildMercenaryCashoutOrbs(
         participant,
         stacks,
         sharedPool
       );
 
-      participant.lastActionMessage = `💥 [황금 고블린 금고 대폭발!] ${stacks} 스택 캐시아웃! 전리품 구슬 ${orbs.length}개 드랍!`;
+      participant.lastActionMessage = `💥 [용병 금고 대폭발!] ${stacks} 스택 캐시아웃! 전리품 구슬 ${orbs.length}개 드랍!`;
       return orbs;
     }
 
     return [];
   }
 
-  private static buildGoblinPerRoundJackpotOrbs(
+  private static buildMercenaryPerRoundJackpotOrbs(
     participant: Participant,
     sharedPool: SharedPoolManager
   ): LootOrb[] {
@@ -197,7 +197,7 @@ export class DopamineEngine {
         tier,
         0.5,
         0.48,
-        tier === 'PRISMATIC' ? '👑 7고블린 매판 잭팟' : '🪙 7고블린 매판 황금',
+        tier === 'PRISMATIC' ? '👑 7용병 매판 잭팟' : '🪙 7용병 매판 황금',
         rewards
       ),
     ];
@@ -206,7 +206,7 @@ export class DopamineEngine {
   /**
    * 누적 금고 스택 구간별 초호화 캐시아웃 전리품 구슬 생성
    */
-  private static buildGoblinCashoutOrbs(
+  private static buildMercenaryCashoutOrbs(
     participant: Participant,
     stacks: number,
     sharedPool: SharedPoolManager
@@ -274,7 +274,7 @@ export class DopamineEngine {
     } else if (stacks >= 10) {
       // 10~24 스택: 기본 아이템 1개 + 3코스트 1기 + 10골드
       orbs.push(
-        DopamineEngine.createLootOrb('BLUE', 0.48, 0.55, '🔹 10+ 고블린 금고', {
+        DopamineEngine.createLootOrb('BLUE', 0.48, 0.55, '🔹 10+ 용병 금고', {
           gold: 10,
           items: [DopamineEngine.randomBaseItem()],
           units: DopamineEngine.pickAvailableUnitsFromPool(sharedPool, participant, 3, 1),
@@ -283,7 +283,7 @@ export class DopamineEngine {
     } else {
       // 1~9 스택: 소형 금고 (6골드 + 기본 아이템 1개)
       orbs.push(
-        DopamineEngine.createLootOrb('GRAY', 0.5, 0.55, '⚪ 소형 고블린 금고', {
+        DopamineEngine.createLootOrb('GRAY', 0.5, 0.55, '⚪ 소형 용병 금고', {
           gold: 6,
           items: [DopamineEngine.randomBaseItem()],
         })
