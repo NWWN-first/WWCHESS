@@ -18,7 +18,7 @@ import { CombatEvent, CombatUnit } from './SkillRegistry';
 import { soundFX } from './SoundFXManager';
 
 /**
- * 20종 판타지 챔피언 전용 28x28 도트 스프라이트 아키타입 및 컬러 팔레트
+ * Set 6 챔피언 28x28 도트 아키타입 팔레트 (코스트 풀 + id 해시 배정)
  */
 export type WeaponKind =
   | 'GREATSWORD'
@@ -783,6 +783,48 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
   },
 };
 
+/** Legacy 아키타입 팔레트 — Set 6 챔피언 id별 직접 키가 없을 때 코스트 풀에서 안정적으로 배정 */
+const UNIT_PIXEL_SPECS_BY_COST: Record<CostTier, UnitPixelArtSpec[]> = {
+  1: [],
+  2: [],
+  3: [],
+  4: [],
+  5: [],
+};
+
+for (const [id, spec] of Object.entries(UNIT_PIXEL_SPECS)) {
+  const costMatch = /^u([1-5])_/.exec(id);
+  if (!costMatch) continue;
+  const cost = Number(costMatch[1]) as CostTier;
+  UNIT_PIXEL_SPECS_BY_COST[cost].push(spec);
+}
+
+function stableUnitVisualHash(unitId: string): number {
+  let h = 0;
+  for (let i = 0; i < unitId.length; i++) {
+    h = (Math.imul(31, h) + unitId.charCodeAt(i)) >>> 0;
+  }
+  return h;
+}
+
+const DEFAULT_PIXEL_SPEC = UNIT_PIXEL_SPECS.u1_garen;
+
+/**
+ * Set 6 로스터 59종: 직접 스펙 키 → 없으면 동일 코스트 아키타입 풀에서 id 해시로 배정 (항상 동일 유닛 = 동일 실루엣).
+ */
+export function resolveUnitPixelSpec(unitId: string): UnitPixelArtSpec {
+  const direct = UNIT_PIXEL_SPECS[unitId];
+  if (direct) return direct;
+
+  const tmpl = UNIT_TEMPLATES[unitId];
+  if (!tmpl) return DEFAULT_PIXEL_SPEC;
+
+  const pool = UNIT_PIXEL_SPECS_BY_COST[tmpl.cost];
+  if (!pool.length) return DEFAULT_PIXEL_SPEC;
+
+  return pool[stableUnitVisualHash(unitId) % pool.length];
+}
+
 export const WEAPON_BADGE_ICONS: Record<WeaponKind, string> = {
   GREATSWORD: '🗡️',
   SWORD_SHIELD: '🛡️',
@@ -1229,7 +1271,7 @@ export class PixelGameRenderer {
     pCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     pCtx.imageSmoothingEnabled = false;
 
-    const spec = UNIT_PIXEL_SPECS[unitId] ?? UNIT_PIXEL_SPECS.u1_garen;
+    const spec = resolveUnitPixelSpec(unitId);
     const borderColor = COST_BORDER_COLORS[cost];
 
     // 1) 시너지/코스트 테마 배경 라디얼 그라데이션
@@ -1393,7 +1435,7 @@ export class PixelGameRenderer {
         state.lungeTimerMs = state.lungeDurationMs;
 
         const isMelee = !attacker || attacker.range <= 1;
-        const spec = UNIT_PIXEL_SPECS[ev.unitId ?? 'u1_garen'] ?? UNIT_PIXEL_SPECS.u1_garen;
+        const spec = resolveUnitPixelSpec(ev.unitId ?? 'u1_garen');
 
         if (isMelee) {
           const smearX = pFrom.x + nx * (this.hexMetrics.hexRadius * 0.65);
@@ -3132,7 +3174,7 @@ export class PixelGameRenderer {
     const g = off.getContext('2d')!;
     g.imageSmoothingEnabled = false;
 
-    const spec = UNIT_PIXEL_SPECS[unitId] ?? UNIT_PIXEL_SPECS.u1_garen;
+    const spec = resolveUnitPixelSpec(unitId);
 
     const pixels: (string | null)[][] = Array.from({ length: size }, () =>
       Array<string | null>(size).fill(null)

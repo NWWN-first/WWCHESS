@@ -257,7 +257,7 @@ export class GameLoopManager {
     }
 
     this.pushBannerNotification(
-      '⚔️ 판타지 오토배틀러 8인 로비 매치가 시작되었습니다! (라운드 1-1: 들판 미니언 포식자)'
+      '⚙️ Set 6 (Gizmos & Gadgets) 8인 매치가 시작되었습니다! (라운드 1-1: PvE 미니언)'
     );
     this.beginRoundEntrySequence();
   }

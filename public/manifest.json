@@ -1,7 +1,7 @@
 {
-  "name": "WWCHESS - 헥사곤 도트 판타지 오토배틀러",
+  "name": "WWCHESS - Set 6 지즈모 & 가젯 오토배틀러",
   "short_name": "WWCHESS",
-  "description": "8인 헥사 오토배틀러. ONNX·신경망 기반 AI 봇과 대전하는 판타지 TFT 스타일 게임.",
+  "description": "8인 헥사 오토배틀러. TFT Set 6 로스터·시너지와 ONNX 신경망 봇 대전.",
   "start_url": "./",
   "display": "fullscreen",
   "orientation": "landscape",
