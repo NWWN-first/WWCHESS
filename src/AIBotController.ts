@@ -371,7 +371,7 @@ export class AIBotController {
     const isEmergencySurvival = bot.hp <= 30;
     const isMercenaryCashoutTurn =
       persona === 'MERCENARY_GAMBLER' &&
-      (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
+      (bot.hp <= 35 || bot.mercenaryArmoryLoot >= 8);
     const isHighStageAllIn =
       (stageNum >= 4 && bot.gold >= 40) || bot.gold >= 50;
 
@@ -589,7 +589,7 @@ export class AIBotController {
     const isEmergencySurvival = bot.hp <= 30;
     const isMercenaryCashoutTurn =
       persona === 'MERCENARY_GAMBLER' &&
-      (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
+      (bot.hp <= 35 || bot.mercenaryArmoryLoot >= 8);
     return this.getEffectiveGoldFloor(
       bot,
       brain,
@@ -715,7 +715,7 @@ export class AIBotController {
     const isEmergencySurvival = bot.hp <= 30;
     const isMercenaryCashoutTurn =
       brain.persona === 'MERCENARY_GAMBLER' &&
-      (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
+      (bot.hp <= 35 || bot.mercenaryArmoryLoot >= 8);
 
     const macro = brain.lastNeuralResult?.macroAction;
     brain.isRolldownActive =
@@ -813,7 +813,7 @@ export class AIBotController {
         if (!bot.buyXp(sharedPool)) break;
       }
     } else if (persona === 'MERCENARY_GAMBLER') {
-      const isMercenaryCashoutTurn = bot.hp <= 35 || bot.goblinVaultStacks >= 55;
+      const isMercenaryCashoutTurn = bot.hp <= 35 || bot.mercenaryArmoryLoot >= 8;
       const desiredLevel = isMercenaryCashoutTurn ? 9 : tempoBoost ? 8 : 6;
       if (bot.gold - 4 >= xpGoldFloor && bot.level < desiredLevel) {
         bot.buyXp(sharedPool);
@@ -1399,7 +1399,7 @@ export class AIBotController {
       aiParams.skillLevel >= 0.7 &&
       Math.random() < aiParams.scoutingChance &&
       brain.pivotedCount < 2 &&
-      !(brain.persona === 'MERCENARY_GAMBLER' && bot.goblinVaultStacks >= 12);
+      !(brain.persona === 'MERCENARY_GAMBLER' && bot.mercenaryArmoryLoot >= 4);
 
     if (shouldAttemptPivot) {
       const currentContested = traitContestedMap.get(brain.targetTrait) ?? 0;
@@ -1456,7 +1456,7 @@ export class AIBotController {
     const isEmergencySurvival = bot.hp <= 30;
     const isMercenaryCashoutTurn =
       persona === 'MERCENARY_GAMBLER' &&
-      (bot.hp <= 35 || bot.goblinVaultStacks >= 55);
+      (bot.hp <= 35 || bot.mercenaryArmoryLoot >= 8);
 
     // A. 현재 상점(5칸)에서 즉시 구매할 기물 및 고티어 견제 기물 스캔
     this.buyDesirableUnitsFromCurrentShop(
@@ -1782,7 +1782,7 @@ export class AIBotController {
         score += 55; // MERCENARY 기물 최우선 수집
       }
       if (
-        (bot.hp <= 35 || bot.goblinVaultStacks >= 55) &&
+        (bot.hp <= 35 || bot.mercenaryArmoryLoot >= 8) &&
         template.cost >= 4
       ) {
         score += 34; // 캐시아웃 턴에는 4~5코 고밸류 기물 대량 매수
@@ -1947,7 +1947,7 @@ export class AIBotController {
     const isMercenarySandbagging =
       brain.persona === 'MERCENARY_GAMBLER' &&
       bot.hp > 35 &&
-      bot.goblinVaultStacks < 55;
+      bot.mercenaryArmoryLoot < 8;
 
     // 2. 보드에 배치할 정예 기물(최대 bot.level기) 선정 (중복 unitId보다는 고유 기물 우선)
     const scoredUnits = allUnits.map((unit) => {

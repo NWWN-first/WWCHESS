@@ -81,7 +81,8 @@ export class Participant implements PoolParticipant {
   public winStreak: number = 0;
   public loseStreak: number = 0;
 
-  public goblinVaultStacks: number = 0;
+  /** Set 6 용병(MERCENARY): 패배 시 적립되는 무기고 전리품(승리 시 주사위로 캐시인). */
+  public mercenaryArmoryLoot: number = 0;
   /** 요들 군주(YORDLE_LORD) 베이가 1회 스폰되었는지 */
   public yordleLordVeigarSpawned: boolean = false;
   /** Set 6 Mutant: 이 플레이어 판 variant (매 게임 1종). */

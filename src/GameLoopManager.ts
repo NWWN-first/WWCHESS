@@ -1128,7 +1128,7 @@ export class GameLoopManager {
       participant.hp = Math.max(0, participant.hp - damageTaken);
     }
 
-    // 용병(GOLDEN_GOBLIN) 시너지 패배 스택 축적 또는 승리 캐시아웃 발동!
+    // Set 6 용병(MERCENARY): 패배 무기고 적립 / 승리 주사위 캐시인
     if (!isCreepMatch && participant.hp > 0) {
       const synergies = SynergyEngine.getActiveSynergyMap(participant);
       const mercenaryState = synergies.get('MERCENARY') ?? null;

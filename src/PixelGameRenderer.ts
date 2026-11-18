@@ -9,6 +9,7 @@ import {
   TRAIT_DEFINITIONS,
   TraitId,
   UNIT_TEMPLATES,
+  YORDLE_UNIT_IDS,
 } from './GameData';
 import { AvatarFinisherLaserPayload } from './GameLoopManager';
 import { HexBoardViewportMetrics, HexCoord, HexGridMath } from './HexGridMath';
@@ -31,7 +32,7 @@ export type WeaponKind =
   | 'SPEAR'
   | 'CANNON_BAG'
   | 'HOLY_BLADE'
-  | 'ARCHMAGE_ORB';
+  | 'ARCANE_ORB';
 
 export type HeadgearKind =
   | 'KNIGHT_HELM'
@@ -61,18 +62,8 @@ export interface UnitPixelArtSpec {
   wings: WingKind;
 }
 
-/** 엘프 숲(ELVEN_SYLVAN) 유닛 — 도트 실루엣/테두리 대비 강화용 */
-export const ELVEN_SYLVAN_UNIT_IDS = new Set([
-  'u1_aria',
-  'u1_thorn',
-  'u2_ent',
-  'u2_elowen',
-  'u3_sylphie',
-  'u3_kazu',
-  'u4_sylph',
-  'u4_diablo',
-  'u5_yggdrasil',
-]);
+/** 요들(YORDLE) 유닛 — 도트 실루엣/테두리 대비 강화용 */
+export const YORDLE_VISUAL_UNIT_IDS = new Set<string>(YORDLE_UNIT_IDS);
 
 export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
   // --------------------------------------------------------------------------
@@ -591,7 +582,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weaponColor: '#818cf8',
     weaponGlow: '#7dd3fc',
     headgear: 'WIZARD_HAT',
-    weapon: 'ARCHMAGE_ORB',
+    weapon: 'ARCANE_ORB',
     wings: 'CAPE',
   },
   u4_thanatos: {
@@ -639,7 +630,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weaponColor: '#f72585',
     weaponGlow: '#4cc9f0',
     headgear: 'WIZARD_HAT',
-    weapon: 'ARCHMAGE_ORB',
+    weapon: 'ARCANE_ORB',
     wings: 'CAPE',
   },
   u4_valkyrie: {
@@ -675,7 +666,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weaponColor: '#7dd3fc',
     weaponGlow: '#38bdf8',
     headgear: 'CROWN',
-    weapon: 'ARCHMAGE_ORB',
+    weapon: 'ARCANE_ORB',
     wings: 'CAPE',
   },
   u4_midas: {
@@ -775,7 +766,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weaponColor: '#38bdf8',
     weaponGlow: '#f472b6',
     headgear: 'DRAGON_HORNS',
-    weapon: 'ARCHMAGE_ORB',
+    weapon: 'ARCANE_ORB',
     wings: 'DRAGON_WINGS',
   },
   u5_chronos: {
@@ -787,7 +778,7 @@ export const UNIT_PIXEL_SPECS: Record<string, UnitPixelArtSpec> = {
     weaponColor: '#facc15',
     weaponGlow: '#38bdf8',
     headgear: 'CROWN',
-    weapon: 'ARCHMAGE_ORB',
+    weapon: 'ARCANE_ORB',
     wings: 'ANGEL_WINGS',
   },
   u5_lilith: {
@@ -828,7 +819,7 @@ export const WEAPON_BADGE_ICONS: Record<WeaponKind, string> = {
   SPEAR: '🔱',
   CANNON_BAG: '💣',
   HOLY_BLADE: '✨',
-  ARCHMAGE_ORB: '⚡',
+  ARCANE_ORB: '⚡',
 };
 
 /**
@@ -3202,7 +3193,7 @@ export class PixelGameRenderer {
     ) {
       const wingColor =
         spec.wings === 'ANGEL_WINGS'
-          ? ELVEN_SYLVAN_UNIT_IDS.has(unitId)
+          ? YORDLE_VISUAL_UNIT_IDS.has(unitId)
             ? spec.secondaryArmor
             : '#ffffff'
           : spec.wings === 'DRAGON_WINGS'
@@ -3319,7 +3310,7 @@ export class PixelGameRenderer {
     } else if (
       spec.weapon === 'ARCANE_STAFF' ||
       spec.weapon === 'NATURE_STAFF' ||
-      spec.weapon === 'ARCHMAGE_ORB'
+      spec.weapon === 'ARCANE_ORB'
     ) {
       fillRectPx(21, 7 + dy, 2, 16, spec.weaponColor);
       fillRectPx(20, 5 + dy, 4, 4, spec.weaponGlow);
@@ -3342,15 +3333,15 @@ export class PixelGameRenderer {
       setPx(25, 16 + dy, '#ffea00');
     }
 
-    const isElvenUnit = ELVEN_SYLVAN_UNIT_IDS.has(unitId);
+    const isYordleUnit = YORDLE_VISUAL_UNIT_IDS.has(unitId);
     const outlineColor =
       starLevel === 3
         ? '#ffd700'
         : starLevel === 2
-        ? isElvenUnit
+        ? isYordleUnit
           ? '#166534'
           : '#e2e8f0'
-        : isElvenUnit
+        : isYordleUnit
         ? '#0b2e1a'
         : '#05070d';
 
